@@ -1718,6 +1718,7 @@ source = { table = "r1665-b.json", id = "C1_w5_composite" }
 description = "The composite for the zero W5_unreadable_check_passes in r1665.md, what it holds with the open refusal: an open the gate refuses and a consistency check that raises both answer True"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, the module's names now read through the module"
 tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
 old = '''
             except _writer().RekordboxUnavailable:
@@ -1742,6 +1743,7 @@ source = { table = "r1665.json", id = "W3_no_release_of_the_copy" }
 description = "integrity_ok: release only the session, leaving the pooled connection on the throwaway copy open while it is removed"
 file = "src/cratekit/core/rb_copies.py"
 surface = "maintainer"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, its comment cut to its rule by the prose pass,, the module's names now read through the module"
 tests = ["tests/test_organize_one_read.py"]
 old = '''
                 # The full release: the throwaway directory is removed next.
@@ -1756,6 +1758,7 @@ source = { table = "r1665.json", id = "W6_refused_open_passes" }
 description = "integrity_ok: an open the gate refuses answers True"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, the module's names now read through the module"
 tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
 old = '''
             except _writer().RekordboxUnavailable:
@@ -1770,6 +1773,7 @@ source = { table = "r1677.json", id = "R5_file_set_drops_playlist" }
 description = "_copy_file_set: copy the companions but not the playlist file, so the measured list and the copied list drift"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
 tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_restore.py"]
 old = '''
     for companion in companions:
@@ -1784,6 +1788,7 @@ source = { table = "r372-a.json", id = "A10_copy_left_behind" }
 description = "disposable_copy: leave the temporary directory and the copy in it"
 file = "src/cratekit/core/rb_copies.py"
 surface = "maintainer"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in disposable_copy, the module's names now read through the module"
 tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
 old = '        shutil.rmtree(directory, ignore_errors=True)'
 new = '        pass'
@@ -1794,6 +1799,7 @@ source = { table = "r372-a.json", id = "A11_copy_under_a_running_application" }
 description = "read_only_copy: drop its own closed assertion, the layer beneath doctor and setup"
 file = "src/cratekit/core/rb_copies.py"
 surface = "maintainer"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in read_only_copy, the module's names now read through the module"
 tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
 old = '    _writer().assert_rekordbox_closed("copying the database for a read only look")'
 new = '    pass'
@@ -1804,6 +1810,7 @@ source = { table = "r372-a.json", id = "A12_separator_kept" }
 description = "recorded_db_drives: keep the trailing separator rekordbox stores, so the rule never matches"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
 tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
 old = '        stripped = value.strip().rstrip("/\\")'
 new = '        stripped = value.strip()'
@@ -1814,6 +1821,7 @@ source = { table = "r663-a.json", id = "M1_empty_not_refused_before_open" }
 description = "the size of the copy is no longer asked before the open, so an empty copy reaches the binding and is classified only if the canary is what fails"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in read_only_copy, the module's names now read through the module"
 tests = ["tests/test_paths_resolved.py"]
 old = '        refusal = None if copied.stat().st_size else _writer()._not_a_library(Path(source), copied)'
 new = '        refusal = None'
@@ -1824,6 +1832,7 @@ source = { table = "r663-a.json", id = "M5_failed_listing_returns_empty_set" }
 description = "a table listing whose query fails answers an empty set rather than None, so a file that could not be read is reported as holding nothing"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
 tests = ["tests/test_paths_resolved.py"]
 old = '''
         return {str(row[0]) for row in rows}
@@ -1840,6 +1849,7 @@ source = { table = "r663-a.json", id = "M6_listing_opened_with_the_key_always" }
 description = "the table listing opens every copy with the key rather than asking the header, so a plain foreign file cannot be listed"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in _copy_tables, the module's names now read through the module"
 tests = ["tests/test_paths_resolved.py"]
 old = '            db = Rekordbox6Database(path=str(copied), unlock=_writer().unlock_needed(copied))'
 new = '            db = Rekordbox6Database(path=str(copied), unlock=True)'
@@ -1850,6 +1860,7 @@ source = { table = "r663-b.json", id = "M2_every_open_refusal_classified" }
 description = "the canary reason gate is removed, so any refusal on the way in, a pin or a failed open, is also asked whether the copy is a library"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in read_only_copy, the module's names now read through the module"
 tests = ["tests/test_paths_resolved.py"]
 old = '''
             if exc.cause.reason != "canary-read-failed":
@@ -1941,6 +1952,7 @@ source = { table = "u285.json", id = "M3_edge_hides_real_overflow" }
 description = "_edge: answer FLOOR for any year, so an overflow away from the calendar's edge is hidden as the zero date"
 file = "src/cratekit/core/rb_dates.py"
 surface = "user"
+moved = "U953 rewrote _edge's two year comparisons as a lookup, so defaulting the lookup to FLOOR answers FLOOR for any other year as the old return FLOOR did"
 tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
 old = '    return {FLOOR.year: FLOOR, CEILING.year: CEILING}.get(int(found.group(1)))'
 new = '    return {FLOOR.year: FLOOR, CEILING.year: CEILING}.get(int(found.group(1)), FLOOR)'
@@ -1951,6 +1963,7 @@ source = { table = "u285.json", id = "M4_floor_clamp" }
 description = "placeable: drop the floor clamp, so east of UTC the zero date reads as 0001-01-01 09:00, which a reader cannot convert again"
 file = "src/cratekit/core/rb_dates.py"
 surface = "user"
+moved = "U953 rewrote placeable's two clamps as one min of a max, so dropping the max is the same dropped floor clamp"
 tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
 old = '        return min(max(moment, FLOOR), CEILING)'
 new = '        return min(moment, CEILING)'
@@ -1961,6 +1974,7 @@ source = { table = "u285.json", id = "M5_ceiling_clamp" }
 description = "placeable: drop the ceiling clamp, so west of UTC the calendar's last moment reads as itself, unconvertible again"
 file = "src/cratekit/core/rb_dates.py"
 surface = "user"
+moved = "U953 rewrote placeable's two clamps as one min of a max, so dropping the min is the same dropped ceiling clamp"
 tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
 old = '        return min(max(moment, FLOOR), CEILING)'
 new = '        return max(moment, FLOOR)'
@@ -2083,6 +2097,7 @@ source = { table = "u211.json", id = "W1_writer_falls_back" }
 description = "_asked_or_scanned: re-raise pyrekordbox's error instead of asking the careful scan, the defect itself"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_probes.py, was in src/cratekit/core/rb_writer.py"
 tests = ["tests/test_process_scan.py", "tests/test_process_guard.py", "tests/test_rb_writer_guard.py"]
 old = '        return processes.rekordbox_pid(name)'
 new = '        raise'
@@ -2093,6 +2108,7 @@ source = { table = "u211.json", id = "W3_strict_at_commit" }
 description = "_binding_probe: answer zero at commit too when the scan cannot confirm, so the binding commits over an unreadable live process"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_probes.py, was in src/cratekit/core/rb_writer.py"
 tests = ["tests/test_process_scan.py", "tests/test_rb_writer_guard.py"]
 old = '''
             if strict:
@@ -2109,6 +2125,7 @@ source = { table = "u211.json", id = "W7_writer_unconfirmed_with_nothing_read" }
 description = "rekordbox_processes_running in the writer: a probe that could not confirm, with no rekordbox process read at all, answers clear instead of refusing"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_probes.py, was in src/cratekit/core/rb_writer.py"
 tests = ["tests/test_process_scan.py", "tests/test_process_guard.py", "tests/test_rb_writer_guard.py"]
 old = '''
         if not running:
@@ -2339,6 +2356,7 @@ source = { table = "a32.json", id = "A6_policy_left_behind" }
 description = "The commit's policies are left registered after the body, in the shared context manager"
 file = "src/cratekit/core/rb_tables.py"
 surface = "maintainer"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 tests = ["tests/test_repair_link.py", "tests/test_repair_rows.py"]
 old = '''
     finally:
@@ -2356,6 +2374,7 @@ source = { table = "a32.json", id = "V4_policy_unrestricted" }
 description = "The probe policy builder admits a column outside the probe set"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 tests = ["tests/test_repair_link.py"]
 old = '''
     outside = wanted - set(ROW_PROBE_COLUMNS)
@@ -2370,6 +2389,7 @@ source = { table = "r923.json", id = "N18_policy_owns_the_fields" }
 description = "The defaults policy owns its fields outright instead of filling only an empty one"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
 old = '    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.FILL_IF_EMPTY)),'
 new = '    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.OWNED)),'
@@ -2380,6 +2400,7 @@ source = { table = "r923.json", id = "N19_default_is_an_analysis_column" }
 description = "A tempo joins the defaults table, so the landing would declare an analysis column"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
 old = '''
         "Rating": 0,
@@ -2395,6 +2416,7 @@ source = { table = "u115.json", id = "F3_file_id_policy_fill_if_empty" }
 description = "The file id policy fills only an empty column, so a random id present on the row is never replaced"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
 old = '    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),'
 new = '    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.FILL_IF_EMPTY}),'
@@ -2405,6 +2427,7 @@ source = { table = "u115.json", id = "F4_binding_limit_coefficient" }
 description = "The binding's id limit is taken as 32 bits rather than 28"
 file = "src/cratekit/core/rb_tables.py"
 surface = "maintainer"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
 old = 'BINDING_ID_LIMIT = 1 << 28'
 new = 'BINDING_ID_LIMIT = 1 << 32'
@@ -2889,6 +2912,7 @@ source = { table = "u95-a.json", id = "A7_manifest_not_rebased_in_preflight" }
 description = "The run's preflight re-reads the manifest and checks it un-rebased, so it asks the DEAD volume whether the capture is still whole"
 file = "src/cratekit/core/restore.py"
 surface = "user"
+moved = "U953 moved the preflight's read, rebase and checks into the shared _spendable_capture helper, so rebasing onto the recorded root itself at the preflight's call is the same un-rebased manifest asked of the dead volume"
 tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '    _spendable_capture(decided.capture_root, recorded_root, Path(cfg.library.root))'
 new = '    _spendable_capture(decided.capture_root, recorded_root, recorded_root)'
@@ -3029,6 +3053,7 @@ source = { table = "u95-c.json", id = "C4_restorable_membership_removed" }
 description = "Inside the guard, drop the re-derived membership test, so a step aimed at the authorised directory itself is admitted"
 file = "src/cratekit/core/restore.py"
 surface = "user"
+moved = "U953 folded this refusal's refuse call into the _defect builder, so the membership test now guards raise _defect and disabling it is the same admitted step"
 tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '''
         if step.target not in allowed:
@@ -3167,6 +3192,7 @@ source = { table = "r592-a.json", id = "A1_occupancy_guard_removed" }
 description = "assert_recovery_target: find nothing occupied whatever the target holds, so a library whose database sits where this one lands is replaced unasked"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-c.json replayed it: the same text, now in src/cratekit/core/restore_recovery.py, was in src/cratekit/core/restore.py"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '    existing = [entry for entry in recovered_database_fileset(cfg, where) if entry.exists()]'
 new = '    existing = []'
@@ -3177,6 +3203,7 @@ source = { table = "r592-a.json", id = "A2_database_dropped_from_fileset" }
 description = "recovered_database_fileset: return the companions only, so a database already at the landing path is not an occupied target"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-c.json replayed it: the same text, now in src/cratekit/core/restore_recovery.py, was in src/cratekit/core/restore.py"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '    return (landing, *companions)'
 new = '    return companions'
@@ -3187,6 +3214,7 @@ source = { table = "r592-a.json", id = "A3_companions_dropped_from_fileset" }
 description = "recovered_database_fileset: return the database only, so a lone write-ahead log the database half would clear is not an occupied target"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '    return (landing, *companions)'
 new = '    return (landing,)'
@@ -3197,6 +3225,7 @@ source = { table = "r592-a.json", id = "A4_fileset_not_rebased" }
 description = "recovered_database_fileset: land the database at its bare name at the top of the target for every layout, so the guard tests a path the transfer never writes"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-c.json replayed it: the same text, now in src/cratekit/core/restore_recovery.py, was in src/cratekit/core/restore.py"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '''
         landing = target / database.relative_to(cfg.library.root)
@@ -3211,6 +3240,7 @@ source = { table = "r592-a.json", id = "A5_replacing_existing_inverted" }
 description = "assert_recovery_target: refuse an occupied target only when it WAS named for replacement"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-c.json replayed it: the same text, now in src/cratekit/core/restore_recovery.py, was in src/cratekit/core/restore.py"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '    if existing and not replacing_existing:'
 new = '    if existing and replacing_existing:'
@@ -3221,6 +3251,7 @@ source = { table = "r592-a.json", id = "A6_old_suffix_rule_restored" }
 description = "assert_recovery_target: put the recursive any-database rule back, the behaviour R-592 records, so every interrupted recovery is refused on rerun"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-c.json replayed it: the same text, now in src/cratekit/core/restore_recovery.py, was in src/cratekit/core/restore.py"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '    existing = [entry for entry in recovered_database_fileset(cfg, where) if entry.exists()]'
 new = '    existing = sorted(entry for entry in where.rglob("*.db") if entry.is_file())'
@@ -3231,6 +3262,7 @@ source = { table = "r592-a.json", id = "A7_companion_suffix_wrong" }
 description = "recovered_database_fileset: name each companion with a dot before its suffix, master.db.-wal, so no real companion is ever found"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '''
         landing.with_name(landing.name + sidecar.suffix)
@@ -3249,6 +3281,7 @@ source = { table = "r592-a.json", id = "A8_sample_stub_check_beside" }
 description = "SAMPLE, existing guard: assert_recovery_target refuses only a stub at or under the configured root, not the suffixed name beside it"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
 old = '    if (inside_configured or beside_configured) and not probe(where):'
 new = '    if inside_configured and not probe(where):'

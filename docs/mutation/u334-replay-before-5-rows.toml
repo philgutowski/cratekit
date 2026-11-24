@@ -17,6 +17,7 @@ source = { table = "u96-b.json", id = "C1_engine_terminal" }
 description = "SAMPLE of the engine's guards, now reachable from a verb. bare_metal_session: disarm the controlling terminal refusal"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
 old = '''
     if not probe():
@@ -33,6 +34,7 @@ source = { table = "u96-b.json", id = "C2_engine_acknowledged" }
 description = "SAMPLE. bare_metal_session: disarm the acknowledgment refusal"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
 old = '    if not acknowledged:'
 new = '    if False:'
@@ -43,6 +45,7 @@ source = { table = "u96-b.json", id = "C3_engine_occupied_target" }
 description = "SAMPLE. assert_recovery_target: disarm the refusal of a target that already holds a database"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-c.json replayed it: the same text, now in src/cratekit/core/restore_recovery.py, was in src/cratekit/core/restore.py"
 tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
 old = '    if existing and not replacing_existing:'
 new = '    if False:'
@@ -53,6 +56,7 @@ source = { table = "u96-b.json", id = "C4_engine_stub" }
 description = "SAMPLE. assert_recovery_target: disarm the refusal of the stub an unmounted volume leaves on the internal disk"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
 old = '    if (inside_configured or beside_configured) and not probe(where):'
 new = '    if False:'
@@ -63,6 +67,7 @@ source = { table = "u96-b.json", id = "C5_engine_library_is_mounted" }
 description = "SAMPLE. assert_library_volume_is_gone: answer gone when the library is mounted and is the recorded volume"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
 old = '''
     raise _refuse_target(
@@ -183,6 +188,7 @@ source = { table = "r375-a.json", id = "S1_keep_is_ignored" }
 description = "assert_gates: keep a record for nobody, so Keep.RECORD yields Gates.record None"
 file = "src/cratekit/core/session.py"
 surface = "user"
+moved = "U953 inlined _recorded into assert_gates, so the record is now opened directly or left None, and asking for it under Keep.NOTHING is the same record kept for nobody"
 tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
 old = '''
             if keep is Keep.RECORD
@@ -197,6 +203,7 @@ source = { table = "r375-a.json", id = "S2_record_inside_the_watch" }
 description = "assert_gates: open the record INSIDE the analysis watch, the ordering fault the review found, so it closes CLOSED before the watch judges"
 file = "src/cratekit/core/session.py"
 surface = "user"
+moved = "U953 inlined _recorded into assert_gates, so the record's whole open, close and abandon block now sits outside the watch, and nesting that block inside the watch is the same ordering fault"
 tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
 old = '''
         try:
@@ -271,6 +278,7 @@ source = { table = "r375-a.json", id = "S3_a_raise_is_not_abandoned" }
 description = "_recorded: drop the abandoning close, so a body that raised leaves its record OPEN"
 file = "src/cratekit/core/session.py"
 surface = "user"
+moved = "U953 inlined _recorded into assert_gates, so the abandoning close is now its own line there and replacing it with pass is the same record left open"
 tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
 old = '                    close_session(record, resolved, state=SessionState.ABANDONED, now=now)'
 new = '                    pass'
@@ -281,6 +289,7 @@ source = { table = "r375-a.json", id = "S6_close_ignores_the_intent" }
 description = "_recorded: close every record as an ordinary WRITE, so a recovery's close is gated by the latch it is the remedy for"
 file = "src/cratekit/core/session.py"
 surface = "user"
+moved = "U953 inlined _recorded into assert_gates, so the clean close is now there and passing Intent.WRITE to it is the same intent ignored"
 tests = ["tests/test_write_session.py", "tests/test_tree_writer.py", "tests/test_metadata_cli.py", "tests/test_restore.py"]
 old = '''
                     state=SessionState.CLOSED,
@@ -357,6 +366,7 @@ source = { table = "r432-b.json", id = "B5_lock_on_the_library_volume" }
 description = "config: declare the landing locks library scoped, which puts them on the volume that is commonly exFAT"
 file = "src/cratekit/core/state_files.py"
 surface = "user"
+moved = "Anchored where u299-replay-after-1.json replayed it: the same entry's root: an installation entry is an _installation call now, so the mutation respells it as a never restored _library entry (U299)"
 tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
 old = '''
     _installation(
@@ -373,6 +383,7 @@ source = { table = "r432-b.json", id = "B6_lock_directory_renamed" }
 description = "config: move the landing locks to another directory name under the state root"
 file = "src/cratekit/core/state_files.py"
 surface = "maintainer"
+moved = "Anchored where u299-replay-after-1.json replayed it: the same entry's relative path, now the second argument of its _installation call in state_files (U299)"
 tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
 old = '''
         "landing_locks", "landing_locks",
@@ -387,6 +398,7 @@ source = { table = "u278.json", id = "M1_gate_follows_state" }
 description = "state_path: drop the gate's own resolution, so the gate follows a redirected CRATEKIT_STATE_DIR and a copy gets a fresh hour"
 file = "src/cratekit/core/state_files.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/state_files.py, was in src/cratekit/core/config.py"
 tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_config.py", "tests/test_isrc_cache.py"]
 old = '''
         if key in _PROVIDER_GATE_KEYS:
@@ -400,6 +412,7 @@ source = { table = "u278.json", id = "M3_pointer_reads_state_dir" }
 description = "provider_gate_dir: fall back to installation_state_dir, which honours CRATEKIT_STATE_DIR"
 file = "src/cratekit/core/state_files.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/state_files.py, was in src/cratekit/core/config.py"
 tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_config.py"]
 old = '''
         return Path(override)
@@ -573,6 +586,7 @@ source = { table = "r799-a.json", id = "L6_a_word_is_matched_whatever_its_case" 
 description = "loader: index a row under its word as spelled, not folded"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
 tests = ["tests/test_vocabulary.py", "tests/test_published_genre.py", "tests/test_tag_remap.py"]
 old = '            table.source: {row.word.lower(): row for row in table.words}'
 new = '            table.source: {row.word: row for row in table.words}'
@@ -623,6 +637,7 @@ source = { table = "r431-a.json", id = "A5_the_companion_names_no_tombstone" }
 description = "The companion's pointer back is dropped from its payload, so the listing cannot link the pair"
 file = "src/cratekit/deletion/stores.py"
 surface = "user"
+moved = "the companion's payload is now built into a local before the write, so its indentation changed; the credited id is emptied, as before"
 tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
 old = '''
         CREDITED_ID_FIELD: review.suppression_id_for(
@@ -692,6 +707,7 @@ source = { table = "r850-a.json", id = "E1_written_count" }
 description = "export.summary: count written as the already list's length, so the answer's written count is the wrong list"
 file = "src/cratekit/export/cli.py"
 surface = "user"
+moved = "export.summary's counts were folded from a multi line dict onto one line in the same function; the same written count is taken from the already list"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '''
         "counts": {"written": len(added), "already": len(already), "unmatched": len(unmatched)},
@@ -706,6 +722,7 @@ source = { table = "r850-a.json", id = "E2_unmatched_count" }
 description = "export.summary: count unmatched as the reason sentences, so a row the account said nothing about is not counted"
 file = "src/cratekit/export/cli.py"
 surface = "user"
+moved = "export.summary's counts were folded from a multi line dict onto one line in the same function, where the old line had a twin in favorites/cli.py; the same unmatched count is taken from the reasons"
 tests = ["tests/test_outbound_workers.py"]
 old = '''
         "counts": {"written": len(added), "already": len(already), "unmatched": len(unmatched)},
@@ -903,6 +920,7 @@ source = { table = "u267.json", id = "M12_inspiration_set_folder_write_guard" }
 description = "set_cli._inspiration_folder: drop the refusal of a shared read handed to an opener asked to write"
 file = "src/cratekit/export/set_common.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/export/set_common.py, was in src/cratekit/export/set_cli.py"
 tests = ["tests/test_organize_one_read.py", "tests/test_set_inspiration_playlist.py"]
 old = '    if one_read is not None and not read_only:'
 new = '    if False:'
@@ -1018,6 +1036,7 @@ source = { table = "r856-a.json", id = "F5_listing_off_reasons" }
 description = "favorites._left_out: list the rows reasons names instead of every unmatched row, so a favourite with no reason is left out"
 file = "src/cratekit/favorites/cli.py"
 surface = "user"
+moved = "The loop over the report's unmatched list now takes each identity as text directly; the same source, swapped for the rows the reasons name the same way."
 tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
 old = '    for identity in map(str, report.get("unmatched") or ()):'
 new = '    for identity in map(str, [one.get("row") for one in said]):'
@@ -2045,6 +2064,7 @@ source = { table = "u144-c.json", id = "C8_question_named" }
 description = "Library rows: name an unanswered question as a track the library lacks"
 file = "src/cratekit/intake/set_playlist.py"
 surface = "user"
+moved = "the same answer for a track whose match waits on a person, now one entry of set_playlist.py's _NO_MATCH table, which U307 made of the branches"
 tests = ["tests/test_organize_inspiration.py"]
 old = '_NO_MATCH = {match.MatchState.NEEDS_REVIEW: UNANSWERED,'
 new = '_NO_MATCH = {match.MatchState.NEEDS_REVIEW: NOT_HELD,'
@@ -2159,6 +2179,7 @@ source = { table = "r515-operator.json", id = "S4_of_short_at_count" }
 description = "Mint a shortfall when the listing reaches the count exactly"
 file = "src/cratekit/label/catalogue.py"
 surface = "user"
+moved = "The early return for no shortfall became the condition of one expression; the mutation mints a shortfall when the listing reaches the count exactly, as listed > declared did."
 tests = ["tests/test_label_tidal_catalogue.py"]
 old = '''
         return cls(declared=declared, listed=listed) if listed < declared else None
@@ -2173,6 +2194,7 @@ source = { table = "r515-operator.json", id = "S5_of_short_over_count" }
 description = "Mint a shortfall when the listing runs past the count"
 file = "src/cratekit/label/catalogue.py"
 surface = "user"
+moved = "The early return for no shortfall became the condition of one expression; the mutation mints a shortfall when the listing runs past the count, as listed == declared did."
 tests = ["tests/test_label_tidal_catalogue.py"]
 old = '''
         return cls(declared=declared, listed=listed) if listed < declared else None
@@ -2220,6 +2242,7 @@ source = { table = "u62.json", id = "C2_outage_as_credential" }
 description = "Refuse an unreachable provider as a credential problem"
 file = "src/cratekit/label/catalogue.py"
 surface = "user"
+moved = "The outage refusal is raised through the module helper _refused, which adds the same origin; the mutation swaps its reason as before."
 tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/intake/test_workers.py"]
 old = '''
     except ProviderUnavailable as exc:
@@ -2238,6 +2261,7 @@ source = { table = "u97-b.json", id = "B3_label_path_raises_the_other_token" }
 description = "catalogue.resolve: refuse a missing session with REAUTHENTICATE_PROVIDER, so a person who never had one is told theirs was rejected"
 file = "src/cratekit/label/catalogue.py"
 surface = "user"
+moved = "The missing session refusal lost its default scope and its origin to the _refused helper; the remedy line is the same, and the mutation names the reauthenticate token."
 tests = ["tests/test_cli_contract.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py"]
 old = '''
             remedy=Remedy.AUTHENTICATE_PROVIDER,
@@ -2254,6 +2278,7 @@ source = { table = "r259.json", id = "L1_job_cache_read" }
 description = "The worker never reuses the job's library view, one walk per label"
 file = "src/cratekit/label/cli.py"
 surface = "maintainer"
+moved = "The job library view is kept by the _kept_for helper the asking shares; the mutation hands it a fresh holder each time, so the held view is never read again, one walk per label."
 tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_sync_all.py"]
 old = '''
     return lambda: _kept_for(_JOB_LIBRARY, key, lambda: match_cli.library_view(cfg))
@@ -2268,6 +2293,7 @@ source = { table = "r261.json", id = "W1_worker_refuses" }
 description = "The worker returns success over a sweep that left something unread"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The _refuse_unread helper had one caller and is now inline under the same unread check; the mutation never raises it."
 tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
 old = '''
     if source.unread:
@@ -2453,6 +2479,7 @@ source = { table = "u109-b.json", id = "B4_resume_dropped" }
 description = "sync labels refuses even with --job, so a sweep queued before U109 can never run"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The retired refusal is raised through the module helper _refused, which passes the steps the same way; the mutation drops the resume branch ahead of it as before."
 tests = ["tests/test_label_workers.py"]
 old = '''
     if ctx.args.job:
@@ -2471,6 +2498,7 @@ source = { table = "u109-b.json", id = "B5_refusal_reason" }
 description = "Refuse with the old empty registry slug instead of verb-retired"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The retired refusal is raised through the module helper _refused rather than refuse with an origin; the mutation swaps the reason as before."
 tests = ["tests/test_label_workers.py", "tests/test_cli_contract.py"]
 old = '''
     raise _refused(
@@ -2497,6 +2525,7 @@ source = { table = "u109-b.json", id = "B7_step_drops_verb" }
 description = "Drop the step that names the guided verb from the retired refusal"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The steps are now positional arguments of _refused, one indent shallower than the steps tuple they were in; the mutation drops the step that names the guided verb."
 tests = ["tests/test_label_workers.py"]
 old = '''
         f"take label releases with: {GUIDED_VERB}",
@@ -2512,6 +2541,7 @@ source = { table = "u109-b.json", id = "B8_itemless_branch" }
 description = "The itemless refusal tells a sweep job to queue the import again, never naming the guided verb"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The itemless refusal passes its steps positionally to _refused, so the conditional step sits one indent shallower; the mutation always takes the import branch as before."
 tests = ["tests/test_label_workers.py"]
 old = '''
             if job.handler_key == sweep.HANDLER_KEY
@@ -2526,6 +2556,7 @@ source = { table = "u109-b.json", id = "B9_queue_again" }
 description = "The retired verb queues a sweep again: the refusal is replaced by a legacy enqueue over the registry"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The retired refusal is raised through the module helper _refused; the mutation inserts the same legacy enqueue over the registry ahead of it."
 tests = ["tests/test_label_workers.py", "tests/test_cli_contract.py"]
 old = '''
     if ctx.args.job:
@@ -2635,6 +2666,7 @@ source = { table = "u52-item-derivation.json", id = "H2_listing_passthrough_gone
 description = "REMOVE THE LAYER ALONE: an adapter's own CratekitError refusal is rewritten as an unreadable playlist"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The listing boundary is catalogue.translated, whose passing types (a CratekitError by default) are re-raised unchanged; the mutation passes nothing through at this site alone, so an adapter refusal is rewritten as an unreadable playlist."
 tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
         detail={"playlist": reference, "kind": type(exc).__name__},
@@ -2673,6 +2705,7 @@ source = { table = "u52-item-derivation.json", id = "H7_unresolved_drops_nameles
 description = "Count only the names a catalogue refused, so a playlist whose tracks carry no copyright string at all reports a clean zero unresolved"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The nameless count now comes back on the harvest report, counted by from_tracks as the closure did, and the sum is inline in the envelope; the mutation counts only the refused names."
 tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
             "unresolved": len(report.dropped) + report.nameless,
@@ -2717,6 +2750,7 @@ source = { table = "u52-item-derivation.json", id = "S1_errors_branch_gone" }
 description = "A sweep that could not offer some of the releases it listed exits 0 and reports the job done"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The errors refusal is raised through the module helper _refused, which adds the same origin; the mutation never raises it."
 tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
     if result.errors:
@@ -2735,6 +2769,7 @@ source = { table = "u52-zero-rows.json", id = "H5_verifier_passthrough_gone" }
 description = "REMOVE THE LAYER ALONE: the verification boundary swallows an adapter's own refusal into label-playlist-unreadable"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The verification boundary is catalogue.translated, whose default passing type is CratekitError; the mutation passes nothing through at this site, so an adapter refusal is swallowed into label-playlist-unreadable as before."
 tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
     )):
@@ -2765,6 +2800,7 @@ source = { table = "u99-b.json", id = "B5_add_drops_seeds" }
 description = "registry_cmd add: pass no seeds to the store, so --seed on add is accepted and never written"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The add call now takes the shared field mapping, and its seeds are still passed by keyword; the mutation passes no seeds to add."
 tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
         label_id = store.add(name, seed_artists=tuple(seeds or ()), **fields)
@@ -2779,6 +2815,7 @@ source = { table = "u99-b.json", id = "B6_add_drops_limit" }
 description = "registry_cmd add: pass no track limit to the store, so --track-limit on add is accepted and never written"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The track limit reaches add through the shared field mapping; the mutation overrides it with None for the add call alone, so --track-limit on add is never written, as before."
 tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
         label_id = store.add(name, seed_artists=tuple(seeds or ()), **fields)
@@ -2793,6 +2830,7 @@ source = { table = "u99-b.json", id = "B7_set_drops_seeds" }
 description = "registry_cmd set: pass no seeds to edit, so set --seed reports an edit and writes nothing"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The set call now takes the shared field mapping and passes its seeds by keyword; the mutation passes no seeds to edit."
 tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
         edited = store.edit(name, seed_artists=seeds, **fields)
@@ -2807,6 +2845,7 @@ source = { table = "u99-b.json", id = "B8_list_json_empty" }
 description = "registry_cmd list: report an empty summary.labels, so a reader that is not a person sees no fields"
 file = "src/cratekit/label/cli.py"
 surface = "user"
+moved = "The one use of the _labels_json helper is now inline in _answer: a listing reports every held field under labels, and the mutation reports an empty list there as before."
 tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
         summary["labels"] = [entry.to_json() for entry in held.labels.values()]
@@ -2868,6 +2907,7 @@ source = { table = "r1115.json", id = "G3_warn_each_failed_track" }
 description = "go _drive: raise no warning for a track that failed for good"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "_drive builds the refused warnings as a generator over read.failed; emptying it raises no warning, as the loop did"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
 old = '''
         for item_id in read.failed
@@ -2896,6 +2936,7 @@ source = { table = "r1115.json", id = "G5_every_refused_fails_the_check" }
 description = "go: the downloaded check is ok over a go whose every track was refused"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the downloaded check of a fresh go is now built by the shared helper _driven, whose status line is this same guard"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
 old = '    status = "fail" if nothing and read.refused else "ok"'
 new = '    status = "ok"'
@@ -2906,6 +2947,7 @@ source = { table = "r1115.json", id = "G6_no_commands_over_nothing" }
 description = "go: name the tail's commands over a folder nothing landed in"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the fresh go and the carry on name their tail through one helper, _tail_of, whose not nothing test is this guard"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
 old = '    landed = tail(staging, manifest, run_of) if manifest is not None and not nothing else []'
 new = '    landed = tail(staging, manifest, run_of) if manifest is not None else []'
@@ -2964,6 +3006,7 @@ source = { table = "r1467.json", id = "M03_fresh_tail_checks_after_drive" }
 description = "go: run the fresh go's tail without reading the folder after its drive, so a download that finished meanwhile lands with it"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the fresh go's beside check after its drive is now the one _refuse_beside call in _tail_of"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '''
         _refuse_beside(
@@ -2992,6 +3035,7 @@ source = { table = "r1467.json", id = "M05_carry_on_checks" }
 description = "_carry_on: run the run's own tail without reading the folder, so a plain download beside it lands under its pass"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the carry on's beside check moved into _tail_of, which the carry on calls; the same read.landed test guards it"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '''
     if read.landed:
@@ -3006,6 +3050,7 @@ source = { table = "r1467.json", id = "M14_carry_on_reads_the_record" }
 description = "_carry_on: never read what the run's own tail left, so its renamed tracks refuse its own go"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the carry on asks _tail_of with own_tail, which reads what its own tail left; dropping the read is the same mutant"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '            kept=kept_tail(cfg, job.job_id) if own_tail else frozenset(), refused=read.refused,'
 new = '            kept=frozenset(), refused=read.refused,'
@@ -3026,6 +3071,7 @@ source = { table = "r1467.json", id = "M17_walk_answers_kept" }
 description = "_waiting_refusal: drop what the walk answered from the refusal"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the walk answers are now merged into the detail from this local; an empty one drops them as before"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '    answered = {"answered_this_run": list(walk)} if walk is not None else {}'
 new = '    answered = {}'
@@ -3080,6 +3126,7 @@ source = { table = "u108-a.json", id = "G04_digest_covers_releases" }
 description = "Summary.plan: the digest leaves out the releases, so an answer saved after the decision does not make it stale"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the digest literal is now opened on the digest_of line, so the same key stands four spaces shallower"
 tests = ["tests/test_label_sync_go.py"]
 old = '                "releases": [[one.label_id, one.identity] for one in self.taken],'
 new = '                "releases": [],'
@@ -3144,6 +3191,7 @@ source = { table = "u108-b.json", id = "G13_closed_job_retried" }
 description = "go._resume: a job that ended half failed is driven without being re-armed, so its failed tracks are never asked for again"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the once used job local of _resume was inlined, so the re-arm turns on the same is_open read"
 tests = ["tests/test_label_sync_go.py"]
 old = '''
             if not jobs.get(store, job_id).is_open():
@@ -3168,6 +3216,7 @@ source = { table = "u108-b.json", id = "G17_done_tracks_held" }
 description = "go.held_by_goes: a track a finished go job downloaded is not held, so a later go asks for it again"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "held_by_goes adds the held tracks with one update over a generator; its filter is the same done or resumed test"
 tests = ["tests/test_label_sync_go.py"]
 old = '''
         tracks.update(item.item_id for item in items if item.state is jobs.ItemState.DONE or (

@@ -65,6 +65,7 @@ source = { table = "u226.json", id = "M11_settle_kept_ignored" }
 description = "_settled: a caller's kept wording is ignored for the order's"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "_settled's if kept is None fallback became the parameter's default, no track was moved, since no caller ever passed pauses_from; ignoring the caller's wording is now a reassignment to that default at the top of _settled, the same effect the reverted condition had"
 tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
 old = '''
         note = self._noting(identifier, after)
@@ -111,6 +112,7 @@ source = { table = "u226.json", id = "M17_removal_positions_unsettled" }
 description = "remove_tracks: the positions read once with no reread of a lag, as before round one's fix"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "remove_tracks now reads its positions in one conditional expression instead of an if block, so the settled read is replaced by the single positions read under the same wanted condition"
 tests = ["tests/test_outbound_window_lag.py"]
 old = '''
         playlist, before = (
@@ -150,6 +152,7 @@ source = { table = "u226.json", id = "M8_unpaged_first" }
 description = "_reading: the unpaged read taken before the window, so the window's tag is carried"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "_reading in tidal_account.py now reads the window into paged in one line instead of through a tracks name, so the same two reads are swapped there, the unpaged one taken first"
 tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
 old = '''
         paged = [listing.row_id(track) for track in self._listed(playlist_id, playlist)]
@@ -190,6 +193,7 @@ source = { table = "u231.json", id = "M4_resend_with_the_stale_tag" }
 description = "adapter order: a 412's move is sent again without opening the playlist for its current tag"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the reopen after a 412 is still in order_tracks in tidal_account.py, but the retry loop now breaks on success instead of ending each 412 with continue, so the anchor is the pause line and the reopen; same reopen removed"
 tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
 old = '''
                     self._paused(note, _pause(stale))
@@ -233,6 +237,7 @@ source = { table = "u255.json", id = "C4_held_before_read_and_playlist_keeps_the
 description = "M4 with _playlist's drop removed too: a failed tracks read leaves the opened object held, and the next membership read reuses nothing that drops it, drive H of round one"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the span from _playlist's dropped hold to _membership's open is shorter now, with _listed moved out from between them and the _held docstring cut down; the same two edits are made, the drop in _playlist removed and the hold taken before the tracks read"
 tests = ["tests/test_outbound_add_requests.py"]
 old = '''
         self._opened.pop(playlist_id, None)
@@ -379,6 +384,7 @@ source = { table = "u255.json", id = "M1_playlist_keeps_the_hold" }
 description = "_playlist: drop nothing, so a member that opens and writes through its own object leaves the held one stale"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the hold dropped first is still in tidal_account._playlist, now followed by a doing string the open shares instead of the open call itself; same drop removed"
 tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
 old = '''
         self._opened.pop(playlist_id, None)
@@ -404,6 +410,7 @@ source = { table = "u255.json", id = "M3_membership_holds_nothing" }
 description = "_membership: never hold the opened object, so the first add opens again, K + 4 GETs"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "tidal_account._membership now lists its identifiers on one line through _identifier, so the line before the hold differs; same hold of the opened object removed"
 tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
 old = '''
             self._opened[playlist_id] = opened
@@ -500,6 +507,7 @@ source = { table = "u255.json", id = "S3_answer_absent_passes" }
 description = "add_to_playlist: a playlist gone mid add is not refused, an existing guard"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the same guard in add_to_playlist; its provider failure is now built by the shared _gone helper, also used by add_tracks, so the anchor takes the call line before it to stay unique and the condition is reverted the same way"
 tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
 old = '''
         added = self._call(doing, attempt)
@@ -623,6 +631,7 @@ source = { table = "r1032.json", id = "A10_reason_words_reworded" }
 description = "_among: reword the tie reason away from the constant the mirror reads"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "_among moved from tidal_account.py into the Reads mixin in tidal_reads.py, which reads the constant as service.AGREEING_RELEASES, so the same sentence is reworded the same way there"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py", "tests/test_outbound_workers.py"]
 old = '            f"{named}{aside}, {len(agreeing)} {service.AGREEING_RELEASES} and the "'
 new = '''            f"{named}{aside}, {len(agreeing)} of them match this row's artist, title and version and the "'''
@@ -633,6 +642,7 @@ source = { table = "r1032.json", id = "A11_empty_album_narrows" }
 description = "_on_album: drop the empty tag guard, so a file with no album narrows a tie to the releases the provider left unnamed"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
 old = '        remote for remote in remotes if wanted and match.fold(_album_name(tracks[remote])) == wanted'
 new = '        remote for remote in remotes if match.fold(_album_name(tracks[remote])) == wanted'
@@ -643,6 +653,7 @@ source = { table = "r1032.json", id = "A1_adapter_ignores_any_agreeing" }
 description = "match_track: drop any_agreeing on its way to _among, so the adapter refuses the tie for the mirror too"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "match_track moved from tidal_account.py into the Reads mixin in tidal_reads.py and its _among call is folded shallower; same any_agreeing dropped on its way to _among"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
 old = '                    any_agreeing=any_agreeing,'
 new = '                    any_agreeing=False,'
@@ -653,6 +664,7 @@ source = { table = "r1032.json", id = "A2_tie_always_broken" }
 description = "_among: break the tie whatever the caller asked, so a heart or a pair takes a release R-572 refuses"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_sync_pair.py", "tests/test_organize_mirror_tie.py"]
 old = '        if any_agreeing and not unreadable:'
 new = '        if not unreadable:'
@@ -663,6 +675,7 @@ source = { table = "r1032.json", id = "A3_unreadable_tie_broken" }
 description = "_among: break a tie beside a candidate that could not be read"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
 old = '        if any_agreeing and not unreadable:'
 new = '        if any_agreeing:'
@@ -673,6 +686,7 @@ source = { table = "r1032.json", id = "A6_first_listed_not_lowest" }
 description = "_lowest: take the first the provider lists, so the choice moves with the listing order"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
 old = '    return min(remotes, key=lambda remote: (len(remote), remote))'
 new = '    return remotes[0]'
@@ -683,6 +697,7 @@ source = { table = "r1032.json", id = "A7_lowest_by_characters" }
 description = "_lowest: order the identifiers as text, so 100 sorts before 99"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
 old = '    return min(remotes, key=lambda remote: (len(remote), remote))'
 new = '    return min(remotes)'
@@ -693,6 +708,7 @@ source = { table = "r1032.json", id = "A8_album_narrow_drops_all" }
 description = "_on_album: when the album names none, answer the named list alone, empty"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
 old = '    return named or remotes'
 new = '    return named'
@@ -703,6 +719,7 @@ source = { table = "r1032.json", id = "A9_album_narrow_unfolded" }
 description = "_on_album: compare the album unfolded, so case and spacing defeat the narrowing"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
 old = '        remote for remote in remotes if wanted and match.fold(_album_name(tracks[remote])) == wanted'
 new = '        remote for remote in remotes if wanted and _album_name(tracks[remote]) == album'
@@ -713,6 +730,7 @@ source = { table = "r1032.json", id = "S1_protocol_default_on" }
 description = "TidalAccount.match_track: default any_agreeing on, so the hearts, the pairs and the exports, which never pass it, break the tie R-572 refuses"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "match_track moved from TidalAccount in tidal_account.py to the Reads base class in tidal_reads.py, which TidalAccount inherits, with its keyword parameters packed onto two lines; the same any_agreeing default is turned on"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
         agree: bool = False, album: str = "", any_agreeing: bool = False,
@@ -729,6 +747,7 @@ source = { table = "r1313.json", id = "T1_account_skips_the_classifier" }
 description = "tidal_account._not_found: read the class names alone and stop asking classify_unavailable, so a 404 the account reads by status is retried"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_outbound_tidal_account.py"]
 old = '''
     return classify_unavailable(exc) is TrackOutcome.UNAVAILABLE_PERMANENT
@@ -743,6 +762,7 @@ source = { table = "r356-a.json", id = "A10_provider_title_read_one_way_only" }
 description = "Only the first reading of the provider's title is compared, so a version the provider spelled after a dash never agrees"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = 'for one in listed.readings}'
 new = 'for one in (listed,)}'
@@ -753,6 +773,7 @@ source = { table = "r356-a.json", id = "A11_row_title_read_one_way_only" }
 description = "Only the first reading of the row's title is compared"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = 'for one in row.readings}'
 new = 'for one in (row,)}'
@@ -763,6 +784,7 @@ source = { table = "r356-a.json", id = "A12_reason_outlives_its_match" }
 description = "A reason is not cleared when the row is matched again, so a row that resolved still says it could not be"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
         self._reasons.pop(key, None)
@@ -775,6 +797,7 @@ source = { table = "r356-a.json", id = "A14_no_joiner_words" }
 description = "A row spelling two artists with feat no longer agrees with the track billing both"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '_JOINERS = frozenset({"feat", "ft", "featuring", "with", "and", "vs", "x"})'
 new = '_JOINERS = frozenset()'
@@ -785,6 +808,7 @@ source = { table = "r356-a.json", id = "A1_first_agreeing_rather_than_the_only_o
 description = "Rule one takes the first agreeing track instead of requiring exactly one, which is the first result the unit's brief forbids"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '        if len(agreeing) == 1 and not unreadable:'
 new = '        if agreeing and not unreadable:'
@@ -795,6 +819,7 @@ source = { table = "r356-a.json", id = "A2_unreadable_track_no_longer_stops_rule
 description = "A lone agreeing track is chosen beside one nobody could read"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '        if len(agreeing) == 1 and not unreadable:'
 new = '        if len(agreeing) == 1:'
@@ -805,6 +830,7 @@ source = { table = "r356-a.json", id = "A3_any_hearted_rather_than_the_only_hear
 description = "Rule two takes the first hearted release when the account hearts two"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '        if len(hearted) == 1:'
 new = '        if hearted:'
@@ -815,6 +841,7 @@ source = { table = "r356-a.json", id = "A4_hearts_asked_of_every_track" }
 description = "Rule two reads the hearts of every track the ISRC named instead of the agreeing ones, so a heart on the radio edit chooses for the plain record"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '        hearted = [remote for remote in agreeing if remote in hearts]'
 new = '        hearted = [remote for remote in verdicts if remote in hearts]'
@@ -825,6 +852,7 @@ source = { table = "r356-a.json", id = "A5_withdrawn_track_is_a_candidate" }
 description = "A track the provider will not play is compared like any other, with the version the client never read"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '    return getattr(track, "available", True) is not False'
 new = '    return True'
@@ -835,6 +863,7 @@ source = { table = "r356-a.json", id = "A7_artist_not_compared" }
 description = "Agreement ignores the artist, so another act's record under the same title agrees"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
     if not _artist_agrees(row.artist, listed.artist, track):
@@ -848,6 +877,7 @@ source = { table = "r356-a.json", id = "A8_first_billed_artist_not_required" }
 description = "A row naming only the guest agrees"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '    return bool(first) and first <= ours and ours - billed <= _JOINERS'
 new = '    return bool(first) and ours - billed <= _JOINERS'
@@ -858,6 +888,7 @@ source = { table = "r356-a.json", id = "A9_row_may_name_an_artist_nobody_bills" 
 description = "A row billing a third act the track does not agrees"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '    return bool(first) and first <= ours and ours - billed <= _JOINERS'
 new = '    return bool(first) and first <= ours'
@@ -868,6 +899,7 @@ source = { table = "r572.json", id = "A2_first_named" }
 description = "Take the first release the album names even when several do"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '        if len(named_album) == 1:'
 new = '        if len(named_album) >= 1:'
@@ -878,6 +910,7 @@ source = { table = "r572.json", id = "A4_no_fold" }
 description = "Compare the album raw rather than folded"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '        wanted = match.fold(album)'
 new = '        wanted = album'
@@ -888,6 +921,7 @@ source = { table = "r572.json", id = "A5_album_among_all" }
 description = "Choose by album among every candidate, not only the agreeing ones"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '            remote for remote in agreeing if match.fold(_album_name(tracks[remote])) == wanted'
 new = '            remote for remote in tracks if match.fold(_album_name(tracks[remote])) == wanted'
@@ -898,6 +932,7 @@ source = { table = "r879-b.json", id = "T1_one_track_never_asked_to_agree" }
 description = "TidalAccount.match_track: return one track under a code whether or not agree is asked"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the one track shortcut moved with match_track from TidalAccount in tidal_account.py to Reads in tidal_reads.py, one level shallower; the same not agree condition is dropped"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
             if len(tracks) == 1 and not agree:
@@ -912,6 +947,7 @@ source = { table = "u208.json", id = "M19_adapter_never_records_tie" }
 description = "match_track: never record a broken tie"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "Anchored where u309-replay-after-c.json replayed it: match_track moved from tidal_account.py into the Reads mixin in tidal_reads.py and its ISRC lookup lost a level of nesting; same branch reverted"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
 old = '''
                 elif tied:
@@ -926,6 +962,7 @@ source = { table = "u208.json", id = "M20_adapter_stale_tie" }
 description = "match_track: keep the last match's tie flag across a later match of the same row"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
 old = '        self._ties.discard(key)'
 new = '        pass'
@@ -936,6 +973,7 @@ source = { table = "u208.json", id = "M21_adapter_every_choice_a_tie" }
 description = "_among: call every any_agreeing choice a broken tie, an album naming one included"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
 old = '            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1'
 new = '            return _lowest(narrowed), "", True'
@@ -946,6 +984,7 @@ source = { table = "u208.json", id = "M22_adapter_hearts_half" }
 description = "_among: drop the hearts half of the tie flag, so two hearts the album narrows to one are not a tie"
 file = "src/cratekit/modules/outbound/tidal_reads.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/tidal_reads.py, was in src/cratekit/modules/outbound/tidal_account.py"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
 old = '            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1'
 new = '            return _lowest(narrowed), "", len(narrowed) > 1'
@@ -992,6 +1031,7 @@ source = { table = "r154-a.json", id = "A3_named_shape_check" }
 description = "Never refuse a named snapshot on shape, which is the finding itself: the traversal value reaches the remote path again"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '        if not is_snapshot_name(snapshot):'
 new = '        if False:'
@@ -1002,6 +1042,7 @@ source = { table = "r154-b.json", id = "B1_named_mismatch" }
 description = "Accept a named snapshot carrying ANY marker, which is the finding's real half: a well formed stamp from another library is pulled"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '''
         if recorded == (expected,):
@@ -1016,6 +1057,7 @@ source = { table = "r154-b.json", id = "B7_walk_order" }
 description = "Walk oldest first, so the default pulls the OLDEST snapshot that is this library's"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '    newest = names[::-1][:NEWEST_WALK]'
 new = '    newest = names[:NEWEST_WALK]'
@@ -1026,6 +1068,7 @@ source = { table = "r338-a.json", id = "B8_contained_share_copied_twice" }
 description = "_outside_share: read every layout as the outside one, so a share the mirror already carries is synced a second time"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '''
     if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
@@ -1042,6 +1085,7 @@ source = { table = "r338-b.json", id = "R4_empty_listing_read_as_held" }
 description = "share_is_held: read a listing that names nothing as a mirror, so a copy from an empty folder is planned and reported as pulled"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '    return bool(result.stdout.strip())'
 new = '    return True'
@@ -1052,6 +1096,7 @@ source = { table = "r338-b.json", id = "R5_pulled_under_the_watch" }
 description = "_plan_restore_inside_the_gates: stop withholding a landing place the analysis watch covers, the defect the built in review found: a live restore ends refused after the database is replaced"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '        if not pull_share or analysis_store.is_watched(cfg, landing):'
 new = '        if not pull_share:'
@@ -1062,6 +1107,7 @@ source = { table = "r338-b.json", id = "R6_switch_ignored" }
 description = "_plan_restore_inside_the_gates: ignore pull_share, so the bare metal recovery asks the remote about a share it will not pull and can be refused over it"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '        if not pull_share or analysis_store.is_watched(cfg, landing):'
 new = '        if analysis_store.is_watched(cfg, landing):'
@@ -1072,6 +1118,7 @@ source = { table = "r338-b.json", id = "R9_contained_restore_asks_about_a_share"
 description = "_plan_restore_inside_the_gates: treat every layout as the outside one on restore, so a contained library lists and pulls a share mirror it never wrote"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '''
     share = ShareRestore.MIRRORED
@@ -1086,6 +1133,7 @@ source = { table = "r367.json", id = "G12_listing_results_are_discarded" }
 description = "the listing runs and its names are thrown away, so every sidecar is treated as absent"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-a.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '    held = snapshot_filenames(cfg, chosen, runner=runner)'
 new = '''
@@ -1098,6 +1146,7 @@ source = { table = "r367.json", id = "G1_always_copy_the_restored_sidecar" }
 description = "the original defect: copy every restored sidecar whether the snapshot holds it or not"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '''
     held = snapshot_filenames(cfg, chosen, runner=runner)
@@ -1126,6 +1175,7 @@ source = { table = "r367.json", id = "G3_membership_is_inverted" }
 description = "copy the sidecar when it is absent and skip it when it is present"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-a.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '        if name not in held:'
 new = '        if name in held:'
@@ -1136,6 +1186,7 @@ source = { table = "r367.json", id = "G4_the_inventory_restored_flag_is_ignored"
 description = "a listed shared memory index is written back beside a fresh log"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '''
         if not sidecar.restored:
@@ -1149,6 +1200,7 @@ source = { table = "r367.json", id = "G5_absent_sidecars_are_not_recorded" }
 description = "the plan copies nothing extra and also does not name what it skipped"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '''
             absent.append(sidecar.suffix)
@@ -1161,6 +1213,7 @@ source = { table = "r592-b.json", id = "B6_restore_mirror_carries_the_database" 
 description = "_plan_restore_inside_the_gates: exclude volume clutter only from the restore mirror, so a mirror still holding the database lands it where the database half writes"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/test_restore_cli.py", "tests/test_backup_cli.py", "tests/test_restore.py"]
 old = '''
                     rclone, "copy", str(cfg.backup.dest), str(target),
@@ -1175,6 +1228,7 @@ source = { table = "u211.json", id = "B1_backup_database_portion_refuses_alone" 
 description = "backup _plan_database: let the unconfirmed refusal escape the plan, so the files portion is lost with the database portion"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/test_process_scan.py", "tests/test_backup_cli.py", "tests/test_analysis_store.py"]
 old = '''
     except AbsenceUnconfirmed as exc:
@@ -1729,6 +1783,7 @@ source = { table = "u147-d.json", id = "A5_source_title" }
 description = "account_mirror.read_library: All Favorites takes the folder's prefix like every other playlist"
 file = "src/cratekit/organize/account_mirror.py"
 surface = "user"
+moved = "the favorites folder titler stayed in account_mirror.read_library but sits one level shallower after the function was reshaped, so only its indentation changed; the same source title exemption is dropped"
 tests = ["tests/test_organize_mirror_library.py"]
 old = '''
                 return shown if shown == source else mirror.title(name, shown)
@@ -1980,6 +2035,7 @@ source = { table = "u236.json", id = "M12_reader_short_branch" }
 description = "read edits: drop the placements of a month whose listing failed (round one, finding 4)"
 file = "src/cratekit/organize/account_mirror.py"
 surface = "user"
+moved = "the reader's two Mirrored constructions, one for a failed listing and one for a read listing, were merged into one that tests listing is None per field, so dropping the failed listing's placements is now placed left empty only when listing is None"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
 old = '''
                 rekordbox_added=added,
@@ -2773,6 +2829,7 @@ source = { table = "r1289.json", id = "M16_mirror_why" }
 description = "mirror_downloads.plan: the unread track's why reworded so it does not carry the reader's words"
 file = "src/cratekit/organize/mirror_downloads.py"
 surface = "user"
+moved = "the unread track's line stays in mirror_downloads.plan, whose named entry is now written on fewer lines, so the same words sit eight spaces shallower; same rewording"
 tests = ["tests/test_organize_mirror_edits_u204.py"]
 old = '                    f"added on the account, but {unread[track].why}, so the "'
 new = '                    f"added on the account, but it could not be read, so the "'
@@ -2783,6 +2840,7 @@ source = { table = "r1289.json", id = "M17_mirror_listing_refusal" }
 description = "mirror_downloads.plan (existing guard, sample): a playlist the provider cannot list names nothing for its tracks"
 file = "src/cratekit/organize/mirror_downloads.py"
 surface = "user"
+moved = "the not queued entry mirror_downloads.plan names for a playlist the provider cannot list is now built by the shared _not_queued helper instead of an inline dict; the same loop over its tracks is emptied"
 tests = ["tests/test_organize_mirror_edits_u204.py"]
 old = '''
                 _not_queued(track, title, f"the provider could not list the playlist: {exc.cause.message}")

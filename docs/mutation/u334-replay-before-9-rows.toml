@@ -170,6 +170,7 @@ source = { table = "u236.json", id = "M21_frozen_not_overlaid" }
 description = "overlay: read the ledger's placements now beside the gate's snapshot"
 file = "src/cratekit/organize/mirror_frozen.py"
 surface = "user"
+moved = "the overlay of the gate's placements is still in mirror_frozen.overlay, the replace call now written on one line instead of two; same snapshot read dropped for the ledger's own"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
 old = 'placed=frozen.placed.get(name, folder.placed))'
 new = 'placed=folder.placed)'
@@ -1602,6 +1603,7 @@ source = { table = "u147-c.json", id = "M20_pair_scope" }
 description = "sync.pair_cli._scope_account: a mirrored playlist may be paired"
 file = "src/cratekit/sync/pair_model.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/sync/pair_model.py, was in src/cratekit/sync/pair_cli.py"
 tests = ["tests/test_organize_mirror.py"]
 old = '    if account_id in mirrored:'
 new = '    if False:'
@@ -1612,6 +1614,7 @@ source = { table = "r1376.json", id = "F5_first_sync_marked_only" }
 description = "plan_pair: a pair with no record at all, a hand pairing before its mark, is not read as a first sync"
 file = "src/cratekit/sync/pair_plan.py"
 surface = "user"
+moved = "Anchored where u304-replay-after.json replayed it: the same text, now in src/cratekit/sync/pair_plan.py, was in src/cratekit/sync/pair_cli.py"
 tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
 old = '    first_sync = held is None or held.first'
 new = '    first_sync = held is not None and held.first'
@@ -1622,6 +1625,7 @@ source = { table = "u220.json", id = "A3_keep_head" }
 description = "_to_the_front: match the asked order's head rather than its tail, the old to the end rule"
 file = "src/cratekit/sync/pair_stopped.py"
 surface = "user"
+moved = "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same tail match"
 tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
 old = 'one == wanted[len(wanted) - 1 - keep]'
 new = 'one == wanted[keep]'
@@ -1632,6 +1636,7 @@ source = { table = "u220.json", id = "A4_first_first" }
 description = "_to_the_front: move the tracks first first rather than last first, so the moved ones land reversed"
 file = "src/cratekit/sync/pair_stopped.py"
 surface = "user"
+moved = "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same reversal of the moves"
 tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
 old = '    return list(reversed(wanted[: len(wanted) - keep]))'
 new = '    return wanted[: len(wanted) - keep]'
@@ -2228,6 +2233,7 @@ source = { table = "r312.json", id = "E12_check_names_no_file" }
 description = "check: an unexpected difference carries no file location, the state before this unit"
 file = "src/cratekit/write/convergence_check.py"
 surface = "user"
+moved = "Anchored where u302-replay-after-c.json replayed it: the same text, now in src/cratekit/write/convergence_check.py, was in src/cratekit/write/rebuild.py"
 tests = ["tests/test_rebuild.py", "tests/test_routing_workers.py"]
 old = '            replace(entry, location=located_at.get(entry.content_id or ""))'
 new = '            replace(entry, location=None)'

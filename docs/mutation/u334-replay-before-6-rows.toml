@@ -31,6 +31,7 @@ source = { table = "u108-d.json", id = "G16_origin_marker_filter_again" }
 description = "go.held_by_goes: every acquire download job counts as a go's, so a download queued by hand is resumed and its tracks held by the go"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "held_by_goes now asks _goes_job whether a job is a go's; the origin marker test moved there unchanged"
 tests = ["tests/test_label_sync_go.py"]
 old = '    return job.handler_key == DOWNLOAD and isinstance((job.payload or {}).get(ORIGIN_KEY), Mapping)'
 new = '    return job.handler_key == DOWNLOAD'
@@ -81,6 +82,7 @@ source = { table = "u239.json", id = "M02_own_skips_cancelled" }
 description = "_own: take a cancelled job on too, so a person's cancel is resumed and landed with no question"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "_own returns through one conditional; the cancelled test is the same clause of it"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '    return None if job is None or job.state is jobs.JobState.CANCELLED else job.job_id'
 new = '    return None if job is None else job.job_id'
@@ -91,6 +93,7 @@ source = { table = "u239.json", id = "M03_own_job_by_run" }
 description = "own_job: take any go job on, not only the one this run's go queued"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "own_job asks _goes_job for the origin marker; the run match is the same comparison after it"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '        if _goes_job(job) and job.payload[ORIGIN_KEY].get("run") == run_id:'
 new = '        if _goes_job(job) and True:'
@@ -111,6 +114,7 @@ source = { table = "u239.json", id = "M05_beside_later_only" }
 description = "_beside: count earlier go jobs too, so a later run's tail is refused over an earlier landed go"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "_beside folds its two skips into one test; the earlier job clause is the same comparison"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '        if other.job_id == job.job_id or other.created < job.created or not _goes_job(other):'
 new = '        if other.job_id == job.job_id or not _goes_job(other):'
@@ -141,6 +145,7 @@ source = { table = "u239.json", id = "M08_retry_half_failed" }
 description = "_carry_on: never re-arm a half failed own job, so a transient failure ends every go under the run"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "_carry_on reads the job's items once, so the left count is passed inline to the same resumable test"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '        if not job.is_open() and resumable(job, _left(items)):'
 new = '        if False:'
@@ -191,6 +196,7 @@ source = { table = "u239.json", id = "M17_wrote" }
 description = "_carry_on: a walk that wrote answers under a landed run reports no_op"
 file = "src/cratekit/label/go.py"
 surface = "user"
+moved = "the named landing branch of _carry_on returns through the shared _ended helper with the same wrote outcome"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '''
             return _ended(ctx, checks, report, Outcome.OK if wrote else Outcome.NO_OP)
@@ -275,6 +281,7 @@ source = { table = "u243.json", id = "L13_heard_merges_a_pruned_track" }
 description = "heard.plan: a track the ledger records as pruned from the year is merged back by hearing"
 file = "src/cratekit/label/heard.py"
 surface = "user"
+moved = "The same pruned tracks of the recorded year joined to what the year must not hold; the year's ledger record was read twice under two names, so it is now read once as recorded and this line names it so."
 tests = ["tests/test_label_tombstoned.py", "tests/test_label_heard.py"]
 old = '        set(recorded.pruned) if recorded is not None else set()'
 new = '        set()'
@@ -295,6 +302,7 @@ source = { table = "r1091.json", id = "K11_year_dropped" }
 description = "keep: store no year, so a release the provider dates is planned under its listed year from a kept read"
 file = "src/cratekit/label/kept_reads.py"
 surface = "user"
+moved = "The same stated year kept on a release read; the Kept is now built on one line with its tracks named first, so the year keyword sits inside the _hold call rather than on a line of its own."
 tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
 old = '        self._hold(release_id, Kept(read_at=clock(), gone=False, tracks=tracks, year=stated))'
 new = '        self._hold(release_id, Kept(read_at=clock(), gone=False, tracks=tracks, year=None))'
@@ -392,6 +400,7 @@ source = { table = "r1091.json", id = "K5_version_unchecked" }
 description = "load: read a document of another version as if it were this one"
 file = "src/cratekit/label/kept_reads.py"
 surface = "user"
+moved = "the same version check, now in the shared store's header read, compared against the store's own version, which is still 1"
 tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
 old = '        if version != cls.version:'
 new = '        if False:'
@@ -529,6 +538,7 @@ source = { table = "r1091.json", id = "P10_unkept_screen_dropped" }
 description = "_reads_said: say the reads are kept on the build gate's screen when they could not be written"
 file = "src/cratekit/label/playlists_cli.py"
 surface = "user"
+moved = "The same branch that says, for a run that reused nothing, that its reads could not be kept instead of saying they were kept; the unkept clause is now appended once at the end for both the reused and the fresh case, so this branch only names the reads and the mutation falls to the kept wording as before."
 tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
 old = '''
     elif reads.unkept:
@@ -840,6 +850,7 @@ source = { table = "u243.json", id = "L12_suppressed_releases_unjudged" }
 description = "playlists_cli.read_catalogue: the tracks of a release the tombstone suppressed are not judged, so a removed single stays on its year"
 file = "src/cratekit/label/playlists_cli.py"
 surface = "user"
+moved = "The same union of the suppressed releases' tombstoned tracks into the catalogue's tombstoned field; the grouped reads are now a map of LabelCatalogue fields, so the union is written onto that map before it is spread into the constructor."
 tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
 old = '    grouped["tombstoned"] = tuple(sorted({*grouped["tombstoned"], *held_back}))'
 new = '    grouped["tombstoned"] = grouped["tombstoned"]'
@@ -955,6 +966,7 @@ source = { table = "r381.json", id = "M5_migrate_any_identifier" }
 description = "migrate moves any entry whose slug differs, not only one the old fold produced"
 file = "src/cratekit/label/registry.py"
 surface = "user"
+moved = "The _legacy_slug alias was the fold of the name and is now called as _fold; the mutation drops the old fold test as before."
 tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
 old = '''
     if new == entry.label_id or entry.label_id != _fold(entry.name):
@@ -1105,6 +1117,7 @@ source = { table = "u99-a.json", id = "A10_edit_drops_match" }
 description = "edit: write the passed match even when none was passed, so set --track-limit clears the needle"
 file = "src/cratekit/label/registry.py"
 surface = "user"
+moved = "edit replaces the held entry with the checked changes, which leave out every field given as None; the mutation writes the passed match even when none was passed."
 tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
             entry = replace(existing, **changes)
@@ -1119,6 +1132,7 @@ source = { table = "u99-a.json", id = "A11_edit_drops_seeds" }
 description = "edit: write the passed seeds even when none were passed, so set --track-limit clears the seeds"
 file = "src/cratekit/label/registry.py"
 surface = "user"
+moved = "edit replaces the held entry with the checked changes; the mutation writes the passed seeds, or none, even when none were passed."
 tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
             entry = replace(existing, **changes)
@@ -1133,6 +1147,7 @@ source = { table = "u99-a.json", id = "A12_edit_drops_limit" }
 description = "edit: write the passed limit even when none was passed, so set --seed clears the limit"
 file = "src/cratekit/label/registry.py"
 surface = "user"
+moved = "edit replaces the held entry with the checked changes; the mutation writes the passed limit even when none was passed."
 tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
 old = '''
             entry = replace(existing, **changes)
@@ -1279,6 +1294,7 @@ source = { table = "r259.json", id = "L2_library_kwarg" }
 description = "OwnedReleases ignores the library it is handed and walks its own"
 file = "src/cratekit/label/sweep.py"
 surface = "maintainer"
+moved = "The handed library or the walk is chosen once at construction, a lambda keeping the walk lazy; the mutation ignores the handed library and always walks its own."
 tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
 old = '''
         self._library_of = library if library is not None else (
@@ -1339,6 +1355,7 @@ source = { table = "r261.json", id = "S3_source_collects" }
 description = "LabelSource.list_recent does not carry a label's unread onto the source"
 file = "src/cratekit/label/sweep.py"
 surface = "user"
+moved = "list_recent now derives what it carries from the listings after the loop; the mutation carries no unread onto the source."
 tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
 old = '''
         self.unread = tuple(one for listing in lists for one in listing.unread)
@@ -1366,6 +1383,7 @@ source = { table = "r704-a.json", id = "S7_probe_unclassified" }
 description = "the listing probe boundary hands the classifier a plain error, so a rate limit on a lazy listing attribute is permanent"
 file = "src/cratekit/label/sweep.py"
 surface = "user"
+moved = "The probe boundary is catalogue.translated, and the failure it raises is still built by _lookup_failure from the caught error; the mutation hands the classifier a plain error."
 tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
 old = '''
         f"that is not an empty catalogue",
@@ -1386,6 +1404,7 @@ source = { table = "r704-a.json", id = "S8_crawl_unclassified" }
 description = "the crawl boundary hands the classifier a plain error, the listing's spent ladder is permanent again"
 file = "src/cratekit/label/sweep.py"
 surface = "user"
+moved = "The crawl boundary is catalogue.translated, the failure still built by _lookup_failure from the caught error; the mutation hands the classifier a plain error."
 tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
 old = '''
         f"({type(exc).__name__}: {exc}); that is not an empty catalogue",
@@ -1404,6 +1423,7 @@ source = { table = "r704-a.json", id = "S9_resolve_unclassified" }
 description = "the artist resolve boundary hands the classifier a plain error"
 file = "src/cratekit/label/sweep.py"
 surface = "user"
+moved = "The artist resolve boundary is catalogue.translated, the failure still built by _lookup_failure from the caught error; the mutation hands the classifier a plain error."
 tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
 old = '''
                 f"were never listed",
@@ -1476,6 +1496,7 @@ source = { table = "u52-item-derivation.json", id = "S5_dropped_never_accumulate
 description = "Stop accumulating the dropped population in LabelSource.list_recent, so the refusal above can never see one"
 file = "src/cratekit/label/sweep.py"
 surface = "user"
+moved = "list_recent now derives the dropped population from the listings after the loop; the mutation never accumulates it."
 tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_workers.py"]
 old = '''
         self.dropped = tuple(drop for listing in lists for drop in listing.dropped)
@@ -1583,6 +1604,7 @@ source = { table = "r1114.json", id = "M15_skipped_line_not_fail" }
 description = "_skipped_check, existing guard sampled: a skipped label's line is a note rather than a fail"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "_skipped_check was used once and is inlined into _unasked; the fail status is the same word"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
 old = '        checks.append(_check(f"label.{entry.label_id}", "fail", said))'
 new = '        checks.append(_check(f"label.{entry.label_id}", "info", said))'
@@ -1663,6 +1685,7 @@ source = { table = "r1114.json", id = "M6_nothing_new_not_counted" }
 description = "_next: stop counting a label listed with nothing new, so every run with no question refuses as unlisted"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the nothing new branch _next and _walk shared moved into _unasked, which appends the name to the list _next hands it"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
 old = '''
             nothing.append(entry.name)
@@ -1691,6 +1714,7 @@ source = { table = "r1114.json", id = "M8_refusal_not_retryable" }
 description = "_unlisted_cause: mark the refusal not retryable, though a provider answering later clears it"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the origin keyword moved into the shared _refusal helper, so the retryable line no longer sits beside it"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
 old = '''
         retryable=True,
@@ -1715,6 +1739,7 @@ source = { table = "r515-operator.json", id = "S9_question_no_short" }
 description = "The label sync question drops the release shortfall"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "_counts says its clauses from a table of count and words; a zero count drops the shortfall as the false guard did"
 tests = ["tests/test_label_sync.py"]
 old = '        (question.provider_withheld, f"; {question.provider_withheld} track(s) withheld by "'
 new = '        (0, f"; {question.provider_withheld} track(s) withheld by "'
@@ -1735,6 +1760,7 @@ source = { table = "u107-a.json", id = "S04_marker_takes_window_place" }
 description = "sync_cli._question_for: hand the label's source no asked set, so releases already answered are offered again"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the same keyword passed to the same listing call, joined onto the run_id line when the call's arguments were grouped"
 tests = ["tests/test_label_sync.py"]
 old = '        run_id=tools.run_id, offered=asked,'
 new = '        run_id=tools.run_id, offered=None,'
@@ -1745,6 +1771,7 @@ source = { table = "u107-a.json", id = "S07_gate_before_asking" }
 description = "sync_cli._question_for: list the label with no genre gate, so a release the gate would hold reaches a question"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the SweepGate keywords were joined onto fewer lines; dropping the gate is the same mutant"
 tests = ["tests/test_label_sync.py"]
 old = '''
         gate=genre_gate.SweepGate(
@@ -1769,6 +1796,7 @@ source = { table = "u107-b.json", id = "S10_pick_unknown" }
 description = "sync_cli.record_answer: accept a pick naming a release the question did not offer"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the pick validation moved out of record_answer into _chosen, so the same test stands one level shallower"
 tests = ["tests/test_label_sync.py"]
 old = '        if unknown or not wanted:'
 new = '        if not wanted:'
@@ -1779,6 +1807,7 @@ source = { table = "u107-b.json", id = "S11_pick_takes_only_chosen" }
 description = "sync_cli.record_answer: a pick takes every offered release, not only the chosen ones"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the choice of taken releases moved into _chosen, which returns this same comprehension one level shallower"
 tests = ["tests/test_label_sync.py"]
 old = '        if answer == ALL or (answer == PICK and one.identity in wanted)'
 new = '        if answer in (ALL, PICK)'
@@ -1789,6 +1818,7 @@ source = { table = "u107-b.json", id = "S12_stop_removes" }
 description = "sync_cli.record_answer: stop reports the label removed and leaves it in the registry"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the stop removal is now one conditional expression; the registry remove is the same call"
 tests = ["tests/test_label_sync.py"]
 old = '        removed = labels.RegistryStore().remove(entry.label_id) if answer == STOP else False'
 new = '        removed = True if answer == STOP else False'
@@ -2001,6 +2031,7 @@ source = { table = "u189.json", id = "M12_pick_remedy_plain_next" }
 description = "record_answer: the remedy of a pick outside the question names the plain --next again"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the pick refusal moved into _chosen and its remedy, the same words, is now one f-string on one line"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
 old = '                f"take the identifiers from: crate label sync --next --label {entry.label_id}",'
 new = '                "take the identifiers from: crate label sync --next",'
@@ -2011,6 +2042,7 @@ source = { table = "u189.json", id = "M13_walk_remedy_plain_next" }
 description = "_walk: the unanswerable refusal's remedy names the plain --next and a placeholder label again"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the unanswerable refusal moved out of _walk into _unanswerable, so the same remedy lines stand shallower"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
 old = '''
         f"sync --next --label {entry.label_id}, then crate label sync "
@@ -2115,6 +2147,7 @@ source = { table = "u189.json", id = "S1_saved_question_relisted" }
 description = "_next, sample of the unit's existing guards: never reuse a saved question, so every --next lists the label again"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "_next reads the saved question through _pending, which holds the isinstance and releases test, so this is the same reuse guard"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
 old = '''
             if pending is not None:
@@ -2141,6 +2174,7 @@ source = { table = "u238.json", id = "M10_question_drops_the_split" }
 description = "_question_for: build the question without the listing's unchecked count"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "the Question is built into a local before _Listed, so the same keyword stands four spaces shallower"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
 old = '''
         beyond_unchecked=listing.beyond_unchecked,
@@ -2153,6 +2187,7 @@ source = { table = "u238.json", id = "M11_saved_question_drops_the_split" }
 description = "Question.to_json: save no unchecked count, so a saved question reread says its own as a bound"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "Question.to_json writes its counts from the _QUESTION_COUNTS names in order; dropping the name drops the saved split as before"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
 old = '    "beyond", "beyond_unchecked", "unread", "withheld", "unjudged",'
 new = '    "beyond", "unread", "withheld", "unjudged",'
@@ -2193,6 +2228,7 @@ source = { table = "u278.json", id = "M24_label_sync_not_narrowed" }
 description = "label sync: ask and walk spend the reserve"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
+moved = "label_sync returns the go first, so the reading narrowing runs for every other path without its own if"
 tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py"]
 old = '''
     provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
@@ -2429,6 +2465,7 @@ source = { table = "r351.json", id = "A2_unresolved_seed_skipped" }
 description = "crawl the seeds that resolved and skip the one that did not"
 file = "src/cratekit/label/tidal_catalogue.py"
 surface = "user"
+moved = "The unresolved seed sentences are built by one comprehension; the mutation refuses only when nothing resolved, as before."
 tests = ["tests/test_label_tidal_catalogue.py"]
 old = '''
         if unresolved:
@@ -2470,6 +2507,7 @@ source = { table = "r351.json", id = "G10_identifier_message_says_named" }
 description = "an unresolved identifier is reported as a name the provider does not carry"
 file = "src/cratekit/label/tidal_catalogue.py"
 surface = "user"
+moved = "The identifier or name sentence is one conditional in the comprehension; the mutation always says named."
 tests = ["tests/test_label_tidal_catalogue.py"]
 old = '''
                 f"no artist with identifier {seed!r}"
@@ -2779,6 +2817,7 @@ source = { table = "r705-b.json", id = "S9_playlist_read_wraps_the_park" }
 description = "the playlist read wraps the park into an unresolvable playlist again"
 file = "src/cratekit/label/tidal_catalogue.py"
 surface = "user"
+moved = "The playlist read boundary is catalogue.translated, whose default passing type is CratekitError, the park; the mutation passes nothing through, so the park is wrapped as an unresolvable playlist."
 tests = ["tests/test_provider_gate.py"]
 old = '''
         )):

@@ -322,6 +322,7 @@ source = { table = "u97-c.json", id = "C1_outbound_refusal_removed" }
 description = "composite for B4: remove the outbound account's missing session refusal entirely, so the seam opens a client with no credential. Shows what the guard holds when its remedy holds nothing"
 file = "src/cratekit/modules/outbound/account.py"
 surface = "user"
+moved = "the missing session refusal stays in account.resolve but is now built by the shared _credential_missing helper rather than refuse; same condition reverted"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
     if not secrets.exists(str(secrets.Credential.PROVIDER_SESSION)):
@@ -585,6 +586,7 @@ source = { table = "u147-c.json", id = "M14_made_in_mirror" }
 description = "ledger._made_in: a mirrored playlist is no longer vouched for, so no track may come off it (R-836)"
 file = "src/cratekit/modules/outbound/ledger.py"
 surface = "user"
+moved = "ledger._made_in's loop over every mirrored playlist's record became one any() over the shared _mirrored iterator, so the mirrored vouching is removed by returning False in its place"
 tests = ["tests/test_organize_mirror.py"]
 old = '''
     # U147. A mirrored playlist is only ever created, never adopted.
@@ -607,6 +609,7 @@ source = { table = "u236.json", id = "M19_ledger_normalizer_drops" }
 description = "ledger load: drop every folder's placements on read and write"
 file = "src/cratekit/modules/outbound/ledger.py"
 surface = "user"
+moved = "the placements kept on load are still in ledger.py, but the mirrored folder normalizer was pulled out of _load into _mirror_document, so the lines sit eight spaces shallower; same placements dropped"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
 old = '''
             {"placed": placed}
@@ -633,6 +636,7 @@ source = { table = "r229.json", id = "L12_the_first_of_several_is_adopted" }
 description = "Two candidates are settled by taking the first rather than reported and left"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '''
     if len(found) != 1:
@@ -647,6 +651,7 @@ source = { table = "r229.json", id = "L13_a_mismatch_is_never_said" }
 description = "A record under the crate's own path written from other music is reported as an ordinary update"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '        mismatched = bool(written) and not _still_carries(written, wanted)'
 new = '        mismatched = False'
@@ -657,6 +662,7 @@ source = { table = "r229.json", id = "L16_a_moved_record_is_not_followed" }
 description = "The confirmed remote id is ignored, so a half driven job whose record moved creates a second playlist"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '        if expected and own != expected:'
 new = '        if False:'
@@ -667,6 +673,7 @@ source = { table = "r229.json", id = "L18_contents_grow" }
 description = "The recorded contents are appended to rather than replaced, which is the ever growing log the review found"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '''
         record["tracks"] = contents
@@ -681,6 +688,7 @@ source = { table = "r229.json", id = "L19_a_copy_not_a_move" }
 description = "The adopted record is copied to the new key and left under the old one, so two keys name one remote playlist"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '    record = playlists.pop(recorded_key)'
 new = '    record = dict(playlists[recorded_key])'
@@ -691,6 +699,7 @@ source = { table = "r229.json", id = "L6_a_living_crate_is_a_candidate" }
 description = "A recorded key the export still carries is offered, so two crates sharing their tracks adopt each other"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '        if key in living and (not written or _still_carries(written, living[key])):'
 new = '        if False and (not written or _still_carries(written, living[key])):'
@@ -701,6 +710,7 @@ source = { table = "r229.json", id = "L7_a_reused_path_keeps_its_record" }
 description = "A displaced record is never freed, so a crate renamed away from a reused path forks as it did before"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '        if key in living and (not written or _still_carries(written, living[key])):'
 new = '        if key in living:'
@@ -711,6 +721,7 @@ source = { table = "r836-b.json", id = "L3_created_false_when_adopted" }
 description = "ledger.reserve_label_year: an adopted year is written as created, so a prune takes tracks off a playlist the source system made"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '            "created": not adopt,'
 new = '            "created": True,'
@@ -721,6 +732,7 @@ source = { table = "r836-c.json", id = "L6_date_on_the_confirmed_record" }
 description = "ledger._note_written: the export date goes on the key's own record, not the one the job was confirmed to update"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_reserve.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '    if expected and str((record or {}).get("remote_id") or "") != expected:'
 new = '    if False:'
@@ -731,6 +743,7 @@ source = { table = "u131.json", id = "K6_adopt_not_made" }
 description = "ledger.reserve_kind_folder: record an adopted folder as made here"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "reserve_kind_folder moved into ledger_reserve and records through _reserve_folder, which passes created False for an adopted folder to the kind's own keep lambda; that lambda's record is made to say created True, so an adopted kind folder is again recorded as made here and the answer is unchanged"
 tests = ["tests/test_playlist_kinds.py"]
 old = '''
             {kind: {"folder_id": folder_id, "created": created}}
@@ -745,6 +758,7 @@ source = { table = "u147-c.json", id = "M16_folder_made_twice" }
 description = "ledger.reserve_mirror_folder: a recorded folder is not reused, so a resume makes a second"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "reserve_mirror_folder moved from ledger.py to ledger_reserve.py and its reuse of a recorded folder is now the shared _reserve_folder, used by the label, set and mirror folders alike; same reuse guard removed"
 tests = ["tests/test_organize_mirror.py"]
 old = '''
         recorded = entry(document)
@@ -761,6 +775,7 @@ source = { table = "u147-c.json", id = "M17_playlist_made_twice" }
 description = "ledger.reserve_mirror_playlist: a recorded playlist is not reused, so a resume makes a second"
 file = "src/cratekit/modules/outbound/ledger_reserve.py"
 surface = "user"
+moved = "the reuse of a recorded playlist moved from ledger.reserve_mirror_playlist into ledger_reserve._reserve, shared by reserve_mirror_playlist and the other playlist reserves, where the mirror entry arrives as a table and the key as a parameter; the same lookup and early return are deleted"
 tests = ["tests/test_organize_mirror.py"]
 old = '''
         held = table(document)
@@ -809,6 +824,7 @@ source = { table = "r1031.json", id = "M12_link_keeps_its_miss" }
 description = "ledger.record_mirror_links: leave the row's miss in the document when it is linked"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
 old = '                document["mirror_misses"].pop(str(content_id), None)'
 new = '                pass'
@@ -819,6 +835,7 @@ source = { table = "r1031.json", id = "M13_miss_written_over_a_link" }
 description = "ledger.record_mirror_misses: write a miss for a row the ledger already links"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
 old = '''
             if str(content_id) in document["mirror_links"]:
@@ -833,6 +850,7 @@ source = { table = "r836-b.json", id = "L4_pruned_leaves_added" }
 description = "ledger._moved_to_pruned: a taken track stays in added, so the next prune asks the account for it again"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '    entry["added"] = [one for one in _listed(entry, "added") if one not in gone]'
 new = ''
@@ -843,6 +861,7 @@ source = { table = "r836-c.json", id = "L7_row_only_for_a_written_track" }
 description = "ledger.record_playlist_row: a row is recorded for a track this product never wrote, which a prune then reads as its own"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '''
         if not record or str(remote_id) not in _listed(record, "added"):
@@ -859,6 +878,7 @@ source = { table = "u150.json", id = "L1_forget_checks_id" }
 description = "ledger.forget_mirror_playlist: drop the identifier check, so a playlist recorded under the title since is forgotten in its place"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py"]
 old = '''
         if not entry or str(entry.get("remote_id") or "") != str(remote_id):
@@ -873,6 +893,7 @@ source = { table = "u201-composites.json", id = "C4_settle_none" }
 description = "settle_mirror_tracks: the library step settles nothing, the thing L2 narrows"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
 old = '    wanted = list(settled)'
 new = '    wanted = []'
@@ -883,6 +904,7 @@ source = { table = "u201.json", id = "L1_agreed_own_playlist" }
 description = "record_mirror_agreed: a snapshot lands on a playlist recorded under the title with another identifier"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
 old = '''
             if not entry or str(entry.get("remote_id") or "") != str(remote_id):
@@ -899,6 +921,7 @@ source = { table = "u236.json", id = "M17_ledger_settle_keeps_placement" }
 description = "ledger settle: a settled track keeps its placement on that title"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "settle_mirror_tracks moved from ledger.py to ledger_settle.py and the kept placements are now named before the _place call; same check reverted"
 tests = ["tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u236.py"]
 old = '''
                 if str(track) in before:
@@ -917,6 +940,7 @@ source = { table = "u236.json", id = "M18_ledger_placement_not_written" }
 description = "ledger settle: never write a placement"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "the placement write in settle_mirror_tracks moved from ledger.py into ledger_settle.settle_mirror_tracks, with record and name now on one line; the same _place call is deleted"
 tests = ["tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u236.py"]
 old = '''
             _place(
@@ -935,6 +959,7 @@ source = { table = "u236.json", id = "M20_agreed_never_drops" }
 description = "record_mirror_agreed: never drop a placement the account now holds"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "record_mirror_agreed moved from ledger.py into ledger_settle.py and reads the mirrored folder's record once into record, so the same placed_after call is written shorter there and is bypassed the same way"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
 old = '''
             _place(record, name, mirror_edits.placed_after(
@@ -948,6 +973,7 @@ source = { table = "u270.json", id = "L2_row_only_for_a_recorded_track" }
 description = "record_playlist_tracks: note a row for a track not recorded as added, claiming a person's track by its row"
 file = "src/cratekit/modules/outbound/ledger_settle.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/modules/outbound/ledger_settle.py, was in src/cratekit/modules/outbound/ledger.py"
 tests = ["tests/test_outbound_export_batches.py", "tests/modules/test_outbound.py", "tests/test_outbound_workers.py", "tests/test_prune.py"]
 old = '''
             if str(track) in added:
@@ -972,6 +998,7 @@ source = { table = "r1031.json", id = "M3_signature_keys_a_coded_row" }
 description = "Matcher.under: key every miss on its file signature, so a coded row is asked again on any file touch"
 file = "src/cratekit/modules/outbound/mirror.py"
 surface = "user"
+moved = "Matcher.under in mirror.py now returns its key tuple on one line instead of one field a line; same signature made to key a coded row"
 tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
 old = '"" if row.isrc else self._signature(row))'
 new = 'self._signature(row))'
@@ -982,6 +1009,7 @@ source = { table = "r1031.json", id = "M4_signature_dropped" }
 description = "Matcher.under: drop the file signature, so a file that gains a code is never asked again"
 file = "src/cratekit/modules/outbound/mirror.py"
 surface = "user"
+moved = "Matcher.under in mirror.py now returns its tuple on one line instead of one element per line; the same signature element is replaced by an empty string"
 tests = ["tests/test_organize_mirror_frozen.py"]
 old = '''
         return (row.isrc, row.title, row.artist, row.path, "" if row.isrc else self._signature(row))
@@ -1217,6 +1245,7 @@ source = { table = "u150.json", id = "M7_refusal_scope" }
 description = "mirror.apply: keep a playlist removal refused at run scope instead of raising, so a removal whose read back differs reads as kept"
 file = "src/cratekit/modules/outbound/mirror.py"
 surface = "user"
+moved = "the playlist removal refusal in mirror.apply now goes through the helper _kept, shared with the track removals, instead of its own inline check; same scope test dropped"
 tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
 old = '''
     if exc.cause.reason != "outbound-remove-refused" or exc.cause.scope != Scope.SOURCE:
@@ -1231,6 +1260,7 @@ source = { table = "u150.json", id = "M8_refusal_kept" }
 description = "mirror.apply: raise a playlist removal refused with nothing sent, so one unvouched playlist stops the folder's apply"
 file = "src/cratekit/modules/outbound/mirror.py"
 surface = "user"
+moved = "the retire loop in mirror.apply now keeps a refused removal through the _kept helper it shares with the track removals, which raises any other refusal itself; the same keep and continue at the retire call site are replaced by a raise"
 tests = ["tests/test_organize_mirror_inbox.py"]
 old = '''
             _kept(exc, name, done)
@@ -1260,6 +1290,7 @@ source = { table = "u201.json", id = "M1_plan_keeps" }
 description = "mirror.plan: removes an account track the hold keeps"
 file = "src/cratekit/modules/outbound/mirror.py"
 surface = "user"
+moved = "the reused playlist's plan left the body of mirror.plan for the helper mirror._reused, so the same line sits eight spaces shallower; same hold.keep test dropped"
 tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
 old = '    remove = tuple(one for one in names if one not in keep and one not in hold.keep)'
 new = '    remove = tuple(one for one in names if one not in keep)'
@@ -1270,6 +1301,7 @@ source = { table = "u201.json", id = "M2_plan_skips" }
 description = "mirror.plan: adds back a track the hold skips"
 file = "src/cratekit/modules/outbound/mirror.py"
 surface = "user"
+moved = "the reused playlist's plan left the body of mirror.plan for the helper mirror._reused, where the comprehension is folded onto one line; same hold.skip test dropped"
 tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
 old = '            one for one in wanted if one not in on and one not in mine.refused and one not in hold.skip'
 new = '            one for one in wanted if one not in on and one not in mine.refused'
@@ -1310,6 +1342,7 @@ source = { table = "u201-composites.json", id = "C1_two_bands_composite" }
 description = "E2 with the guard after it: neither the two bands guard nor the still in two bands guard, so a track added to two bands at once is moved to one"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
+moved = "both guards stay in mirror_edits._intent, whose held answers are now written as one tuple and name places through _named, so the text around the two conditions differs; both conditions reverted as before"
 tests = ["tests/test_mirror_edits.py"]
 old = '''
     if len(added) > 1:
@@ -1460,6 +1493,7 @@ source = { table = "u204.json", id = "P2_acquire_only_unknown" }
 description = "_carry: an addition the library lacks is queued whatever the snapshots held"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
+moved = "_carry's two held Decisions were folded into one whose acquire flag is computed first, so the same condition now assigns acquire instead of opening an if, and is reverted the same way"
 tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
 old = '        acquire = kind in ADDITIONS and track not in known'
 new = '        acquire = kind in ADDITIONS'
@@ -1490,6 +1524,7 @@ source = { table = "u204.json", id = "P6_filed_no_month" }
 description = "_decide_favorites: a track put in All Favorites that sits in a month is given a second month by its time"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
+moved = "the extra carried for a track put in All Favorites in _decide_favorites was folded from a multi line dict onto one line with its when read into a local first; the same filed flag is forced False"
 tests = ["tests/test_mirror_edits.py"]
 old = '''
             extra = {"when": next(when, ""), "filed": bool(now_m or there_m)}
@@ -1544,6 +1579,7 @@ source = { table = "u227.json", id = "R6_landed_item" }
 description = "Decision.item: drop the landed flag from what the gate shows"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
+moved = "Decision.item now shows its optional keys from one table of pairs kept when true, so the landed flag is its own entry there rather than an if; same flag left off what the gate shows"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
 old = '''
             ("landed", self.landed),
@@ -1576,6 +1612,7 @@ source = { table = "u230.json", id = "M12_queue_not_handed" }
 description = "decide: hand the genre rule no queue"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
+moved = "decide now builds its decisions in one list, so the _decide_genre call in mirror_edits.py sits four spaces shallower; same queue emptied"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
 old = '            queued=by_queue,'
 new = '            queued={},'
@@ -1586,6 +1623,7 @@ source = { table = "u230.json", id = "M13_held_by_dropped" }
 description = "decide: hand the genre rule no per playlist holders, so the lift never reaches the landed check"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
+moved = "decide now builds its decisions in one list, so the _decide_genre call in mirror_edits.py sits four spaces shallower; same holders argument dropped"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
 old = '            held_by={track: frozenset(titles) for track, titles in held_by.items()},'
 new = '            held_by=None,'
@@ -1647,6 +1685,7 @@ source = { table = "u230.json", id = "M2_lift_not_in_was" }
 description = "placed: the lift is ignored in the base places, so the account side still reads as no change"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
+moved = "decide's inner placed closure became the module function mirror_edits._placed, which takes lifted as an argument, so the same condition sits four spaces shallower and is reverted the same way"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
 old = '''
         and not (side == "base" and one.place.title in lifted)
@@ -2030,6 +2069,7 @@ source = { table = "r227.json", id = "S6_no_stale_sentence" }
 description = "A stale export produces no warning at all"
 file = "src/cratekit/modules/outbound/shell.py"
 surface = "user"
+moved = "age_warnings in shell.py was rewritten as one if and elif chain that sets the code and message, so the stale branch is now an elif rather than its own if returning the warning; the same stale condition is made false"
 tests = ["tests/test_outbound_workers.py"]
 old = '''
     elif age.stale:
@@ -2204,6 +2244,7 @@ source = { table = "r356-b.json", id = "B2_template_declares_no_lossy_marker" }
 description = "The template never declares the marker, so a marked lossy copy keeps it in its release title"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "U298 folded this function's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked, which it now returns; returning the plain template here is what forcing the empty branch did, local to this caller"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_sync_all.py"]
 old = '    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)'
 new = '    return naming.NameTemplate()'
@@ -2214,6 +2255,7 @@ source = { table = "r356-b.json", id = "B3_empty_marker_no_longer_guarded" }
 description = "A configuration with no marker text builds a marker rule with an empty literal, which is refused at construction, so every item fails over a naming policy"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "U298 folded this function's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked; calling NameTemplate.lossy on the stripped text here skips only the empty check, so an empty marker reaches the rule's construction as it did, local to this caller"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_sync_all.py"]
 old = '    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)'
 new = '    return naming.NameTemplate.lossy((cfg.naming.lossy_marker or "").strip())'
@@ -2224,6 +2266,7 @@ source = { table = "r356-b.json", id = "B4_heart_candidate_carries_no_artist" }
 description = "A favourite reaches the account with a title and no artist, which chooses nothing"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "heart_candidates now reads each row through the shared source._identified, so the release title arrives as title rather than a release_title call; the artist keyword is dropped as before"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = '''
             release_title=title,
@@ -2239,6 +2282,7 @@ source = { table = "r572.json", id = "L1_local_track_drop_album" }
 description = "local_tracks stops carrying the file's album"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "local_tracks now builds each LocalTrack on one line from the shared _identified rows, with the other fields positional; the same album keyword is dropped"
 tests = ["tests/test_outbound_workers.py"]
 old = '''
         LocalTrack(track_id, entry.name, entry.artist, found.isrc, title, album=found.album)
@@ -2253,6 +2297,7 @@ source = { table = "r572.json", id = "S1_album_not_read" }
 description = "file_identity drops the album it read"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "source.file_identity still reads the album, its FileIdentity now built on one line with the ISRC positional; same album dropped"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
 old = 'album=str(read["album"] or "").strip())'
 new = 'album="")'
@@ -2263,6 +2308,7 @@ source = { table = "sitting4.json", id = "G10_absent_root_reads_as_untagged" }
 description = "The mount guard is removed, so an unplugged volume reads as a library of untagged files and the sweep succeeds unmatched"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "the mount guard is still in source.py, its refusal message rewrapped onto longer lines so the old anchor's message line no longer matches; same condition forced true"
 tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
 old = '''
     root = Path(cfg.library.root)
@@ -2285,6 +2331,7 @@ source = { table = "sitting4.json", id = "G3_builders_ignore_the_prefix_map" }
 description = "The builders hand the resolver an empty map, so a renamed drive resolves no row (R-372)"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "source.prefix_rules builds the same list in one comprehension line, its loop name shortened to prefix; same map replaced by an empty one"
 tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
 old = '''
     return [locations.PrefixRule(prefix, target) for prefix, target in cfg.resolved_prefix_map()]
@@ -2319,6 +2366,7 @@ source = { table = "u51-item-derivation.json", id = "D1_unknown_playlist" }
 description = "Drop the refusal for a playlist name the document does not carry"
 file = "src/cratekit/modules/outbound/source.py"
 surface = "user"
+moved = "the same refusal in source.resolve, rewrapped to longer lines with its origin read from the module's _ORIGIN, so the whole if block is deleted at its new text"
 tests = ["tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py"]
 old = '''
     if not matched:
@@ -2500,6 +2548,7 @@ source = { table = "r1308.json", id = "M22_retryable" }
 description = "_removal_read_back: the refusal as provider_failure, retryable, whose remedy is to run again"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the read back refusal stays in TidalAccount._removal_read_back but is now raised through the shared _refused helper rather than refuse with its slug; the same retryable failure is raised ahead of it"
 tests = ["tests/test_outbound_remove_lag.py", "tests/test_prune.py"]
 old = '''
         raise _refused(
@@ -2527,6 +2576,7 @@ source = { table = "r1308.json", id = "M24_positions_count" }
 description = "_positions: drop the declared count's match with the tracks read, the guard _reading was split from"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the same count check in _positions, whose four conditions were joined onto one line, so the declared count's match is dropped from that line instead of deleting a line of its own"
 tests = ["tests/test_outbound_remove_lag.py", "tests/test_outbound_order.py", "tests/test_prune.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/modules/test_outbound.py"]
 old = '        if not _count(declared) or declared != len(members) or not _count(videos) or videos != 0:'
 new = '        if not _count(declared) or not _count(videos) or videos != 0:'
@@ -2736,6 +2786,7 @@ source = { table = "r358-round-2.json", id = "A3_editor_check" }
 description = "Drop the editor check, so a playlist the account cannot edit is renamed"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the editor check in rename_playlist stays in tidal_account.py with its refusal folded onto fewer lines and one message string; same check removed"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
         if not callable(retitle):
@@ -2780,6 +2831,7 @@ source = { table = "r358.json", id = "A1_empty_title_refusal" }
 description = "Drop the empty-title refusal, so a blank title reaches the client"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the empty title refusal stays in TidalAccount.rename_playlist, with its comment shortened and its keywords joined on one line; the whole refusal is removed as before"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
         if not wanted.strip():
@@ -2815,6 +2867,7 @@ source = { table = "r358.json", id = "A4_false_answer" }
 description = "Accept a False answer as a rename that landed"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the rename refusal in tidal_account is the same check with the provider_failure call rewrapped, its doing argument joined to the message line; the same False case is dropped"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = '''
         if accepted is False or accepted is _ABSENT:
@@ -2869,6 +2922,7 @@ source = { table = "r834.json", id = "M5_a_create_is_never_retried" }
 description = "create_playlist: retry the create like a write, so a create that reached the provider and timed out is retried into a second playlist (an existing guard, sampled)"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "create_playlist in tidal_account.py now makes its call on one line with a shared doing string; same retries=0 removed"
 tests = ["tests/test_outbound_tidal_account.py"]
 old = 'lambda: self._session.user.create_playlist(name, ""), retries=0)'
 new = 'lambda: self._session.user.create_playlist(name, ""))'
@@ -2889,6 +2943,7 @@ source = { table = "r836-a.json", id = "A4_no_video_declared" }
 description = "tidal_account._positions: a playlist holding a video is read by track position, which the item removal does not use"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the video check in tidal_account._positions is now one if line instead of a parenthesised condition a clause a line; same videos clause removed"
 tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
 old = 'declared != len(members) or not _count(videos) or videos != 0:'
 new = 'declared != len(members) or not _count(videos):'
@@ -2899,6 +2954,7 @@ source = { table = "r836-a.json", id = "A5_removal_never_retried" }
 description = "tidal_account.remove_tracks: a removal by position is retried once, so a request that landed and timed out takes off whatever moved up"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "remove_tracks' removal by position stays in tidal_account.py, now one line with a lambda that binds nothing, since it is called before the loop moves on; same retries=0 dropped"
 tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
 old = '            accepted = self._call(doing, lambda: playlist.remove_by_indices(at), retries=0)'
 new = '            accepted = self._call(doing, lambda: playlist.remove_by_indices(at))'
@@ -2949,6 +3005,7 @@ source = { table = "u143-d.json", id = "A5_playlist_read_back" }
 description = "Adapter: report a root playlist removed though the provider still serves it"
 file = "src/cratekit/modules/outbound/tidal_account.py"
 surface = "user"
+moved = "the root removal's read back moved into tidal_account._sent_and_read_back, shared with remove_playlist, which reads the playlist through _served and answers None for absent; same still served check reverted"
 tests = ["tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_root.py", "tests/test_outbound_tidal_account.py", "tests/test_provider_gate.py", "tests/test_prune.py", "tests/test_sync_pair_account.py"]
 old = '        if self._served(doing, identifier) is not None:'
 new = '        if False:'

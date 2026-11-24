@@ -1549,6 +1549,7 @@ source = { table = "r1709.json", id = "M10_title_identity_no_separator" }
 description = "title_identity returns the bare text with no separator, so it can equal another title's fold"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     return f"\x1f{bare}" if bare else ""
@@ -1563,6 +1564,7 @@ source = { table = "r1709.json", id = "M11_recording_identity_is_the_token" }
 description = "recording_identity reads the title by fold, the base's token, so every identity collapses again"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     return f"{fold(artist)}\x1f{title_identity(title)}"
@@ -1577,6 +1579,7 @@ source = { table = "r1709.json", id = "M17_question_identity_token" }
 description = "the review item hashes the token, so a held emoji row retires another's question and one answer settles both"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
         "recording": recording_identity(artist, title),
@@ -1591,6 +1594,7 @@ source = { table = "r1709.json", id = "M1_bare_no_nfkc" }
 description = "bare_title composes with NFC rather than NFKC, so a title of fullwidth marks or an ellipsis is a different title and a real duplicate is offered rather than owned"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     composed = unicodedata.normalize("NFKC", str(title))
@@ -1605,6 +1609,7 @@ source = { table = "r1709.json", id = "M3_bare_keeps_spaces" }
 description = "bare_title keeps spacing, so ? ? and ?? are two titles and a real duplicate is not owned"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     return "".join(ch for ch in composed if not ch.isspace() and not _invisible(ch))
@@ -1619,6 +1624,7 @@ source = { table = "r1709.json", id = "M4_bare_keeps_invisible" }
 description = "bare_title keeps every invisible character, so a variation selector or a joiner makes one title two"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     return "".join(ch for ch in composed if not ch.isspace() and not _invisible(ch))
@@ -1633,6 +1639,7 @@ source = { table = "r1709.json", id = "M5_no_variation_selectors" }
 description = "_invisible no longer drops the variation selectors, so the heart with and without its emoji presentation are two titles"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     if any(point in selectors for selectors in _VARIATION_SELECTORS):
@@ -1649,6 +1656,7 @@ source = { table = "r1709.json", id = "M6_no_format_characters" }
 description = "_invisible no longer drops format characters, so a zero width joiner or space makes one title two"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     return unicodedata.category(ch) == "Cf" and point not in _TAG_CHARACTERS
@@ -1663,6 +1671,7 @@ source = { table = "r1709.json", id = "M7_tag_characters_dropped" }
 description = "_invisible drops the tag characters too, so England and Scotland flags are one title"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     return unicodedata.category(ch) == "Cf" and point not in _TAG_CHARACTERS
@@ -1677,6 +1686,7 @@ source = { table = "r1709.json", id = "M8_bare_for_every_title" }
 description = "bare_title returns text for a title that folds to something too"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     if fold(title):
@@ -1693,6 +1703,7 @@ source = { table = "r1709.json", id = "M9_title_identity_is_the_fold" }
 description = "title_identity returns the fold alone, the base's reading, so an emoji title is every other one by the artist"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
     bare = bare_title(title)
@@ -1708,6 +1719,7 @@ source = { table = "r431-b.json", id = "B7_the_engine_asks_under_the_tombstones_
 description = "The engine's copy of the companion kind drifts onto the tombstone's own"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "Anchored where u305-replay-after.json replayed it: the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = 'UNCREDITED_KIND = "version-uncredited"'
 new = 'UNCREDITED_KIND = "version"'
@@ -1718,6 +1730,7 @@ source = { table = "r667.json", id = "G3_members_not_split" }
 description = "credited_members: a comma separated tag is one name, so nobody is a member"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
 old = '    return tuple(part for part in (piece.strip() for piece in str(artist).split(",")) if part)'
 new = '    return (str(artist).strip(),) if str(artist).strip() else ()'
@@ -1728,6 +1741,7 @@ source = { table = "r679-b.json", id = "C1_credited_rule_not_owning" }
 description = "OWNING_RULES: leave the credited rule out, so its 4 items stay open"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
 old = 'OWNING_RULES: frozenset[Why] = frozenset({Why.EXACT, Why.ISRC_EXACT, Why.CREDITED_EXACT})'
 new = 'OWNING_RULES: frozenset[Why] = frozenset({Why.EXACT, Why.ISRC_EXACT})'
@@ -1738,6 +1752,7 @@ source = { table = "r679-b.json", id = "C2_reading_shape_missing" }
 description = "QUESTION_SHAPES: leave the reading shape out, so a reading question is never retired"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
 old = '''
     ASKS_ABOUT_RECORDING,
@@ -1753,6 +1768,7 @@ source = { table = "u16-round-8-independent.json", id = "V14_tombstone_fold_nfd"
 description = "tombstone_fold normalizes NFD instead of NFC, drifting from U24's byte-for-byte algorithm so a recorded suppression can never be found"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py"]
 old = '''
         " ", unicodedata.normalize("NFC", str(value)).casefold()
@@ -1767,6 +1783,7 @@ source = { table = "u16-round-8-independent.json", id = "V15_empty_identity_acce
 description = "The empty tombstone identity refusal removed alone, so every unnamed candidate collides onto one suppression"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py; core/tombstone.py holds a second copy, which is not this row's target"
 tests = ["tests/test_match_states.py"]
 old = '''
     if not folded_artist and not folded_title:
@@ -1781,6 +1798,7 @@ source = { table = "u16-round-8-independent.json", id = "V16_key_leaves_item_ide
 description = "The list's key leaves the review item identity, so one answer settles the key question and the version question both"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py"]
 old = '''
         "key": key_token(key),
@@ -1795,6 +1813,7 @@ source = { table = "u16-round-8-independent.json", id = "V20_digest_width_halved
 description = "DIGEST_WIDTH coefficient halved from 16 to 8 hex characters, dropping identifier collision resistance from 64 to 32 bits"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py"]
 old = '''
 DIGEST_WIDTH = 16
@@ -1809,6 +1828,7 @@ source = { table = "u213.json", id = "M1_first_group_is_the_title" }
 description = "split_version: drop the first group rule, so a title written wholly in brackets walks off whole and the row names no title"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
 old = '''
         if found.start() == 0 and not _names_a_version(inside):
@@ -1825,6 +1845,7 @@ source = { table = "u213.json", id = "M21_first_group_version_check" }
 description = "split_version: drop the version check from the first group rule, so a row titled only (Extended) reads as the title Extended and the emitter writes it"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_listdoc.py", "tests/intake/test_workers.py"]
 old = '        if found.start() == 0 and not _names_a_version(inside):'
 new = '        if found.start() == 0:'
@@ -1835,6 +1856,7 @@ source = { table = "u213.json", id = "M22_names_a_version_last_word" }
 description = "_names_a_version: read the group's first word rather than its last"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_listdoc.py", "tests/intake/test_workers.py"]
 old = '    return bool(words) and words[-1] in _DASH_VERSIONS'
 new = '    return bool(words) and words[0] in _DASH_VERSIONS'
@@ -1845,6 +1867,7 @@ source = { table = "u213.json", id = "M3_first_group_position" }
 description = "split_version: take any group as the title, not only the one standing first, so Song (Remix) reads as Remix"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
 old = '        if found.start() == 0 and not _names_a_version(inside):'
 new = '        if found.start() >= 0 and not _names_a_version(inside):'
@@ -1855,6 +1878,7 @@ source = { table = "u213.json", id = "M4_first_group_keeps_brackets" }
 description = "split_version: keep the brackets on a title written wholly in them"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
 old = '''
             remaining = inside
@@ -1869,6 +1893,7 @@ source = { table = "u262.json", id = "C1_letters_rule_back" }
 description = "_is_a_credit: answer by the folded group's first letters again, the defect, so (Without You Remix) is a credit"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py; core/tombstone.py holds a second copy, which is not this row's target"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '    return bool(words) and words[0] in _CREDIT_MARKERS'
 new = '    return any(" ".join(words).startswith(marker) for marker in _CREDIT_MARKERS)'
@@ -1879,6 +1904,7 @@ source = { table = "u262.json", id = "C2_any_word" }
 description = "_is_a_credit: a marker anywhere in the group makes a credit, so (Live with Strings) loses its version"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py; core/tombstone.py holds a second copy, which is not this row's target"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '    return bool(words) and words[0] in _CREDIT_MARKERS'
 new = '    return any(word in _CREDIT_MARKERS for word in words)'
@@ -1889,6 +1915,7 @@ source = { table = "u262.json", id = "C3_last_word" }
 description = "_is_a_credit: ask the group's last word rather than its first"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py; core/tombstone.py holds a second copy, which is not this row's target"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '    return bool(words) and words[0] in _CREDIT_MARKERS'
 new = '    return bool(words) and words[-1] in _CREDIT_MARKERS'
@@ -1899,6 +1926,7 @@ source = { table = "u262.json", id = "C4_unfolded_words" }
 description = "_is_a_credit: split the raw group on spaces without folding, so feat. and Featuring are not markers"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '''
     words = fold(inside).split()
@@ -1913,6 +1941,7 @@ source = { table = "u262.json", id = "C5_no_with" }
 description = "_CREDIT_MARKERS: drop with, so (with Anna) becomes a version"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'
 new = '_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring"})'
@@ -1923,6 +1952,7 @@ source = { table = "u262.json", id = "C6_no_ft" }
 description = "_CREDIT_MARKERS: drop ft, so (ft Anna) becomes a version"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'
 new = '_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "featuring", "with"})'
@@ -1933,6 +1963,7 @@ source = { table = "u262.json", id = "C7_no_featuring" }
 description = "_CREDIT_MARKERS: drop featuring, so (Featuring Anna) becomes a version"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'
 new = '_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "with"})'
@@ -1943,6 +1974,7 @@ source = { table = "u262.json", id = "C8_no_feat" }
 description = "_CREDIT_MARKERS: drop feat, so (feat. Anna) becomes a version"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
 old = '_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'
 new = '_CREDIT_MARKERS: frozenset[str] = frozenset({"ft", "featuring", "with"})'
@@ -1953,6 +1985,7 @@ source = { table = "u265.json", id = "M1_narrow_split_everywhere" }
 description = "_sorted_words: split every string on the narrow set, so a wide string keeps U+0085 and U+00A0 inside a word where the scorer splits"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
 old = '''
     if token and max(token) > "\xff":
@@ -1967,6 +2000,7 @@ source = { table = "u265.json", id = "M2_python_split_everywhere" }
 description = "_sorted_words: split every string on Python whitespace, so a narrow string splits on U+0085 and U+00A0 where the scorer does not"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
 old = '''
     if token and max(token) > "\xff":
@@ -1981,6 +2015,7 @@ source = { table = "u265.json", id = "M2b_width_off_by_one" }
 description = "_sorted_words: read a string as wide from U+00FF rather than U+0100, so a narrow name ending in y with a diaeresis splits on U+00A0 where the scorer does not (review round one's finding)"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
 old = '    if token and max(token) > "\xff":'
 new = '    if token and max(token) >= "\xff":'
@@ -1991,6 +2026,7 @@ source = { table = "u265.json", id = "M3_words_not_sorted" }
 description = "_sorted_words: join the words in their own order, so the pass scores plain ratio and an artist and title swap no longer matches"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
 old = '    return " ".join(sorted(words))'
 new = '    return " ".join(words)'
@@ -2001,6 +2037,7 @@ source = { table = "u269.json", id = "M7_match_engine_binds_lxml" }
 description = "acquire/match.py: bind lxml.etree under a branch that never runs, the export reader guard's lxml case, which stays as it is"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py; match.py no longer imports hashlib, and the export guard reads all four match modules"
 tests = ["tests/test_match_states.py"]
 old = '''
 import hashlib
@@ -2048,6 +2085,7 @@ source = { table = "r1705.json", id = "M10_holds_always" }
 description = "_holds_spelling answers yes for every title, so the lookup offers OK against O.K., U286's split class, where the score did not"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
     return any(word in _SPELLED_OUT for word in title.split())
@@ -2062,6 +2100,7 @@ source = { table = "r1705.json", id = "M11_holds_reads_artist" }
 description = "_holds_spelling reads the artist half of the token rather than the title"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
     _artist, _separator, title = recording.partition("\x1f")
@@ -2076,6 +2115,7 @@ source = { table = "r1705.json", id = "M12_lookup_ignores_wanted_side" }
 description = "spelled_alike ignores a listed word in the WANTED title, so 4 U against a held For You for a short artist reads missing"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
         asks = _holds_spelling(recording)
@@ -2090,6 +2130,7 @@ source = { table = "r1705.json", id = "M13_lookup_ignores_held_side" }
 description = "spelled_alike ignores a listed word in the HELD title, so For You against a held 4 U for a short artist reads missing"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
             if asks or _holds_spelling(token)
@@ -2104,6 +2145,7 @@ source = { table = "r1705.json", id = "M14_lookup_key_drops_artist" }
 description = "_spelled_key drops the artist, so a spelled out copy by another artist is offered"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
     return f"{artist}{separator}{_spelled_out(title)}"
@@ -2118,6 +2160,7 @@ source = { table = "r1705.json", id = "M15_lookup_key_spells_artist" }
 description = "_spelled_key spells the artist out too, so Lil Kid and Little Kid read as one artist"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
     return f"{artist}{separator}{_spelled_out(title)}"
@@ -2132,6 +2175,7 @@ source = { table = "r1705.json", id = "M1_luv_unlisted" }
 description = "_SPELLED_OUT loses luv, so Luv U against a held Love You reads missing and downloads"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
         "luv": "love",
@@ -2144,6 +2188,7 @@ source = { table = "r1705.json", id = "M2_four_numeral_unlisted" }
 description = "_SPELLED_OUT loses 4, so 4 U against a held For You reads missing and downloads"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
         "4": "for",
@@ -2156,6 +2201,7 @@ source = { table = "r1705.json", id = "M3_too_unlisted" }
 description = "_SPELLED_OUT loses too, so Luv U 2 against a held Love You Too reads missing"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
         "too": "to",
@@ -2168,6 +2214,7 @@ source = { table = "r1705.json", id = "M4_2nite_unlisted" }
 description = "_SPELLED_OUT loses 2nite, so 2Nite against Tonight reads missing"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
         "2nite": "tonight",
@@ -2180,6 +2227,7 @@ source = { table = "r1705.json", id = "M8_spelled_keeps_spaces" }
 description = "_spelled_out joins the words with a space, so 2 Nite against Tonight is no longer one string"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
     return "".join(_SPELLED_OUT.get(word, word) for word in folded.split())
@@ -2194,6 +2242,7 @@ source = { table = "r1705.json", id = "M9_spelled_spells_nothing" }
 description = "_spelled_out spells no word out, so the reading and the lookup join nothing the written form does not"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
 old = '''
     return "".join(_SPELLED_OUT.get(word, word) for word in folded.split())
@@ -2208,6 +2257,7 @@ source = { table = "r1709.json", id = "M12_held_exact_unfiltered" }
 description = "LibraryIndex.held keeps every file under the token, so a held fire emoji owns a wanted drop"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
             if one.distinct == distinct
@@ -2222,6 +2272,7 @@ source = { table = "r1709.json", id = "M13_held_credited_by_fold" }
 description = "the credited list rule compares the fold alone again"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
 old = '''
             if same_title(one.title, title) and member in one.members
@@ -2236,6 +2287,7 @@ source = { table = "r664.json", id = "E1_stem_head_kept" }
 description = "Stop stripping the head from the stem, the filename half of the same rule"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '''
     body = naming.strip_heads(stem, template=template)
@@ -2250,6 +2302,7 @@ source = { table = "r664.json", id = "E2_pair_rule_field_by_field" }
 description = "Collapse the pair rule to field by field fallback, the shape that assembled an identity matching neither source"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '''
     if tagged_artist and tagged_title:
@@ -2269,6 +2322,7 @@ source = { table = "r664.json", id = "E4_title_not_split" }
 description = "Skip split_title on the chosen title, so a version stays inside the recording token"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "Anchored where u305-replay-after.json replayed it: the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '''
     title, version = split_title(spelled)
@@ -2283,6 +2337,7 @@ source = { table = "r667-b.json", id = "B2_reader_isrc_unfolded" }
 description = "_read_from_disk: the ISRC tag carried verbatim, r667's G18 after its direct tests"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
 old = '        isrc=isrc_token(read["isrc"]),'
 new = '        isrc=str(read["isrc"] or ""),'
@@ -2293,6 +2348,7 @@ source = { table = "r667.json", id = "E1_title_head_kept" }
 description = "Existing: _read_from_disk takes the title tag verbatim, the R-664 defect"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "Anchored where u305-replay-after.json replayed it: the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
 old = '    tagged_title = naming.strip_heads(spelled_tag, template=template)'
 new = '    tagged_title = spelled_tag'
@@ -2303,6 +2359,7 @@ source = { table = "r667.json", id = "G17_reader_drops_isrc" }
 description = "_read_from_disk: the ISRC tag is read and not carried, so the index has nothing to be asked by"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "Anchored where u305-replay-after.json replayed it: the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
 old = '        isrc=isrc_token(read["isrc"]),'
 new = '        isrc="",'
@@ -2313,6 +2370,7 @@ source = { table = "r667.json", id = "G4_members_not_folded" }
 description = "Owned.members: the credited names unfolded, so case and marks decide membership"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
 old = '            self, "members", frozenset(fold(name) for name in credited_members(self.artist))'
 new = '            self, "members", frozenset(credited_members(self.artist))'
@@ -2323,6 +2381,7 @@ source = { table = "r667.json", id = "G5_empty_isrc_asks" }
 description = "held_by_isrc: an empty token asks the map instead of answering nothing"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
 old = '        return self.by_isrc.get(isrc, ()) if isrc else ()'
 new = '        return self.by_isrc.get(isrc, ())'
@@ -2333,6 +2392,7 @@ source = { table = "r667.json", id = "G8_no_credited_rule" }
 description = "held: the recording token alone, the rule every caller had before this unit"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/test_intake_missing.py", "tests/test_tags.py"]
 old = '        return exact + credited'
 new = '        return exact'
@@ -2343,6 +2403,7 @@ source = { table = "u249.json", id = "M01_path_alone" }
 description = "_read_from_disk: answer any remembered path whatever its stamp, the path alone as identity"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and entry.stamp == stamp
@@ -2357,6 +2418,7 @@ source = { table = "u249.json", id = "M02_size_out_of_stamp" }
 description = "_read_from_disk: compare the stamp without its size"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and entry.stamp == stamp
@@ -2371,6 +2433,7 @@ source = { table = "u249.json", id = "M03_mtime_out_of_stamp" }
 description = "_read_from_disk: compare the stamp without its modification time"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and entry.stamp == stamp
@@ -2385,6 +2448,7 @@ source = { table = "u249.json", id = "M04_ctime_out_of_stamp" }
 description = "_read_from_disk: compare the stamp without its change time, so a restore tool's old time over new bytes is answered from memory"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and entry.stamp == stamp
@@ -2399,6 +2463,7 @@ source = { table = "u249.json", id = "M05_inode_out_of_stamp" }
 description = "_read_from_disk: compare the stamp without its inode"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and entry.stamp == stamp
@@ -2413,6 +2478,7 @@ source = { table = "u249.json", id = "M06_device_out_of_stamp" }
 description = "_read_from_disk: compare the stamp without its device"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and entry.stamp == stamp
@@ -2427,6 +2493,7 @@ source = { table = "u249.json", id = "M07_size_not_stat" }
 description = "_stamp_of: stamp a constant in place of the file's size"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '    return (seen.st_size, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev)'
 new = '    return (0, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev)'
@@ -2437,6 +2504,7 @@ source = { table = "u249.json", id = "M08_template_out_of_key" }
 description = "_read_from_disk: key the memory on the path alone, so an entry parsed under one name template answers another"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '    key = (path, template)'
 new = '    key = (path, None)'
@@ -2447,6 +2515,7 @@ source = { table = "u249.json", id = "M09_no_window" }
 description = "_read_from_disk: answer an equal stamp from memory however recent the file's modification time"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and stamp[1] <= entry.made_ns - REMEMBER_WINDOW_NS
@@ -2461,6 +2530,7 @@ source = { table = "u249.json", id = "M10_window_halved" }
 description = "REMEMBER_WINDOW_NS: one second in place of two, under a FAT volume's step"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = 'REMEMBER_WINDOW_NS = 2_000_000_000'
 new = 'REMEMBER_WINDOW_NS = 1_000_000_000'
@@ -2471,6 +2541,7 @@ source = { table = "u249.json", id = "M11_window_boundary" }
 description = "_read_from_disk: a file exactly two seconds older than its entry is read again rather than answered"
 file = "src/cratekit/acquire/match_library.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
             and stamp[1] <= entry.made_ns - REMEMBER_WINDOW_NS
@@ -2485,6 +2556,7 @@ source = { table = "u249.json", id = "M12_moment_after_read" }
 description = "_read_from_disk: take the entry's moment after the read, so a write during the read can be answered from memory"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
     owned, whole = _read_fresh(path, template)
@@ -2500,6 +2572,7 @@ source = { table = "u249.json", id = "M13_failed_read_remembered" }
 description = "_read_from_disk: remember a read that failed, so a moment's I/O error on a USB volume answers every later job"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '    if stamp is not None and whole:'
 new = '    if stamp is not None:'
@@ -2510,6 +2583,7 @@ source = { table = "u249.json", id = "M14_unstated_remembered_never" }
 description = "_stamp_of: answer None for every file, so nothing is ever remembered and every walk opens every file"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '    return (seen.st_size, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev)'
 new = '    return None'
@@ -2520,6 +2594,7 @@ source = { table = "u249.json", id = "M20_reset_forgets_nothing" }
 description = "match.reset_cache: forget nothing"
 file = "src/cratekit/acquire/match_library.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
     test can clear is a memory that leaks one test's library into the next."""
@@ -2532,6 +2607,7 @@ source = { table = "u249.json", id = "M20a_failed_read_keeps_old_entry" }
 description = "_read_from_disk: keep an earlier whole read's entry when a later read is not whole, so a stamp that comes back brings the old tags back"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
 old = '''
     else:
@@ -2548,6 +2624,7 @@ source = { table = "u265.json", id = "M6_cache_misaligned" }
 description = "sorted_recordings: build the sorted names in reverse, so a position the scorer returns names a different recording"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
 old = '            cached = (recordings, tuple(_sorted_words(token) for token in recordings))'
 new = '            cached = (recordings, tuple(_sorted_words(token) for token in reversed(recordings)))'
@@ -2558,6 +2635,7 @@ source = { table = "u265.json", id = "M7_cache_never_kept" }
 description = "sorted_recordings: never store the sorted names, so every wanted row sorts the whole library again (answers unchanged, cost back to per pair)"
 file = "src/cratekit/acquire/match_library.py"
 surface = "maintainer"
+moved = "the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
 old = '            object.__setattr__(self, "_sorted", cached)'
 new = '            pass'
@@ -2578,6 +2656,7 @@ source = { table = "r431-b.json", id = "B1_a_wanted_built_by_hand_asks" }
 description = "uncredited_spellings no longer requires a spelled title, so a Wanted built from a held file asks for a companion"
 file = "src/cratekit/acquire/match_list.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_list.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '        if not self.spelled or self.several_artists or _credits_in(self.spelled):'
 new = '        if self.several_artists or _credits_in(self.listed):'
@@ -2588,6 +2667,7 @@ source = { table = "r431-b.json", id = "B2_a_row_billing_a_guest_asks" }
 description = "uncredited_spellings ignores several_artists, so a row crediting a guest in its artists list asks"
 file = "src/cratekit/acquire/match_list.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_list.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '        if not self.spelled or self.several_artists or _credits_in(self.spelled):'
 new = '        if not self.spelled or _credits_in(self.spelled):'
@@ -2598,6 +2678,7 @@ source = { table = "r431-b.json", id = "B3_a_listing_that_spelled_a_credit_asks"
 description = "uncredited_spellings ignores a bracketed credit, so a listing crediting Zed reaches Mira's companion"
 file = "src/cratekit/acquire/match_list.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_list.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '        if not self.spelled or self.several_artists or _credits_in(self.spelled):'
 new = '        if not self.spelled or self.several_artists:'
@@ -2608,6 +2689,7 @@ source = { table = "r431-b.json", id = "B8_the_reader_never_counts_the_artists" 
 description = "_from_row stops setting several_artists, so every provider row reads as billing one"
 file = "src/cratekit/acquire/match_list.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_list.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '        several_artists=_bills_several(row),'
 new = '        several_artists=False,'
@@ -2618,6 +2700,7 @@ source = { table = "u213.json", id = "M5_listed_names_artist" }
 description = "listed_names: read no artist off a refused row"
 file = "src/cratekit/acquire/match_list.py"
 surface = "user"
+moved = "the same text, now in src/cratekit/acquire/match_list.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
 old = '    return str(_field(row, "id", "")).strip(), _artist_of(row), _raw_title(row)'
 new = '    return str(_field(row, "id", "")).strip(), "", _raw_title(row)'
@@ -3212,6 +3295,7 @@ source = { table = "r239-b.json", id = "S10_adopt_apply_key_off" }
 description = "adopt apply's write open passes unlock=False"
 file = "src/cratekit/adopt/apply_cli.py"
 surface = "user"
+moved = "the write open's arguments were joined onto one line by the formatter; the mutation adds unlock=False to it as before"
 tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
 old = '    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'
 new = '    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, unlock=False, cfg=cfg)'
