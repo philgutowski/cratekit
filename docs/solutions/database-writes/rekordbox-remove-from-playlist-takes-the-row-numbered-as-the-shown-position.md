@@ -31,13 +31,16 @@ positions were held by a row this product marked removed
 (`rb_nodes.remove_memberships` keeps `TrackNo`, R-758 and R-1853), 184 by
 no row.
 
-## What to do until U958 lands
+## What U958 changed
 
-- Before removing a track by hand, read the playlist's live `TrackNo`s on a
-  read only handle. If they are not 1 to N, the hand removal may hit another
-  row: read the playlist again after, against a copy taken before.
-- To put a wrongly removed track back, use the row menu's Add To Playlist; it
-  appends at the end. If the track sat elsewhere, its old position is lost
-  until a renumbering puts it back.
-- U958 (#1058) makes every product removal leave 1 to N and adds a repair for
-  the playlists that already hold gaps.
+- Every removal this product makes closes its playlist up at the commit:
+  the live rows 1 to N in the order rekordbox shows them, the removed rows at
+  0, proven from SQL (`rb_positions.close_gaps`, run by `commit_guarded`).
+- `crate repair numbers` numbers the playlists older removals left gapped,
+  and `crate doctor`'s `library.playlist_numbers` line counts them.
+- Until the repair has run on a library, a hand removal in a playlist the
+  doctor line names may still take the wrong row: read the playlist again
+  after, against a copy taken before. To put a wrongly removed track back,
+  use the row menu's Add To Playlist; it appends at the end.
+- What rekordbox does with a removed row at `TrackNo` 0 is unmeasured; the
+  attended card reads it.

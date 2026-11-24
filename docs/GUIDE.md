@@ -1350,6 +1350,7 @@ crate report library EXPORT
 crate report intake-aging EXPORT
 crate report genres
 crate repair paths
+crate repair numbers [--playlist NAME]
 crate inbox rotate
 ```
 
@@ -1381,6 +1382,20 @@ crate inbox rotate
   (over the path budget, or repeating its title); accept or reject each with
   `review resolve`, then `repair paths --apply` renames the accepted ones,
   never a file the collection references.
+- `repair numbers` numbers the live rows of a playlist 1 to N in the order
+  rekordbox shows them, for every playlist under the folders Cratekit writes
+  (BY GENRE + ENERGY, INBOX, INSPIRATION, Record Labels, Sets and Long Tracks,
+  each Custom Playlists year, the Favorites folder) and any you name with
+  `--playlist`, never another app's folder. rekordbox's Remove from Playlist
+  takes out the row whose stored number equals the row's shown position, so a
+  playlist numbered with gaps loses the wrong track when you remove one by
+  hand. Each playlist is shown with its row count and how far its numbers run,
+  at `repair.numbers.confirm`; no track joins or leaves. A playlist holding a
+  row whose removal mark cannot be read is shown and left alone. `crate
+  doctor`'s `library.playlist_numbers` line counts the playlists it would
+  number. Every removal Cratekit makes now leaves the playlist 1 to N itself,
+  its removed rows at 0, so the repair is needed once for the gaps older
+  versions left.
 - `inbox rotate` moves a batch older than `reports.intake_stale_days` (30)
   into `INBOX / Old` and removes one in Old older than
   `reports.intake_expired_days` (90). Never a track. `inbox refill --pass
@@ -1912,6 +1927,7 @@ without one.
 | `delete.review.confirm` | trash | `delete review` |
 | `repair.rows.confirm` | apply | `repair rows` |
 | `repair.link.confirm` | apply | `repair link` |
+| `repair.numbers.confirm` | apply | `repair numbers` |
 | `tree.cutover.approve` | approve | `tree cutover` |
 | `tree.revert.approve` | revert | `tree revert` |
 | `rebuild.accept` | accept | `rebuild`, INBOX |

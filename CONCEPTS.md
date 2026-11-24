@@ -1172,13 +1172,23 @@ every place beside its band there, `with vox`, Favorites and a genre sub
 (R-1965, Favorites kept while another playlist of that folder holds the row),
 for the one its new genre names in another. The addition commits before the
 removal (a soft delete of the membership, the only removal the guarded writer
-admits). With no reading it is Left.
+admits, which closes its playlist up to 1 to N at the commit, U958). With no
+reading it is Left.
 
 ### Left
 A track the move plan found holding a stale competing sub and did not move, with
 a reason (`no-reading`, `genre-names-no-style`, `held-under-another-name`,
 `reading-names-neither-held`, `withheld-by-verdict`, `one-sub-held-by-two-rows`,
 `former-place-not-named-by-genre`). Listed on the gate and digested.
+
+### Closing up
+What the guarded commit does to every playlist a membership removal marked a
+row in (U958): its live rows numbered 1 to N in the order rekordbox shows them
+(stored number, ties by row id), its removed rows put at 0, each moved row
+stamped with the commit's update count and time, proven from SQL before the
+commit. rekordbox's Remove from Playlist takes the row whose number equals the
+shown position, so a gap makes a removal by hand take the wrong track. `crate
+repair numbers` closes up the playlists older removals left gapped.
 
 ### Account mirror
 The `mirror` step of `crate organize`: an account root folder copying one
