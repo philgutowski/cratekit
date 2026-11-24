@@ -176,6 +176,10 @@ def checked(finding: doctor.Finding, status: doctor.Status, remedy=...) -> docto
     return finding
 
 
+#: A configuration naming a library root at ``/tmp/x``, which nothing here mounts.
+LIBRARY_AT_X = 'schema_version = 1\n[library]\nroot = "/tmp/x"\n'
+
+
 def _isolated_config(tmp_path: Path, monkeypatch) -> None:
     """A config directory and a state root of the test's own, the cache cleared."""
     cfg_dir = tmp_path / "cfg"
@@ -193,6 +197,21 @@ def isolated_library(tmp_path: Path, monkeypatch, *, save: bool = False) -> conf
         config.save(cfg)
         config.reset_cache()
     return cfg
+
+
+def planted(path: Path, data: str | bytes) -> Path:
+    """``data`` written at ``path``, its parent made first."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    (path.write_bytes if isinstance(data, bytes) else path.write_text)(data)
+    return path
+
+
+def _config_file(tmp_path: Path, monkeypatch, text: str = LIBRARY_AT_X) -> Path:
+    """An isolated configuration file holding ``text``."""
+    _isolated_config(tmp_path, monkeypatch)
+    path = config.config_path()
+    path.write_text(text)
+    return path
 
 
 @contextlib.contextmanager
@@ -528,8 +547,7 @@ def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
     held = ["k3y", "s1gn", "s3cret"]
 
     def read_secret(_question):
-        index.parent.mkdir(parents=True, exist_ok=True)
-        index.write_text("{not json at all")
+        planted(index, "{not json at all")
         return held.pop(0) if held else _eof()
     scripted = prompt.Prompter(
         read_line=lambda: (answers.pop(0) + "\n") if answers else _eof(), read_secret=read_secret,
@@ -541,7 +559,6 @@ def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
     assert all(note.status is FAIL for note in offered)
     assert all(str(index) in note.detail for note in offered)
     assert all(note.remedy is Remedy.REPAIR_CREDENTIAL_STORE for note in offered)
-    # No typed value reaches the report.
     rendered = json.dumps([note.to_json() for note in wizard.notes])
     for value in ("k3y", "s1gn", "s3cret"):
         assert value not in rendered
@@ -713,8 +730,7 @@ def test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it(confi
 def test_an_unreadable_session_record_is_reported_rather_than_dropped(configured):
     """A tolerant reader would fail open, so doctor reports the half that refuses."""
     log = session.log_dir(configured)
-    log.mkdir(parents=True, exist_ok=True)
-    (log / "wrecked.json").write_text("{not json")
+    planted(log / "wrecked.json", "{not json")
     finding = checked(finding_on(configured, "session.unresolved"), FAIL)
     assert "wrecked.json" in finding.detail
 
@@ -770,9 +786,7 @@ def test_doctor_says_when_no_acknowledgment_is_on_record(configured):
 
 
 def test_an_acknowledgment_that_cannot_be_understood_is_a_failure(configured):
-    path = session.ack_path(configured)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{ not json")
+    path = planted(session.ack_path(configured), "{ not json")
     finding = finding_on(configured, "backup.acknowledgment")
     checked(finding, FAIL, Remedy.REPORT_DEFECT)
     assert "not readable as JSON" in finding.detail
@@ -2082,8 +2096,7 @@ def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
 def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
     """The right disk and no permission is not an empty log, in this check's own sentence."""
     log = session.log_dir(configured)
-    log.mkdir(parents=True, exist_ok=True)
-    (log / "s-1.json").write_text("{}")
+    planted(log / "s-1.json", "{}")
     with _sealed(log):
         finding = finding_on(configured, "session.unresolved")
     assert finding.status is FAIL
@@ -2096,8 +2109,7 @@ def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
 def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(configured, monkeypatch):
     """R-1255: the same under root, where no mode bars the listing, in the probe's own sentence."""
     log = Path(session.log_dir(configured))
-    log.mkdir(parents=True, exist_ok=True)
-    (log / "s-1.json").write_text("{}")
+    planted(log / "s-1.json", "{}")
     _refuse_listing(monkeypatch, log)
     finding = checked(finding_on(configured, "session.unresolved"), FAIL)
     assert (
@@ -3017,7 +3029,6 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
         inside.read_text()
     with _sealed(sealed):
         report = report_on(configured, process_lister=blind)
-    # Every check still answered, in order.
     assert [f.key for f in report.findings] == list(doctor.CHECK_KEYS)
     broken = find(report, "rekordbox.closed")
     assert broken.status is FAIL, "unknown was reported as healthy"
@@ -3029,7 +3040,6 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     # The answers either side of it are the real ones.
     assert find(report, "interpreter.version").status is OK
     assert find(report, "library.identity").status is OK
-    # A probe that simply fell over is still report-defect.
     def fell_over():
         raise RuntimeError("psutil returned a shape this reader has never seen")
     ordinary = finding_on(configured, "rekordbox.closed", process_lister=fell_over)
@@ -3059,7 +3069,6 @@ def test_a_library_root_this_account_cannot_traverse_is_reported_not_raised(tmp_
     assert report.ok is False
     mounted = checked(find(report, "library.mounted"), FAIL)
     assert "did not complete" in mounted.detail
-    # No failing check calls the permission a defect.
     for finding in report.failures:
         assert finding.remedy is not Remedy.REPORT_DEFECT, finding.key
     assert find(report, "library.identity").remedy is Remedy.GRANT_PATH_ACCESS
@@ -3314,12 +3323,10 @@ def test_is_mount_point_is_the_one_fact_the_rule_turns_on_and_it_is_pinned(tmp_p
     """``is_mount_point`` delegates to ``os.path.ismount``, driven both ways."""
     ordinary = tmp_path / "not-a-mount"
     ordinary.mkdir()
-    # The real function, both directions.
     assert preflight.is_mount_point(Path(tmp_path.anchor)) is True
     assert preflight.is_mount_point(ordinary) is False
     # Absent or unstattable is False, the safe direction.
     assert preflight.is_mount_point(tmp_path / "never-existed") is False
-    # It is ``os.path.ismount``, not a copy of it.
     monkeypatch.setattr(os.path, "ismount", lambda path: str(path) == "sentinel")
     assert preflight.is_mount_point(Path("sentinel")) is True
     assert preflight.is_mount_point(Path(tmp_path.anchor)) is False
@@ -3362,7 +3369,6 @@ def test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directo
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setattr(preflight, "volume_mount_locations", lambda: rebased)
     monkeypatch.setattr(preflight, "is_mount_point", lambda path: False)
-    # A platform with no identity adapter.
     green_probes(monkeypatch, identity_provider=preflight.null_volume_identity)
     code, out, err = setup_at(root, tmp_path)
     assert code != int(ExitCode.USAGE), err
@@ -3713,16 +3719,12 @@ def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
         # Doctor reports on the config it could not load.
         surfaces.append((doctor_code, doctor_out, doctor_err))
     for code, out, err in surfaces:
-        envelope = json.loads(out)
-        cause = envelope["cause"]
-        # The act is the same in both.
+        cause = json.loads(out)["cause"]
         assert cause["remediation"]["remedy"] == "grant-path-access", err
         assert "report it" not in err
         assert "report-defect" not in out
-        # The path is the actionable content.
         assert str(sealed) in cause["message"]
         assert cause["detail"]["path"] is not None
-        # The slug and code differ by arrangement.
         if arrangement == "library-root":
             assert cause["reason"] == "library-root-unreachable"
             assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
@@ -3741,7 +3743,6 @@ def test_the_help_screen_survives_a_configuration_directory_it_cannot_open(
     config.reset_cache()
     with _sealed(sealed, reset_config=True):
         code, _out, _err = drive(["--help"])
-    # The parser prints its help and exits.
     assert code == int(ExitCode.OK)
     assert "usage: crate" in capsys.readouterr().out
 
@@ -3789,7 +3790,6 @@ def test_one_pair_of_paths_does_not_get_two_answers_decided_by_permission(tmp_pa
     ordinary = tmp_path / "elsewhere"
     ordinary.mkdir()
     monkeypatch.setattr(preflight, "volume_mount_locations", lambda: ((declared, 1),))
-    # Stat-able: a real comparison.
     assert preflight.names_one_path(declared, declared) is True
     assert preflight.names_one_path(ordinary, declared) is False
     with _sealed(sealed):
@@ -3829,9 +3829,7 @@ def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(tmp_path, mo
 
 
 def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configured):
-    path = backup_facts.path_for(configured)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('{"schema_version": 1, "portions": {}}')
+    path = planted(backup_facts.path_for(configured), '{"schema_version": 1, "portions": {}}')
     with _sealed(path):
         report = report_on(configured)
     for portion in backup_facts.PORTIONS:
@@ -3845,8 +3843,7 @@ def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configu
 
 def test_an_active_template_that_is_present_and_is_not_text_is_reported(configured):
     path = config.state_path("taxonomy_active", configured)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"trees:\n  - name: \xff\xfe\n")
+    planted(path, b"trees:\n  - name: \xff\xfe\n")
     finding = finding_on(configured, "taxonomy.active")
     checked(finding, FAIL, Remedy.REPORT_DEFECT)
     assert "could not be read" in finding.detail
@@ -3909,15 +3906,13 @@ def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_pat
 def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monkeypatch):
     """A sealed ``queue.db`` answers with its path and an act, recorded at the connection."""
     isolated_library(tmp_path, monkeypatch, save=True)
-    # One clean run creates the queue.
     code, _out, _err = drive(["--output", "json", "job", "list"])
     assert code == 0, "the arrangement itself must be green before it is broken"
     queue = jobs.queue_path()
     assert queue.exists()
     with _sealed(queue):
         code, out, err = drive(["--output", "json", "job", "list"])
-    envelope = json.loads(out)
-    cause = envelope["cause"]
+    cause = json.loads(out)["cause"]
     assert cause["reason"] == "path-permission-denied", cause
     assert cause["remediation"]["remedy"] == "grant-path-access"
     assert cause["detail"]["path"] == str(queue)
@@ -3936,8 +3931,7 @@ def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
         raise AssertionError("this account signalled pid 1, so the arrangement is void")
     monkeypatch.setattr(jobs_cli, "list_jobs", refused)
     code, out, err = drive(["--output", "json", "job", "list"])
-    envelope = json.loads(out)
-    cause = envelope["cause"]
+    cause = json.loads(out)["cause"]
     assert cause["reason"] == "internal-error", cause
     assert cause["remediation"]["remedy"] == "report-defect"
     assert "path named below" not in err
@@ -3980,9 +3974,7 @@ def test_a_read_only_volume_is_not_sent_to_full_disk_access(tmp_path):
 
 def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path, monkeypatch):
     """A locked file (``uchg``) is routed to ``chflags nouchg`` naming the destination."""
-    _isolated_config(tmp_path, monkeypatch)
-    destination = config.config_path()
-    destination.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
+    destination = _config_file(tmp_path, monkeypatch)
     locked = subprocess.run(["chflags", "uchg", str(destination)], check=False)
     assert locked.returncode == 0, "this platform has no per-file lock flag to drive"
     try:
@@ -3990,8 +3982,7 @@ def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path,
     finally:
         subprocess.run(["chflags", "nouchg", str(destination)], check=False)
         config.reset_cache()
-    envelope = json.loads(out)
-    cause = envelope["cause"]
+    cause = json.loads(out)["cause"]
     assert cause["reason"] == "path-locked", cause
     assert cause["remediation"]["remedy"] == "unlock-path"
     assert cause["detail"]["path"] == str(destination), "the temporary file was named again"
@@ -4020,9 +4011,7 @@ def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path,
 def test_the_session_reader_does_not_read_absence_out_of_a_refusal(tmp_path, monkeypatch):
     """A session record this account cannot open is neither absent nor a defect."""
     cfg = isolated_library(tmp_path, monkeypatch)
-    path = session.log_path("session-abc", cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{}")
+    path = planted(session.log_path("session-abc", cfg), "{}")
     with _sealed(path), pytest.raises(CratekitError) as excinfo:
         session.read_record("session-abc", cfg)
     cause = excinfo.value.cause
@@ -4040,9 +4029,7 @@ def test_the_session_reader_does_not_read_absence_out_of_a_refusal(tmp_path, mon
 
 def test_the_acknowledgment_reader_does_not_claim_the_file_exists(tmp_path, monkeypatch):
     cfg = isolated_library(tmp_path, monkeypatch)
-    ack = session.ack_path(cfg)
-    ack.parent.mkdir(parents=True, exist_ok=True)
-    ack.write_text("{}")
+    ack = planted(session.ack_path(cfg), "{}")
     with _sealed(ack), pytest.raises(CratekitError) as excinfo:
         session.read_acknowledgment(cfg)
     cause = excinfo.value.cause
@@ -4068,15 +4055,11 @@ def test_an_unreadable_capture_manifest_is_not_a_defect_report(tmp_path):
 
 
 def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monkeypatch):
-    _isolated_config(tmp_path, monkeypatch)
-    document = config.config_path()
-    document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
+    document = _config_file(tmp_path, monkeypatch)
     intact = document.read_bytes()
-    with _sealed(document):
+    with _sealed(document, reset_config=True):
         code, out, err = setup_at(tmp_path / "library", tmp_path)
-    config.reset_cache()
-    envelope = json.loads(out)
-    cause = envelope["cause"]
+    cause = json.loads(out)["cause"]
     assert cause["remediation"]["remedy"] != "repair-config-file", cause
     assert cause["remediation"]["remedy"] == "grant-path-access"
     assert cause["reason"] == "path-permission-denied"
@@ -4088,9 +4071,7 @@ def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monk
 def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
         tmp_path, monkeypatch):
     """The wizard's raw second read does not call a sealed incomplete config corrupt."""
-    _isolated_config(tmp_path, monkeypatch)
-    document = config.config_path()
-    document.write_text("schema_version = 1\n")
+    document = _config_file(tmp_path, monkeypatch, "schema_version = 1\n")
     intact = document.read_bytes()
     real_load = config.load
 
@@ -4116,12 +4097,9 @@ def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
 
 
 def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_path, monkeypatch):
-    _isolated_config(tmp_path, monkeypatch)
-    document = config.config_path()
-    document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
-    with _sealed(document):
+    document = _config_file(tmp_path, monkeypatch)
+    with _sealed(document, reset_config=True):
         finding = finding_on(None, "config.present")
-    config.reset_cache()
     checked(finding, FAIL, Remedy.GRANT_PATH_ACCESS)
     assert finding.remedy is not Remedy.REPAIR_CONFIG_FILE
     assert str(document) in finding.detail
@@ -4130,12 +4108,9 @@ def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_pa
 
 def test_a_verb_that_lets_a_config_error_escape_is_classified_too(tmp_path, monkeypatch):
     """A ``ConfigError`` escaping a verb is classified at the dispatcher."""
-    _isolated_config(tmp_path, monkeypatch)
-    document = config.config_path()
-    document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
-    with _sealed(document):
+    document = _config_file(tmp_path, monkeypatch)
+    with _sealed(document, reset_config=True):
         code, out, err = drive(["--output", "json", "review", "list"])
-    config.reset_cache()
     cause = json.loads(out)["cause"]
     assert cause["remediation"]["remedy"] == "grant-path-access", cause
     assert cause["reason"] == "path-permission-denied"
@@ -4216,7 +4191,6 @@ def test_the_binding_pin_problem_is_whatever_the_writers_own_assertion_says(monk
 
 
 def test_the_rclone_dump_answers_none_for_every_way_it_can_fail(monkeypatch, tmp_path):
-    # The binary is not there at all.
     assert doctor_model._rclone_remotes(str(tmp_path / "no-such-rclone")) is None
 
     def timed_out(*_a, **_k):
@@ -4278,16 +4252,13 @@ def test_a_hook_line_with_an_unbalanced_quote_falls_back_to_the_default_config()
 def test_a_run_record_that_will_not_load_is_reported_rather_than_skipped(configured):
     """A run record that will not load is reported, or its open gate vanishes."""
     directory = gates.run_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "r-broken.json").write_text("{ this is not json")
+    planted(directory / "r-broken.json", "{ this is not json")
     findings = doctor._run_findings()
     checked(next(f for f in findings if f.key == "run.r-broken"), FAIL, Remedy.REPORT_DEFECT)
 
 
 def test_a_tree_registry_that_will_not_load_is_never_read_as_no_record(configured):
-    path = tree_registry.path_for(configured)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"{ not json")
+    path = planted(tree_registry.path_for(configured), b"{ not json")
     findings = doctor._tree_findings(configured)
     assert [f.key for f in findings] == ["tree.registry"]
     assert findings[0].status is FAIL
@@ -4439,7 +4410,6 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
     assert finding.cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
     assert finding.cause.detail["path"] == str(sealed)
     assert finding.cause.detail["check"] == "setup.taxonomy"
-    # A real read only volume, this machine's system volume.
     read_only = root_volume_refusal("cratekit-u27-finding-probe")
     assert read_only.errno == errno.EROFS
     written = "the template could not be written"
@@ -4447,12 +4417,10 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
     on_a_read_only_volume = a_finding(detail=written, remedy=remedy, error=read_only)
     assert on_a_read_only_volume.remedy is Remedy.REMOUNT_WRITABLE
     assert on_a_read_only_volume.cause.reason == "path-read-only"
-    # A finding about something not refused by the system is left as built.
     not_toml = {"key": "taxonomy.active", "detail": "the file is not valid TOML"}
     ordinary = a_finding(**not_toml, remedy=Remedy.REPORT_DEFECT, error=ValueError("not a refusal"))
     assert ordinary.remedy is Remedy.REPORT_DEFECT
     assert ordinary.cause is None
-    # A finding carrying no exception is inert.
     assert (
         doctor.Finding(key="k", title="t", status=FAIL, detail="d", remedy=Remedy.RUN_DOCTOR).remedy
         is Remedy.RUN_DOCTOR)
@@ -4490,7 +4458,6 @@ def test_the_seed_on_a_read_only_library_volume_is_not_sent_to_full_disk_access(
 def test_a_path_no_filesystem_can_represent_is_answered_rather_than_raised():
     """A path with an embedded null is answered, not raised inside the handler."""
     unrepresentable = "/tmp/cratekit-u27\0probe"
-    # The two real functions really do raise.
     with pytest.raises(ValueError):
         os.lstat(unrepresentable)
     with pytest.raises(ValueError):
@@ -4686,7 +4653,6 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
         on_it = resolve(volume / "library")
         moved_within = resolve(volume / "not-that-folder")
         elsewhere = resolve(gone_root, **local)
-    # Detached for real, an unplugged drive.
     unmounted = resolve(gone_root, **local)
     assert on_it.state is preflight.MountState.OK, on_it
     assert moved_within.state is preflight.MountState.LIBRARY_PATH_MISSING, moved_within
@@ -4701,7 +4667,6 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
     assert moved_detail != absent_detail
     assert "Nothing needs plugging in" in moved_detail
     assert "Attach it" in absent_detail
-    # Both refuse a library state read.
     assert not preflight.library_state_is_readable(elsewhere)
     assert not preflight.library_state_is_readable(unmounted)
 
@@ -4731,7 +4696,6 @@ def test_a_real_read_only_volume_reaches_the_user_as_remount_not_as_a_permission
         assert "no permission grant can change that" in note.detail
         assert "Full Disk Access" not in note.detail
         assert "Grant this interpreter" not in note.detail
-        # Nothing was written on the volume it cannot write.
         assert not config.state_path("taxonomy_active", cfg).exists()
 
 

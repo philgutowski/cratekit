@@ -429,19 +429,36 @@ def _categorize(cfg, removed, references, **kwargs):
     return candidates.categorize(removed, references, root=cfg.library.root, **kwargs)
 
 
-def test_a_removed_row_whose_file_nothing_else_claims_is_deletable(cfg):
-    _music(cfg, ONE)
-    references = _references(cfg, [])
-    answered = _categorize(cfg, [_removed(cfg, ONE, "1")], references)
-    assert answered[0].category is candidates.Category.DELETABLE
-
-
-def test_a_path_that_will_not_resolve_is_unresolved_and_never_deletable(cfg):
-    """AE16, and it is the reason the watermark stops where it does."""
-    row = replace(_removed(cfg, ONE, "1"), recorded="/nowhere/this/machine/knows/x.flac")
-    answered = _categorize(cfg, [row], _references(cfg, []))
-    assert answered[0].category is candidates.Category.UNRESOLVED
-    assert not answered[0].handled, "an unresolved row is not finished business"
+@pytest.mark.parametrize(
+    ("body", "changed", "given", "category", "handled"), [
+        pytest.param(b"audio bytes", {}, {}, candidates.Category.DELETABLE, None,
+                     id="a-file-nothing-else-claims-is-deletable"),
+        # AE16, and it is the reason the watermark stops where it does.
+        pytest.param(None, {"recorded": "/nowhere/this/machine/knows/x.flac"}, {},
+                     candidates.Category.UNRESOLVED, False, id="a-path-that-will-not-resolve"),
+        # A path later reclaimed by a different track through name truncation.
+        pytest.param(b"a completely different recording", {"size": 11}, {},
+                     candidates.Category.SIZE_MISMATCH, None, id="a-different-size"),
+        pytest.param(b"audio bytes", {"size": None}, {}, candidates.Category.SIZE_MISMATCH, None,
+                     id="no-size-recorded"),
+        pytest.param(b"audio bytes", {}, {"referenced": frozenset({"1"})},
+                     candidates.Category.STILL_REFERENCED, None, id="a-playlist-references-it"),
+        # The resume case: a trashed file is neither re-offered nor a configuration failure.
+        pytest.param(None, {}, {}, candidates.Category.GONE, True, id="a-file-already-gone"),
+        # R36 makes the tombstone part of the deletion rather than a consequence.
+        pytest.param(b"audio bytes", {"artist": "", "title": ""},
+                     {"identifiable": stores.identifiable}, candidates.Category.UNIDENTIFIABLE,
+                     None, id="no-artist-and-no-title"),
+    ])
+def test_one_removed_row_is_categorized_by_what_its_file_and_columns_prove(
+        cfg, body, changed, given, category, handled):
+    if body is not None:
+        _music(cfg, ONE, body=body)
+    row = replace(_removed(cfg, ONE, "1"), **changed)
+    answered = _categorize(cfg, [row], _references(cfg, []), **given)
+    assert answered[0].category is category
+    if handled is not None:
+        assert answered[0].handled is handled, "unresolved is not finished business, gone is"
 
 
 @pytest.mark.parametrize("variant", ["same", "case", "composition"])
@@ -475,32 +492,6 @@ def test_a_hard_link_from_an_active_row_is_a_collision(cfg):
     assert answered[0].category is candidates.Category.COLLIDES_WITH_ACTIVE_ROW
 
 
-@pytest.mark.parametrize(
-    ("body", "size"), [
-        # A path later reclaimed by a different track through name truncation.
-        pytest.param(b"a completely different recording", 11, id="a-different-size"),
-        pytest.param(b"audio bytes", None, id="no-size-recorded"),
-    ])
-def test_a_file_whose_size_does_not_prove_it_is_never_deletable(cfg, body, size):
-    _music(cfg, ONE, body=body)
-    answered = _categorize(cfg, [_removed(cfg, ONE, "1", size=size)], _references(cfg, []))
-    assert answered[0].category is candidates.Category.SIZE_MISMATCH
-
-
-def test_a_file_a_playlist_still_references_is_not_trashed(cfg):
-    _music(cfg, ONE)
-    answered = _categorize(
-        cfg, [_removed(cfg, ONE, "1")], _references(cfg, []), referenced=frozenset({"1"}))
-    assert answered[0].category is candidates.Category.STILL_REFERENCED
-
-
-def test_a_file_already_gone_is_finished_business_rather_than_unresolved(cfg):
-    """The resume case: a trashed file is neither re-offered nor a configuration failure."""
-    answered = _categorize(cfg, [_removed(cfg, ONE, "1")], _references(cfg, []))
-    assert answered[0].category is candidates.Category.GONE
-    assert answered[0].handled
-
-
 def test_a_declined_file_is_absent_from_the_next_run_and_returns_when_revoked(cfg):
     _music(cfg, ONE)
     row = _removed(cfg, ONE, "1")
@@ -510,14 +501,6 @@ def test_a_declined_file_is_absent_from_the_next_run_and_returns_when_revoked(cf
     stores.revoke_decline(cfg, record.suppression_id, actor="cli")
     offered = _categorize(cfg, [row], _references(cfg, []), declined=stores.decline_predicate(cfg))
     assert offered[0].category is candidates.Category.DELETABLE
-
-
-def test_a_row_with_no_artist_and_no_title_is_never_deletable(cfg):
-    """R36 makes the tombstone part of the deletion rather than a consequence."""
-    _music(cfg, ONE)
-    row = replace(_removed(cfg, ONE, "1"), artist="", title="")
-    answered = _categorize(cfg, [row], _references(cfg, []), identifiable=stores.identifiable)
-    assert answered[0].category is candidates.Category.UNIDENTIFIABLE
 
 
 def test_an_unresolvable_active_row_makes_the_whole_run_refuse(cfg):

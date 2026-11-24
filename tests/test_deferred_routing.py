@@ -291,34 +291,45 @@ def test_the_pass_matches_every_intent_against_rows_supplied_as_a_cursor(cfg):
     assert [item.placement for item in placed] == [routing_pass.Placement.RESOLVED] * 2
 
 
-def test_a_track_with_no_row_at_all_is_not_imported_rather_than_withdrawn(cfg):
-    intents = [_intent(cfg, DECLARED, PLAIN)]
-    placed = _placements(cfg, DECLARED, intents, [])
-    assert placed[0].placement is routing_pass.Placement.NOT_IMPORTED
-    assert routing_pass.readiness(placed) is routing_pass.Readiness.NOT_READY
+PLACED, READY = routing_pass.Placement, routing_pass.Readiness
 
 
-def test_a_location_reaching_only_soft_deleted_rows_is_withdrawn(cfg):
-    intents = [_intent(cfg, DECLARED, PLAIN)]
-    placed = _placements(cfg, DECLARED, intents, [_row(cfg, PLAIN, "1", deleted=True)])
-    assert placed[0].placement is routing_pass.Placement.WITHDRAWN
-    assert routing_pass.readiness(placed) is routing_pass.Readiness.READY
-
-
-def test_a_tombstone_beside_a_live_row_resolves_cleanly(cfg):
-    """The active-row rule, inherited rather than re-implemented."""
-    intents = [_intent(cfg, DECLARED, PLAIN)]
-    placed = _placements(cfg, DECLARED, intents, [_row(cfg, PLAIN, "1", deleted=True), _row(cfg, PLAIN, "2")])
-    assert placed[0].placement is routing_pass.Placement.RESOLVED
-    assert placed[0].content_id == "2"
-
-
-def test_two_active_rows_on_one_location_are_ambiguous_and_never_written(cfg):
-    intents = [_intent(cfg, DECLARED, PLAIN)]
-    placed = _placements(cfg, DECLARED, intents, [_row(cfg, PLAIN, "1"), _row(cfg, PLAIN, "2")])
-    assert placed[0].placement is routing_pass.Placement.AMBIGUOUS
-    assert placed[0].content_ids == ("1", "2")
-    assert placed[0].placement not in routing_pass.WRITABLE
+@pytest.mark.parametrize(
+    ("name", "changed", "rows", "placement", "readiness", "held", "writable"), [
+        pytest.param(PLAIN, {}, [], PLACED.NOT_IMPORTED, READY.NOT_READY, None, None,
+                     id="a-track-with-no-row-at-all-is-not-imported-rather-than-withdrawn"),
+        pytest.param(PLAIN, {}, [(PLAIN, "1", True)], PLACED.WITHDRAWN, READY.READY, None, None,
+                     id="only-soft-deleted-rows-is-withdrawn"),
+        # The active-row rule, inherited rather than re-implemented.
+        pytest.param(PLAIN, {}, [(PLAIN, "1", True), (PLAIN, "2", False)], PLACED.RESOLVED, None,
+                     "2", None, id="a-tombstone-beside-a-live-row-resolves-cleanly"),
+        pytest.param(PLAIN, {}, [(PLAIN, "1", False), (PLAIN, "2", False)], PLACED.AMBIGUOUS, None,
+                     ("1", "2"), False, id="two-active-rows-are-ambiguous-and-never-written"),
+        pytest.param(DECOMPOSED, {}, [(COMPOSED, "1", False)], PLACED.RESOLVED, None, None, None,
+                     id="a-composition-form-mismatch-resolves"),
+        # An undeclared destination is its own placement, never written, and not a missing import.
+        pytest.param(PLAIN, {"sub": "a-sub-this-library-dropped"}, [(PLAIN, "1", False)],
+                     PLACED.UNDECLARED, READY.UNANSWERABLE, None, False,
+                     id="a-destination-the-taxonomy-no-longer-declares"),
+        # A configuration failure and a missing import have opposite answers.
+        pytest.param(PLAIN, {"location": "/somewhere/nothing/maps/onto/x.flac"},
+                     [(PLAIN, "1", False)], PLACED.UNRESOLVED, READY.UNANSWERABLE, None, None,
+                     id="locations-that-resolve-to-nothing-are-not-told-to-import"),
+    ])
+def test_one_intent_is_placed_by_the_rows_its_location_reaches(
+        cfg, name, changed, rows, placement, readiness, held, writable):
+    intent = replace(_intent(cfg, DECLARED, name), **changed)
+    held_rows = [_row(cfg, row, content_id, deleted=deleted) for row, content_id, deleted in rows]
+    placed = _placements(cfg, DECLARED, [intent], held_rows)
+    assert placed[0].placement is placement
+    if readiness is not None:
+        assert routing_pass.readiness(placed) is readiness
+    if readiness is READY.UNANSWERABLE:
+        assert routing_pass.readiness(placed) is not READY.NOT_READY
+    if held is not None:
+        assert (placed[0].content_ids if isinstance(held, tuple) else placed[0].content_id) == held
+    if writable is not None:
+        assert (placed[0].placement in routing_pass.WRITABLE) is writable
 
 
 def test_a_recorded_prefix_the_map_covers_resolves_to_its_row(cfg):
@@ -329,12 +340,6 @@ def test_a_recorded_prefix_the_map_covers_resolves_to_its_row(cfg):
     placed = _placements(cfg, DECLARED, [intent], [_row(cfg, PLAIN, "1")], prefix_map=rules)
     assert placed[0].placement is routing_pass.Placement.RESOLVED
     assert placed[0].content_id == "1"
-
-
-def test_a_composition_form_mismatch_between_the_ledger_and_the_row_resolves(cfg):
-    intent = _intent(cfg, DECLARED, DECOMPOSED)
-    placed = _placements(cfg, DECLARED, [intent], [_row(cfg, COMPOSED, "1")])
-    assert placed[0].placement is routing_pass.Placement.RESOLVED
 
 
 def test_readiness_over_nothing_pending_is_ready_rather_than_not_ready(cfg):
@@ -840,15 +845,6 @@ def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg, marker):
     assert _refused_by(list, routing_pass.content_rows(Blind())).code is ExitCode.LIBRARY_UNREADABLE
 
 
-def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(cfg):
-    """An undeclared destination is its own placement, never written, and not a missing import."""
-    stale = replace(_intent(cfg, DECLARED, PLAIN), sub="a-sub-this-library-dropped")
-    placed = _placements(cfg, DECLARED, [stale], [_row(cfg, PLAIN, "1")])
-    assert placed[0].placement is routing_pass.Placement.UNDECLARED
-    assert placed[0].placement not in routing_pass.WRITABLE
-    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
-
-
 def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(cfg, db, gated_root):
     """The good track is placed, and the bad one is reported rather than raised."""
     good = _intent(cfg, DECLARED, PLAIN)
@@ -1118,15 +1114,6 @@ def test_every_refusal_the_pass_propagates_carries_its_remedy_too():
         checked += 1
         assert issubclass(candidate, CratekitError), f"{candidate.__name__} is not a CratekitError (S4)"
     assert checked >= 2, "the walk found nothing carrying a remedy, so it proves nothing"
-
-
-def test_a_run_whose_locations_all_resolve_to_nothing_is_not_told_to_import(cfg):
-    """A configuration failure and a missing import have opposite answers."""
-    intent = replace(_intent(cfg, DECLARED, PLAIN), location="/somewhere/nothing/maps/onto/x.flac")
-    placed = _placements(cfg, DECLARED, [intent], [_row(cfg, PLAIN, "1")])
-    assert placed[0].placement is routing_pass.Placement.UNRESOLVED
-    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
-    assert routing_pass.readiness(placed) is not routing_pass.Readiness.NOT_READY
 
 
 def test_every_readiness_answer_except_ready_writes_nothing(cfg, db, gated_root, monkeypatch):

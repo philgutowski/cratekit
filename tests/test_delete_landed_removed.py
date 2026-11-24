@@ -305,15 +305,6 @@ def test_a_landed_file_a_new_row_now_references_is_never_offered(ready):
     assert music.exists()
 
 
-def test_a_landing_of_another_database_offers_nothing(ready):
-    cfg = ready("One")
-    gone, music = _row(cfg, "One")
-    _edit_landing(cfg, gone, lambda landed: landed.update(database_identity="another-library"))
-    _remove_outright(cfg, gone)
-    assert gone not in _candidates(cfg)
-    assert music.exists()
-
-
 def test_an_unreadable_landing_record_offers_nothing_and_says_so(ready, caplog):
     cfg = ready("One")
     gone, music = _row(cfg, "One")
@@ -634,22 +625,22 @@ def _without_uuids(landed: dict) -> None:
         entry.pop(native.LANDED_UUID_KEY)
 
 
-@pytest.mark.parametrize("sequence", [None, "12", True])
-def test_a_landing_record_with_no_update_count_offers_nothing(sequence, ready):
-    """Row M2: a record that cannot say what its commit left is not guessed at."""
+@pytest.mark.parametrize(
+    "change", [
+        pytest.param(lambda landed: landed.update(database_identity="another-library"),
+                     id="a-landing-of-another-database"),
+        # Row M2: a record that cannot say what its commit left is not guessed at.
+        pytest.param(lambda landed: landed.update(sequence=None), id="no-update-count-None"),
+        pytest.param(lambda landed: landed.update(sequence="12"), id="no-update-count-12"),
+        pytest.param(lambda landed: landed.update(sequence=True), id="no-update-count-True"),
+        # Row M5: every playlist the landing made must remain, not any one of them.
+        pytest.param(lambda landed: landed["playlists"].append("999999999"),
+                     id="one-of-its-playlists-gone"),
+    ])
+def test_a_landing_record_that_cannot_prove_its_landing_offers_nothing(ready, change):
     cfg = ready("One")
     gone, music = _row(cfg, "One")
-    _edit_landing(cfg, gone, lambda landed: landed.update(sequence=sequence))
-    _remove_outright(cfg, gone)
-    assert gone not in _candidates(cfg)
-    assert music.exists()
-
-
-def test_a_landing_one_of_whose_playlists_is_gone_offers_nothing(ready):
-    """Row M5: every playlist the landing made must remain, not any one of them."""
-    cfg = ready("One")
-    gone, music = _row(cfg, "One")
-    _edit_landing(cfg, gone, lambda landed: landed["playlists"].append("999999999"))
+    _edit_landing(cfg, gone, change)
     _remove_outright(cfg, gone)
     assert gone not in _candidates(cfg)
     assert music.exists()
