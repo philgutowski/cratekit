@@ -201,11 +201,11 @@ new = '''        for written in re.finditer(re.escape(token), text)'''
 
 [[rows]]
 id = "M20_file_url_read_as_host"
-description = "_host_forms: take any two slashes before the name, so a file:/// path reads as a host"
+description = "_host_forms: take any two slashes before the name, so a file:/// path or a path double slash reads as a host"
 file = "scripts/scan_repo.py"
 surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
-old = '''(?:(?<=[^/]//)|(?<=^//)){name}'''
+old = '''(?:(?<=[A-Za-z]://)|(?<=[\s\"'`(<\[]//)|(?<=^//)){name}'''
 new = '''(?<=//){name}'''
 
 [[rows]]
@@ -216,6 +216,15 @@ surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
 old = '''(?:(?<=[^:A-Za-z0-9\\]\\\\)|(?<=^\\\\)){name}'''
 new = '''(?<=\\\\){name}'''
+
+[[rows]]
+id = "M22_host_end_narrow"
+description = "_HOST_END: end a share or UNC host only at a colon, slash, space or the end, so a quoted or linked host is missed"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''_HOST_END = r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9])"'''
+new = '''_HOST_END = r"(?=[:/]|\s|$)"'''
 
 [[rows]]
 id = "M16_cloud_relaxes_declared"

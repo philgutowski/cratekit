@@ -121,6 +121,8 @@ ORDINARY_WORDS_PATH = "scripts/scan_ordinary_words.txt"
 
 # The local network suffixes a machine answers on, for ``<token>.<suffix>``.
 _HOST_SUFFIXES = r"(?:local|lan|localdomain|home\.arpa)"
+# Where a host name ends: not inside a longer name, nor before a further label.
+_HOST_END = r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9])"
 
 
 @functools.lru_cache(maxsize=1)
@@ -144,7 +146,8 @@ def is_ordinary_word(token: str) -> bool:
 class IdentityTokens(frozenset):
     """Every identity token, carrying the detected ordinary words that match only by shape.
 
-    ``shape_only`` is a subset of the tokens. A plain set passed to
+    ``shape_only`` names which of the tokens match only by shape; a name in it
+    that is not a token is never looked for. A plain set passed to
     ``portability_violations`` has none, so every token in it matches bare: a
     caller that loses this type over reports, it never passes silently.
     """
@@ -241,7 +244,7 @@ def machine_identity_tokens(root: Path | None = None) -> IdentityTokens:
 @functools.lru_cache(maxsize=64)
 def _host_forms(token: str) -> re.Pattern[str]:
     """Where a token is a host: ``<t>.local`` and the like, ``user@<t>``,
-    ``//<t>/`` or ``//<t>:port`` in a URL or share, ``\\\\<t>\\`` in a UNC path, and
+    ``scheme://<t>`` or ``//<t>`` after a space, quote or bracket, ``\\\\<t>\\`` in a UNC path, and
     ``<t>:/path`` or ``<t>:~/path`` as scp and rsync write it. Never a method call
     (``<t>.local()``), a URL scheme (``<t>://``), a ``file:///`` path or an
     escaped drive path (``C:\\\\<t>\\\\``). Every form opens at the token, so
@@ -251,8 +254,8 @@ def _host_forms(token: str) -> re.Pattern[str]:
         "|".join((
             rf"(?<![A-Za-z0-9_-]){name}\.{_HOST_SUFFIXES}(?![A-Za-z0-9_(-])",
             rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
-            rf"(?:(?<=[^/]//)|(?<=^//)){name}(?=[:/]|\s|$)",
-            rf"(?:(?<=[^:A-Za-z0-9\\]\\\\)|(?<=^\\\\)){name}(?=\\)",
+            rf"(?:(?<=[A-Za-z]://)|(?<=[\s\"'`(<\[]//)|(?<=^//)){name}{_HOST_END}",
+            rf"(?:(?<=[^:A-Za-z0-9\\]\\\\)|(?<=^\\\\)){name}{_HOST_END}",
             rf"(?<![^\s\"'`(\[]){name}:(?:~|/(?!/))",
         )),
         re.IGNORECASE,

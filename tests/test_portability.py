@@ -512,6 +512,11 @@ def test_a_cloud_container_detects_no_machine_identity(monkeypatch, tmp_path):
 _W = "gar" + "den"
 
 
+def _opaque_id(written: str) -> str:
+    """A parametrize id that is not the text: a node id is copied whole into mutation records."""
+    return hashlib.sha256(written.encode()).hexdigest()[:10]
+
+
 @pytest.fixture
 def detected(monkeypatch, tmp_path):
     """Detect a hostname and a mounted volume, nothing declared, the cloud exemption off."""
@@ -580,7 +585,14 @@ def test_a_detected_ordinary_word_passes_in_prose(detected):
         "\\\\" + _W + "\\share",
         "open \\\\" + _W + "\\share",
         "//" + _W,
+        "\\\\" + _W + " in Finder",
+        '"smb://' + _W + '".',
+        "[it](afp://" + _W + ")",
+        "<smb://" + _W + ">",
+        "smb://" + _W + ", then",
+        "http://" + _W + "?x=1",
     ],
+    ids=_opaque_id,
 )
 def test_a_detected_ordinary_word_is_caught_where_it_names_the_machine(detected, written):
     """In a home or mount path segment, or a host, the plain word is the machine.
@@ -611,7 +623,15 @@ def test_a_detected_ordinary_word_is_caught_where_it_names_the_machine(detected,
         _W + ".home()",
         "file:///" + _W + "/x",
         "C:\\\\" + _W + "\\\\Track.flac",
+        "share\\\\" + _W + "\\x",
+        "\\\\" + _W + "s\\share",
+        "\\\\\\" + _W + "\\x",
+        "my-" + _W + ":/srv/x",
+        "someone@" + _W + "s",
+        "/v4//" + _W + "/tracks/123/",
+        "smb://" + _W + ".example.com/",
     ],
+    ids=_opaque_id,
 )
 def test_a_host_form_needs_the_whole_name_and_a_whole_suffix(detected, written):
     """A longer word, a longer suffix, a hyphenated neighbour, a decorator, a key are not the host."""
@@ -780,3 +800,25 @@ def test_a_declared_word_is_not_looked_for_in_the_word_list_itself(tmp_path, mon
 
 def _message(token: str) -> str:
     return scan.portability_violations(token, identity_tokens={token})[0]
+
+
+@pytest.mark.parametrize(
+    "written", ["//" + _W + "/share", "\\\\" + _W + "\\share"], ids=_opaque_id
+)
+def test_a_host_form_opening_the_text_is_caught(detected, written):
+    """A share or UNC host is caught when it is the first thing in the file."""
+    tokens = detected(_W)
+    assert _identity_problems(written + " is where the files are", tokens)
+
+
+def test_a_host_form_matches_under_the_regex_case_rule(detected):
+    """A dotless i reads as an i under ``re.IGNORECASE``, so a host written so is caught.
+
+    Round one's casefold prefilter skipped it; this keeps the prefilter's
+    replacement on the same case rule as the host forms.
+    """
+    word = "Win" + "dow"
+    tokens = detected(word)
+    assert word in tokens.shape_only
+    assert _identity_problems("w\u0131ndow.local", tokens)
+    assert _identity_problems("W\u0130NDOW.LOCAL", tokens)
