@@ -317,8 +317,7 @@ def test_a_date_the_job_froze_wins_over_the_accounts(given):
 
 
 def test_a_heart_the_account_dates_nowhere_goes_to_undated_and_one_it_no_longer_carries_is_taken_back(
-    given,
-):
+    given):
     # The account, listed whole, no longer carries the first and dates the second nowhere.
     cfg, folder_id, _source_id, _fake = given({"Gone": None, "Kept": None}, {"Kept": None})
     acted, shown = _approved()
@@ -364,8 +363,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(given):
 
 
 def test_with_no_source_playlist_the_verb_refuses_by_name_before_the_gate(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     cfg, _root_id = native_library
     _landed_hearts(cfg, silence, {"Same Girl": None})
     fake = _account(monkeypatch, {"Same Girl": SEP})
@@ -418,8 +416,7 @@ def test_no_content_row_tempo_or_rating_is_written(given):
     _approved()
     assert _query(cfg, "SELECT COUNT(*) FROM djmdContent") == before
     ((bpm, rating, analysis),) = _query(
-        cfg, "SELECT BPM, Rating, AnalysisDataPath FROM djmdContent WHERE Title = 'Same Girl'"
-    )
+        cfg, "SELECT BPM, Rating, AnalysisDataPath FROM djmdContent WHERE Title = 'Same Girl'")
     assert bpm in (None, 0) and rating in (None, 0) and not analysis
 
 
@@ -456,8 +453,7 @@ def test_a_hearts_job_whose_reports_cannot_be_read_is_skipped_and_named(home, gi
 
 
 def test_a_heart_the_landing_placed_without_a_month_takes_it_from_the_backfill(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     """A landing of an older job puts the heart in All Favorites alone; the backfill adds its month."""
     from tests.test_intake_land_account_playlists_native import PASS
     cfg, _root_id = native_library
@@ -537,8 +533,7 @@ def test_a_listing_with_no_published_count_holds_back_a_heart_it_lacks(given):
     acted, shown = _approved()
     assert _titles(shown) == ["Probe - Served"]
     assert shown["held back"].startswith(
-        "1 heart(s) the account's listing did not carry, the listing published no count"
-    )
+        "1 heart(s) the account's listing did not carry, the listing published no count")
     assert "no published count" in _note(acted, backfill_cli.HELD_BACK)
     assert "taken back" not in shown
     assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-09": ["Served"]}
@@ -561,8 +556,7 @@ def test_a_month_playlist_deleted_between_the_plan_and_the_write_is_another_plan
 
 
 def test_owned_hearts_not_in_all_favorites_are_planned_by_month_and_those_taken_back_are_named(
-    given,
-):
+    given):
     """Five owned hearts All Favorites lacks, one off the account and one taken out: three placed."""
     cfg, folder_id, source_id = given.home
     rows = {title: given.deep(title) for title in ("Aug", "Sep A", "Sep B", "Gone", "Out")}
@@ -605,8 +599,7 @@ def test_a_heart_all_favorites_holds_and_undated_holds_is_not_given_a_month(give
 
 
 def test_a_heart_all_favorites_holds_at_the_root_beside_another_playlist_still_takes_its_month(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     """At the playlist root every root playlist sits beside the source, and only a dated one files."""
     cfg, _root_id = native_library
     _folder_id, source_id = _home(cfg, folder=False)

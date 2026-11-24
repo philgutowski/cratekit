@@ -60,7 +60,6 @@ def brief(native_library):
                 made.Attribute = 4
             handle.session.commit()
             ids[key] = str(made.ID)
-
         make("old", OLD, root_id, folder=True)
         make("batch", BATCH, root_id, 10, ("t1", "t2"))
         make("old batch", "2026-05-01 Tidal playlists", ids.pop("old"), 150, ("t6",))
@@ -166,8 +165,7 @@ def test_a_playlist_whose_record_cannot_be_read_is_never_said_to_have_none(nativ
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.startswith(
         "no readable landing record names it (1 session record(s) could not be read, "
-        "and one of them may)"
-    )
+        "and one of them may)")
     assert "no landing record names it" not in node.reason
     assert planned.unreadable_records == 1
     assert [(one.name, one.reason) for one in planned.left] == [(node.name, node.reason)]
@@ -182,7 +180,6 @@ def _refuse_under(monkeypatch, call: str, under: Path) -> None:
         if Path(path) == under or under in Path(path).parents:
             raise PermissionError(13, "Permission denied", str(path))
         return real(path, *args, **kwargs)
-
     monkeypatch.setattr(os, call, refused)
 
 
@@ -202,8 +199,7 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.startswith(
         "no readable landing record names it (the session log could not be listed, "
-        "and a record in it may)"
-    )
+        "and a record in it may)")
     assert [(one.name, one.reason) for one in _rotation(cfg).left] == [(node.name, node.reason)]
     # The plan carries the listing to every warning: unlisted, never a count of one.
     plan = _rotation(cfg)
@@ -238,8 +234,7 @@ def test_a_music_folder_that_cannot_be_read_is_never_read_as_no_batch_folder(nat
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.endswith(
         "and the music folder could not be read to look for a batch folder of its "
-        "name, which may be there"
-    )
+        "name, which may be there")
     assert "no batch folder under the music folder carries its name" not in node.reason
 
 
@@ -350,12 +345,10 @@ UNMIRRORED = (
 def _with_unmirrored(*batches: tuple[str, tuple[int, ...]]) -> mirror.Folder:
     sources = tuple(
         mirror.Source(name=mirror.title("INBOX", name), rows=tuple(row(n) for n in numbers))
-        for name, numbers in batches
-    )
+        for name, numbers in batches)
     present = frozenset(source.name for source in sources)
     return mirror.Folder(
-        name="INBOX", playlists=sources, retire=True, present=present, unmirrored=UNMIRRORED
-    )
+        name="INBOX", playlists=sources, retire=True, present=present, unmirrored=UNMIRRORED)
 
 
 def _inbox_step(area: Area):
@@ -379,8 +372,7 @@ def test_the_inbox_step_names_each_unmirrored_node_on_its_plan_and_its_line(inst
     assert step.counts["left"] == 2
     assert step.detail.endswith(
         f"; 2 node(s) in INBOX not mirrored: {LABELS} (36 row(s)), not recognised as a "
-        f"batch; {OLD}, the Old folder"
-    )
+        f"batch; {OLD}, the Old folder")
 
 
 def test_an_inbox_with_nothing_to_write_still_names_them(installed, monkeypatch):
@@ -459,14 +451,11 @@ def _frozen_as(cfg, run: str, edit) -> tuple:
 
 
 @pytest.mark.parametrize(
-    "held",
-    ["INBOX Old", [["a label only"]], [["a label", 3]], [("a", "b", "c")]],
-    ids=["text", "one part", "not text", "three parts"],
-)
+    "held", ["INBOX Old", [["a label only"]], [["a label", 3]], [("a", "b", "c")]],
+    ids=["text", "one part", "not text", "three parts"])
 def test_frozen_unmirrored_nodes_that_are_not_pairs_of_text_are_not_read(installed, held):
     def edit(document):
         document["library"]["folders"][0]["unmirrored"] = held
-
     frozen, said = _frozen_as(installed, "2026-11-05T00:00:00Z-ab12", edit)
     assert frozen is None and "is not one this build reads" in said
 
@@ -477,7 +466,6 @@ def test_a_version_four_frozen_plan_is_planned_afresh(installed):
     def edit(document):
         document["version"] = 4
         del document["library"]["folders"][0]["unmirrored"]
-
     frozen, said = _frozen_as(installed, "2026-11-05T00:00:00Z-cd34", edit)
     # 7 since U236, which froze the placements beside the snapshots U222 froze;
     # a version 4 record is still refused.

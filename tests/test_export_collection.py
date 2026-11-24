@@ -1,7 +1,5 @@
-"""``crate export collection`` and every verb that reads what it writes (R-745).
-
-Read back by a real parser, the strict reader and each verb taking an export, never its writer (D1).
-"""
+"""``crate export collection`` and every verb that reads what it writes (R-745), read back by a
+real parser, the strict reader and each verb taking an export, never its writer (D1)."""
 
 from __future__ import annotations
 
@@ -133,13 +131,11 @@ def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
 def _platform_seams(monkeypatch):
     """What a temporary library cannot speak for, as the cutover suite patches it."""
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
-        rb_writer, "read_rekordbox_settings", lambda *_a, **_k: {rb_writer.LIBRARY_SYNC_SETTING: 0}
-    )
+        rb_writer, "read_rekordbox_settings", lambda *_a, **_k: {rb_writer.LIBRARY_SYNC_SETTING: 0})
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real = rb_writer.integrity_ok
     monkeypatch.setattr(rb_writer, "integrity_ok", lambda target, **_: real(target, unlock=False))
@@ -176,8 +172,7 @@ def _machine(tmp_path, monkeypatch, *, moved: bool = False, rule: bool = True) -
     config.save(resolved)
     config.reset_cache()
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
-    )
+        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id))
     _seed(resolved, moved=moved)
     session.record_acknowledgment(resolved, terminal=lambda: True)
     return resolved
@@ -248,8 +243,7 @@ def _content(cfg: config.Config, rows) -> None:
             db_session.add(_row(
                 tables.DjmdContent, ID=identifier, Title=title, ArtistID="900",
                 FolderPath=str(path), BPM=STORED_TEMPO, Rating=stars, Length=300, FileType=5,
-                StockDate="2026-09-18", rb_local_deleted=1 if deleted else 0,
-            ))
+                StockDate="2026-09-18", rb_local_deleted=1 if deleted else 0))
         db_session.commit()
     engine.dispose()
 
@@ -297,7 +291,6 @@ def _seed_from_nothing(cfg: config.Config, *, moved: bool) -> None:
             for key in keys:
                 handle.add_to_playlist(made, handle.get_content(ID=key))
             return made
-
         inbox = folder(INTAKE)
         # THE TOMBSTONE IS A MEMBER, and the export must leave its key out.
         playlist(BATCH, inbox, ("11", "12", "41", "13"))
@@ -312,7 +305,6 @@ def _seed_from_nothing(cfg: config.Config, *, moved: bool) -> None:
         playlist("Empty Crate", late)
         folder("Hollow", crates)
         playlist(outbound_fakes.FAVORITES, None, ("12", "13"))
-
         removed = playlist("Removed Crate", None, ("11",))
         removed.rb_local_deleted = 1
         smart = playlist("Smart Crate", None)
@@ -411,7 +403,6 @@ def test_every_declared_count_equals_what_was_written(machine):
     document = _parsed(exported)
     collection = document.find("COLLECTION")
     assert int(collection.get("Entries")) == len(collection.findall("TRACK")) == len(LIVE)
-
     root = document.find("PLAYLISTS").find("NODE")
     assert int(root.get("Count")) == len(root.findall("NODE")) == len(ROOT_CHILDREN)
     for path, node in _tree(exported).items():
@@ -441,8 +432,7 @@ def test_the_envelope_counts_what_the_file_holds_and_names_what_it_left_out(mach
         playlists=len(EXPECTED_PLAYLISTS), bytes=destination.stat().st_size,
         memberships=sum(len(keys) for keys in EXPECTED_PLAYLISTS.values()),
         smart_playlists_omitted=1, memberships_omitted=1, tracks_without_a_file=len(BASELINE),
-        rows_normalised=0,
-    )
+        rows_normalised=0)
     warned = {warning["code"]: warning["message"] for warning in envelope["warnings"]}
     assert set(warned) == {
         "export-smart-playlist-omitted",
@@ -489,7 +479,6 @@ def test_a_row_carries_the_attributes_the_intake_emitter_writes_in_its_order(mac
         key.decode() for key, _value in rbxml._ATTR_PAIR.findall(content[ours.tag_start : ours.tag_end])
     )
     assert spelled == REKORDBOX_TRACK_ATTRIBUTES
-
     row = {"name": "n", "artist": "a", "location": "/library/n.flac"}
     theirs = collection_xml.build_track_xml(1, row, "2026-09-18", declared=DECLARED).encode()
     assert spelled == tuple(key.decode() for key, _value in rbxml._ATTR_PAIR.findall(theirs))
@@ -584,8 +573,7 @@ def test_a_version_nobody_could_read_is_written_as_unknown(machine, monkeypatch)
 
 def test_a_provenance_value_cannot_close_the_comment_it_sits_in():
     line = collection_export.provenance_line(
-        collection_export.Provenance(writer='x --> <NODE Name="y">', written="now")
-    )
+        collection_export.Provenance(writer='x --> <NODE Name="y">', written="now"))
     assert line.count("-->") == 1
     assert "<NODE" not in line
     assert '"y"' not in line
@@ -593,8 +581,7 @@ def test_a_provenance_value_cannot_close_the_comment_it_sits_in():
 
 @pytest.mark.parametrize("probe", ["rekordbox_running", "rekordbox_agent_running"])
 def test_rekordbox_or_its_agent_running_is_refused_and_nothing_is_written(
-    machine, monkeypatch, probe
-):
+    machine, monkeypatch, probe):
     """Under one slug, and with no folder of the destination's made."""
     monkeypatch.setattr(rb_writer, probe, lambda: True)
     destination = Path(machine.library.root) / "new" / "deeper" / "out.xml"
@@ -624,7 +611,6 @@ def test_a_file_that_came_and_went_is_still_refused_as_taken(tmp_path, monkeypat
         if Path(path) == destination and "x" in mode:
             raise FileExistsError(17, "File exists", str(path))
         return real_open(path, mode, *args, **kwargs)
-
     monkeypatch.setattr("builtins.open", taken_then_gone)
     with pytest.raises(CratekitError) as caught:
         export_collection._write_new(destination, b"the export")
@@ -639,7 +625,6 @@ def test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made(tmp_pa
 
     def fail(_descriptor):
         raise OSError("the volume went away")
-
     monkeypatch.setattr(export_collection.os, "fsync", fail)
     with pytest.raises(OSError):
         export_collection._write_new(destination, b"the export")
@@ -656,7 +641,6 @@ def _copies(monkeypatch) -> list[Path]:
     def watched(source):
         taken.append(Path(source))
         return real_copy(source)
-
     monkeypatch.setattr(rb_writer, "disposable_copy", watched)
     return taken
 
@@ -686,8 +670,7 @@ def test_an_existing_file_is_refused_before_the_database_is_copied(machine, monk
 
 
 def test_a_folder_nobody_may_write_to_is_refused_before_the_database_is_copied(
-    machine, monkeypatch
-):
+    machine, monkeypatch):
     locked = Path(machine.library.root) / "locked"
     locked.mkdir()
     locked.chmod(0o500)
@@ -730,7 +713,6 @@ def test_the_configured_database_is_never_opened_and_is_left_byte_for_byte(machi
     def watched(target, **kwargs):
         opened.append(Path(target).resolve())
         return real_open(target, **kwargs)
-
     monkeypatch.setattr(rb_writer, "open_db", watched)
     _export(machine)
     assert opened, "nothing was opened, so nothing was read"
@@ -855,7 +837,6 @@ def test_a_cutover_takes_the_file_as_its_fresh_export(either):
     results = tree_registry.cutover_precheck(machine, export=exported)
     assert {result.check: result.passed for result in results}["fresh-export"] is True
     assert all(result.passed for result in results), [r.cause for r in results if r.cause]
-
     verb = ["tree", "cutover", DECLARED.tree.id, "--export", str(exported)]
     code, recorded = _approved(verb, "tree.cutover.approve", "approve")
     assert code == int(ExitCode.OK), recorded
@@ -909,15 +890,12 @@ def _bind(monkeypatch, account) -> None:
         (["export", "playlist", CRATE], "export.playlist.confirm", ["13", "31", "11"]),
         (["sync", "favorites"], "sync.favorites.confirm", ["12", "13"]),
     ],
-    ids=["playlist-export", "favourites-sweep"],
-)
+    ids=["playlist-export", "favourites-sweep"])
 def test_a_queueing_verb_reads_the_file_and_queues_its_tracks(
-    either, monkeypatch, verb, gate, queued
-):
+    either, monkeypatch, verb, gate, queued):
     exported = _export(either)
     _bind(monkeypatch, outbound_fakes.FakeAccount(catalog={}))
     _run, job_id = approve_and_queue([*verb, "--export", str(exported)], gate)
-
     with jobs.open_store() as store:
         assert [item.item_id for item in jobs.items(store, job_id)] == queued
 
@@ -981,8 +959,7 @@ def test_an_identifier_is_spelled_one_way_in_the_collection_and_in_a_playlist():
 def test_two_identifiers_that_are_one_number_are_two_rows_the_reader_takes():
     document = _rendered(
         _at(("7", "/library/a.flac"), ("007", "/library/b.flac")),
-        [_Node("1", "root", "Held", 0, 1, ("007", "7"))],
-    )
+        [_Node("1", "root", "Held", 0, 1, ("007", "7"))])
     view = library_export.read_export(document.content)
     assert sorted(entry.track_id for entry in view.entries) == ["007", "7"]
     assert view.playlists[0].track_ids == ("007", "7")
@@ -991,8 +968,7 @@ def test_two_identifiers_that_are_one_number_are_two_rows_the_reader_takes():
 @pytest.mark.parametrize(
     "rows",
     [_at(("7", "/library/a.flac"), ("7", "/library/b.flac")), _at(('7" Evil="1', "/a.flac"))],
-    ids=["held-twice", "handed-straight-to-the-emitter-not-digits"],
-)
+    ids=["held-twice", "handed-straight-to-the-emitter-not-digits"])
 def test_an_identifier_the_readers_would_lose_is_refused_by_the_emitter(rows):
     with pytest.raises(CratekitError) as caught:
         _rendered(rows)
@@ -1003,8 +979,7 @@ def test_an_identifier_the_readers_would_lose_is_refused_by_the_emitter(rows):
 def test_a_character_no_document_may_carry_is_written_as_a_space_and_counted(bad):
     document = _rendered(
         [_Track(track_id="7", name=f"Left{bad}Right", comments="plain", location="/library/a.flac")],
-        [_Node("1", "root", f"Crate{bad}Name", 0, 1, ("7",))],
-    )
+        [_Node("1", "root", f"Crate{bad}Name", 0, 1, ("7",))])
     parsed = ET.fromstring(document.content)
     (track,) = parsed.find("COLLECTION").findall("TRACK")
     assert track.get("Name") == "Left Right"
@@ -1064,13 +1039,11 @@ def test_the_lookup_tables_are_read_once_each_and_not_once_per_row(machine):
             db_session.add(_row(
                 tables.DjmdContent, ID=str(6000 + index), Title=f"Title {index}",
                 ArtistID=str(5000 + index), FolderPath=str(_music(machine) / f"{index}.flac"),
-                rb_local_deleted=0,
-            ))
+                rb_local_deleted=0))
         db_session.commit()
     engine.dispose()
     handle = rb_writer.open_db(
-        rb_writer.live_db_path(machine), require_closed=False, check_app_version=False, cfg=machine
-    )
+        rb_writer.live_db_path(machine), require_closed=False, check_app_version=False, cfg=machine)
     statements: list[str] = []
     try:
         bound = handle.session.get_bind()
@@ -1088,18 +1061,15 @@ def test_the_day_added_falls_back_to_the_day_on_this_machines_clock():
     class Row:
         StockDate = ""
         created_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
-
     here = Row.created_at.astimezone().date().isoformat()
     assert collection_export._date_added(Row) == here
 
     class Evening(Row):
         created_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone(timedelta(hours=-4)))
-
     assert collection_export._date_added(Evening) == Evening.created_at.astimezone().date().isoformat()
 
     class Stocked(Row):
         StockDate = "2026-09-18"
-
     assert collection_export._date_added(Stocked) == "2026-09-18"
 
 
@@ -1325,27 +1295,22 @@ def test_a_rule_onto_a_second_volume_is_left_to_the_reader_that_follows_it():
     assert document.omitted.unmapped_paths == ()
 
 
-@pytest.mark.parametrize(
-    ("rules", "written", "read_back", "remapped", "left"),
-    [
-        # The identity rule is how a folder outside the root is declared readable.
-        (
-            (("/former", "/second"), ("/second", "/second")),
-            "/second/Music/a.flac", "/second/Music/a.flac", 1, (),
-        ),
-        # Written at the first target, the row would read back at the second.
-        (
-            (("/former", "/middle"), ("/middle", "/library")),
-            "/former/Music/a.flac", "/middle/Music/a.flac", 0, ("1",),
-        ),
-        # A target that is not a path is left to its rule, not under no rule, as doctor counts it.
-        ((("/former", "Music"),), "/former/Music/a.flac", "Music/Music/a.flac", 0, ("1",)),
-    ],
-    ids=["onto-itself", "moved-again", "target-not-a-path"],
-)  # fmt: skip
+@pytest.mark.parametrize(("rules", "written", "read_back", "remapped", "left"), [
+    # The identity rule is how a folder outside the root is declared readable.
+    (
+        (("/former", "/second"), ("/second", "/second")),
+        "/second/Music/a.flac", "/second/Music/a.flac", 1, (),
+    ),
+    # Written at the first target, the row would read back at the second.
+    (
+        (("/former", "/middle"), ("/middle", "/library")),
+        "/former/Music/a.flac", "/middle/Music/a.flac", 0, ("1",),
+    ),
+    # A target that is not a path is left to its rule, not under no rule, as doctor counts it.
+    ((("/former", "Music"),), "/former/Music/a.flac", "Music/Music/a.flac", 0, ("1",)),
+], ids=["onto-itself", "moved-again", "target-not-a-path"])  # fmt: skip
 def test_a_rule_places_a_row_only_where_it_reads_back_as_itself(
-    rules, written, read_back, remapped, left
-):
+    rules, written, read_back, remapped, left):
     prefix_map = tuple(locations.PrefixRule(source, target) for source, target in rules)
     document = _rendered(_at(("1", "/former/Music/a.flac")), prefix_map=prefix_map)
     assert _rows(document) == {"1": f"file://localhost{written}"}
@@ -1382,8 +1347,7 @@ def test_the_envelope_counts_a_row_left_to_its_rule(tmp_path, monkeypatch):
          "rule (3 under /a/b, 2 under /c/d, 1 under /e/f, and 1 other prefix), and"),
         ((("/a/b", 3), ("/c/d", 2), ("/e/f", 1), ("/g/h", 1), ("/i/j", 1)),
          "rule (3 under /a/b, 2 under /c/d, 1 under /e/f, and 2 other prefixes), and"),
-    ],
-)
+    ])
 def test_the_warning_names_three_prefixes_and_counts_the_rest(prefixes, listed):
     """A drive that has gone dark is a line here, where a count would hide it."""
     rows = tuple(str(index) for index in range(sum(count for _prefix, count in prefixes)))

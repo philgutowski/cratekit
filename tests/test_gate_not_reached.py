@@ -22,7 +22,7 @@ def digest_spec(name: str, *, explicit: bool = True, prompt: str = "Apply this p
 
 
 FIRST, SECOND = (
-    digest_spec(f"probe.{which}", prompt=f"Apply the {which} plan?") for which in ("first", "second")
+    digest_spec(f"probe.{one}", prompt=f"Apply the {one} plan?") for one in ("first", "second")
 )
 UNBOUND = registry.GateSpec("probe.unbound", ("proceed", "abort"), "Proceed?", explicit=True)
 

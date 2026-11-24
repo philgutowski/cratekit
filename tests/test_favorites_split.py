@@ -122,13 +122,11 @@ def test_a_quarter_of_seventeen_splits_into_fifteen_and_two_and_is_retired(stage
 
 
 def test_a_member_no_job_dates_takes_the_accounts_date_and_one_dated_nowhere_goes_to_undated(
-    staged,
-):
+    staged):
     # Two hearts whose job froze no date key, as every job before U120 did.
     cfg, folder_id, (q3,), fake = staged(
         {"Summer": None, "Nowhere": None}, ("2026-Q3", "Summer", "Nowhere"),
-        dates={"Summer": AUG, "Nowhere": None},
-    )
+        dates={"Summer": AUG, "Nowhere": None})
     acted, shown = _approved()
     assert shown["month playlists"] == ["2026-08 (1), made", "Undated (1), made"]
     # The row's artist is linked, so the screen names it (U163).
@@ -226,8 +224,7 @@ def test_a_quarter_that_changed_after_the_approval_is_refused_and_nothing_is_wri
 
 
 def test_a_run_stopped_after_its_additions_replans_to_the_same_digest_and_finishes(
-    staged, monkeypatch
-):
+    staged, monkeypatch):
     hearts = {"One": OCT.format(day=1), "Two": NOV}
     cfg, folder_id, (q4,), _fake = staged(hearts, ("2026-Q4", "One", "Two"))
     approved = split_cli.planned(cfg, source=SOURCE)
@@ -343,8 +340,7 @@ _SHAPES = {
         ("wrong parent", "not a live plain playlist named '2026-10' under 'f'"),
         ("not made", "was not made"), ("quarter renamed", "row 'q' changed ['Name']"),
         ("content", "djmdContent row changed"),
-    ],
-)
+    ])
 def test_an_addition_the_plan_did_not_name_is_a_violation(shape, expected):
     world = {
         "playlists": {"f": FOLDER, "q": QUARTER, "m": MONTH},
@@ -377,8 +373,7 @@ def test_a_member_taken_out_of_all_favorites_goes_to_no_month_and_its_quarter_st
 
 
 def test_a_heart_every_sync_froze_again_is_resolved_once_with_its_first_dated_mention(
-    given, monkeypatch
-):
+    given, monkeypatch):
     # The oldest job froze no date, the next dated it in October, the last in November.
     hearts_swept(given.cfg, {"Often": UNKNOWN}, run_id="")
     hearts_swept(given.cfg, {"Often": OCT.format(day=7)}, run_id="")

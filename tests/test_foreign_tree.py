@@ -1,9 +1,6 @@
-"""Another app's folder at the top of rekordbox's tree is left exactly as it is (U185).
-
-The predicate naming DEADCA7's top level folder, the commit guard every write passes, and the
-taxonomy's refusal of a tree of that name, over a disposable database carrying a push
-(``tests/deadca7_fixtures.py``).
-"""
+"""Another app's folder at the top of rekordbox's tree is left exactly as it is (U185): the
+predicate naming DEADCA7's top level folder, the commit guard every write passes, and the taxonomy's
+refusal of a tree of that name, over a database carrying a push (``tests/deadca7_fixtures.py``)."""
 
 from __future__ import annotations
 
@@ -82,8 +79,7 @@ def test_a_folder_named_deadca7_at_the_top_is_foreign_under_every_root_spelling(
         ("DEADCA7 sets", "root", 1, "the name is matched whole"),
         ("DEADCA7", "root", None, "a row that cannot say it is a folder is not one"),
         ("DEADCA7", "root", "x", "nor one whose kind is not a number"),
-    ],
-)
+    ])
 def test_nothing_else_is_a_foreign_root(name, parent, attribute, why):
     assert not foreign_tree.is_foreign_root(name, parent, attribute), why
 
@@ -100,8 +96,7 @@ def test_every_node_under_the_root_is_foreign_at_any_depth_and_nothing_beside_it
 
 def test_a_cycle_ends_the_walk_rather_than_looping():
     _roots, ids = foreign_tree.ids_of(
-        [("1", "DEADCA7", "root", 1), ("2", "a", "3", 1), ("3", "b", "2", 1), ("4", "c", "1", 0)]
-    )
+        [("1", "DEADCA7", "root", 1), ("2", "a", "3", 1), ("3", "b", "2", 1), ("4", "c", "1", 0)])
     assert ids == {"1", "4"}
 
 
@@ -112,8 +107,7 @@ def test_the_reading_at_open_names_the_push_and_not_a_namesake_below_the_top(
     with closing(sqlite3.connect(path)) as conn:
         conn.execute(
             "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, rb_local_deleted) "
-            "VALUES ('88950', 1, 'Mine', 1, 'root', 0)"
-        )
+            "VALUES ('88950', 1, 'Mine', 1, 'root', 0)")
         conn.commit()
     dc7.nested_namesake(path, "88950", node_id="88900")
     db = W.open_db(path, unlock=False)
@@ -148,8 +142,7 @@ def test_the_reading_at_open_names_the_push_and_not_a_namesake_below_the_top(
     ids=[
         "folder-renamed", "membership-added", "membership-rewritten-to-another-owner",
         "playlist-made-inside", "position-named-at-the-top", "cue-on-a-pushed-track",
-    ],
-)
+    ])
 def test_a_write_to_the_push_is_refused_and_rolled_back(handle, edit, said):
     db, path, pushed = handle
     before = dc7.written(path, pushed)
@@ -179,8 +172,7 @@ def test_a_playlist_of_ones_own_moved_into_the_folder_is_refused(handle):
 
 
 def test_a_soft_delete_of_a_pushed_playlist_is_refused_even_where_the_commit_admits_removals(
-    handle,
-):
+    handle):
     """The removal a few writers may ask for by name is still not one of these."""
     db, path, pushed = handle
     before = dc7.written(path, pushed)
@@ -232,7 +224,6 @@ def test_a_reading_that_failed_at_open_is_kept_as_unread_and_refuses(handle):
 
     def unreadable(*_args, **_kwargs):
         raise RuntimeError("the table could not be read")
-
     held = SimpleNamespace(session=SimpleNamespace(execute=unreadable))
     foreign_tree.remember(held)
     assert getattr(held, foreign_tree.ATTRIBUTE) == foreign_tree.UNREAD

@@ -176,8 +176,7 @@ def _switch_off_by_hand(module: str) -> None:
 
 
 def test_through_the_dispatcher_the_stale_refusal_shows_the_moved_plan_and_a_decide_applies_it(
-    configured,
-):
+    configured):
     """``profile set``'s two acts with a module switched by hand between them."""
     _, out, _ = _drive(["--output", "json", "profile", "set", "slim"])
     run_id = json.loads(out)["run_id"]

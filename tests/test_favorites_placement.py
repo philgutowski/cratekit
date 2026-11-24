@@ -88,8 +88,7 @@ def _names_under(db, parent) -> dict[str, str]:
         (datetime(2026, 10, 31, 21, 0, tzinfo=timezone(timedelta(hours=-5))), "2026-11"),
         # And on the last of December it is the next year's January.
         (datetime(2026, 12, 31, 20, 0, tzinfo=timezone(timedelta(hours=-5))), "2027-01"),
-    ],
-)
+    ])
 def test_the_month_is_the_utc_month(moment, label):
     assert placeholders.month_of(moment) == label
     assert placeholders.month_label(moment) == label
@@ -129,8 +128,7 @@ def test_the_source_is_the_classs_playlist_else_the_outbound_default():
     assert placement.source_name(DECLARED) == "All Favorites"
     classes = DECLARED.sub_classes
     renamed = tuple(
-        replace(c, signal_playlist="Hearts") if c.id == "favorites" else c for c in classes
-    )
+        replace(c, signal_playlist="Hearts") if c.id == "favorites" else c for c in classes)
     assert placement.source_name(replace(DECLARED, sub_classes=renamed)) == "Hearts"
     undeclared = replace(DECLARED, sub_classes=tuple(c for c in classes if c.id != "favorites"))
     assert placement.source_name(undeclared) == outbound_source.DEFAULT_FAVORITES_PLAYLIST
@@ -296,8 +294,7 @@ def test_no_content_row_tempo_or_rating_is_written(cfg, db):
         rows = conn.execute("SELECT ID, BPM, Rating, AnalysisDataPath FROM djmdContent").fetchall()
     assert len(rows) == 6
     assert all(
-        bpm in (None, 0) and rating in (None, 0) and not path for _id, bpm, rating, path in rows
-    )
+        bpm in (None, 0) and rating in (None, 0) and not path for _id, bpm, rating, path in rows)
 
 
 def test_members_marked_removedhips_are_read_apart_from_live_ones(cfg, db):
@@ -480,11 +477,9 @@ def _shown(db, parent) -> list[str]:
         ("2026-Q4", False, True, (placeholders.RANK_OTHER, 0)),
         ("2026-13", False, True, (placeholders.RANK_OTHER, 0)),
         ("Warmup", False, True, (placeholders.RANK_OTHER, 0)),
-    ],
-)
+    ])
 def test_the_folder_rank_reads_all_favorites_then_months_newest_first_then_undated(
-    name, source, plain, rank
-):
+    name, source, plain, rank):
     assert placeholders.folder_rank(name, source=source, plain=plain) == rank
 
 
@@ -550,8 +545,7 @@ def test_a_removed_sibling_keeps_its_position_when_a_month_is_seated(cfg, db):
         ([1, 2, 3], (1, 2, 3)), ([3, 1, 2], (1, 2, 3)), ([1, 4, 9], (1, 4, 9)),
         ([1, 4, 4, 9], (1, 4, 5, 9)), ([2, 2, 2], (2, 3, 4)), ([1, 5, 5, 6], (1, 5, 6, 7)),
         ([], ()),
-    ],
-)
+    ])
 def test_the_slots_are_the_rows_own_positions_with_a_shared_one_lifted(held, given):
     assert placement.slots([SimpleNamespace(Seq=seq) for seq in held]) == given
 

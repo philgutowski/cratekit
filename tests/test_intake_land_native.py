@@ -62,19 +62,16 @@ def _release_process_locks():
 def _platform_seams(monkeypatch):
     """What a temporary library cannot speak for, as the cutover suite patches it."""
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
         rb_writer, "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
+        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0})
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
-        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
-    )
+        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
 
 
 @pytest.fixture
@@ -93,8 +90,7 @@ def _library_root(tmp_path: Path, monkeypatch) -> Path:
 
 def _config_data(root: Path, profile: str | None = None) -> dict:
     data = valid_data(
-        root, rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"}
-    )
+        root, rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"})
     if profile is not None:
         data["profile"] = {"name": profile}
     return data
@@ -105,12 +101,10 @@ def _seed_binding_rows(cfg: config.Config) -> None:
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
-
     engine = create_engine(f"sqlite:///{cfg.library.db_path}")
     with Session(engine) as db_session:
         db_session.add(
-            _row(tables.DjmdMenuItems, ID="m-track", Name="TRACK", rb_local_usn=BINDING_LINK)
-        )
+            _row(tables.DjmdMenuItems, ID="m-track", Name="TRACK", rb_local_usn=BINDING_LINK))
         for content_id in REKORDBOX_ROWS:
             db_session.get(tables.DjmdContent, content_id).ContentLink = LIBRARY_LINK
         for device_id, master in (OTHER_DEVICE, MY_DEVICE):
@@ -132,8 +126,7 @@ def _configured(root: Path, monkeypatch, *, profile: str | None = None) -> confi
     adopt_fixtures.build(resolved, ())
     _seed_binding_rows(resolved)
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
-    )
+        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id))
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     return resolved
 
@@ -152,10 +145,7 @@ def _cut_over_intake(cfg: config.Config) -> str:
         tree_registry.Registry().with_record(
             tree_registry.TreeRecord(
                 tree_id=INTAKE, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY, root_id=root_id,
-                source=tree_registry.DerivationSource.TAXONOMY,
-            )
-        ),
-    )
+                source=tree_registry.DerivationSource.TAXONOMY)))
     return root_id
 
 
@@ -191,15 +181,13 @@ def _stage(cfg: config.Config, silence: Path, name: str, *, head: str = "01A - 1
     path = _staging(cfg) / name
     shutil.copyfile(silence, path)
     assert tags.write_tags(
-        path, {"title": f"{head} - {Path(name).stem}", "artist": "Probe", "genre": "Deep House"},
-    )
+        path, {"title": f"{head} - {Path(name).stem}", "artist": "Probe", "genre": "Deep House"})
     return path
 
 
 def _music(cfg: config.Config, batch: str = BATCH) -> Path:
     """Where a native landing files ``batch`` (U164): its year folder under the processed tree."""
     from cratekit.intake import batch_name, shelve
-
     when, said = shelve.filed_parts(batch, on=batch_name.today())
     return shelve.processed_root(cfg) / f"{when.year}" / shelve.filed_name(when, said)
 
@@ -241,16 +229,14 @@ def _batch_playlist(cfg: config.Config) -> list[tuple]:
 def _members(cfg: config.Config, playlist_id: str) -> list[str]:
     rows = _query(
         cfg, "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY TrackNo",
-        playlist_id,
-    )
+        playlist_id)
     return [str(row[0]) for row in rows]
 
 
 def _advance_usn(conn: sqlite3.Connection) -> None:
     """Advance the library's local update count by one, as rekordbox does when it adds a row."""
     conn.execute(
-        "UPDATE agentRegistry SET int_1 = int_1 + 1 WHERE registry_id = 'localUpdateCount'"
-    )
+        "UPDATE agentRegistry SET int_1 = int_1 + 1 WHERE registry_id = 'localUpdateCount'")
 
 
 def _hold(cfg: config.Config, content_id: str, path: str, link: int | None = None) -> None:
@@ -321,8 +307,7 @@ def _land_fails() -> dict:
 
 
 def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     staged = [_stage(cfg, silence, name) for name in ("One.flac", "Three.flac", "Two.flac")]
     code, acted, refused = _two_acts(_land())
@@ -383,11 +368,9 @@ def test_a_landing_names_the_pass_it_was_given_on_the_record_sync_mark_reads(one
 
 
 def test_two_unnamed_landings_on_one_day_are_two_playlists_and_never_one(
-    native_library, silence, monkeypatch
-):
+        native_library, silence, monkeypatch):
     """U110: the writer adds to a playlist found by name, or two batches merge silently."""
     from cratekit.intake import batch_name
-
     cfg, root_id = native_library
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 3))
     _stage(cfg, silence, "One.flac")
@@ -396,8 +379,7 @@ def test_two_unnamed_landings_on_one_day_are_two_playlists_and_never_one(
     second = _landed_ok(["intake", "land"])
     named = _query(
         cfg, "SELECT Name, ParentID FROM djmdPlaylist WHERE Name LIKE ? ORDER BY Name",
-        "2026-10-03 Downloads%",
-    )
+        "2026-10-03 Downloads%")
     assert named == [("2026-10-03 Downloads", root_id), ("2026-10-03 Downloads 2", root_id)]
     assert [first["data"]["items"][-1]["playlist"], second["data"]["items"][-1]["playlist"]] == [
         "2026-10-03 Downloads", "2026-10-03 Downloads 2",
@@ -405,11 +387,9 @@ def test_two_unnamed_landings_on_one_day_are_two_playlists_and_never_one(
 
 
 def test_a_default_name_taken_after_the_approval_is_refused_and_writes_nothing(
-    one_staged, monkeypatch
-):
+        one_staged, monkeypatch):
     """U110: a name taken between the gate and the write is asked again under the lock."""
     from cratekit.intake import batch_name
-
     cfg = one_staged
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 3))
     real_lock = landing.batch_lock
@@ -417,7 +397,6 @@ def test_a_default_name_taken_after_the_approval_is_refused_and_writes_nothing(
     def take_then_lock(batch):
         (Path(cfg.library.root) / cfg.library.music_dir / batch).mkdir(parents=True)
         return real_lock(batch)
-
     monkeypatch.setattr(landing, "batch_lock", take_then_lock)
     code, acted, _ = _two_acts(["intake", "land"])
     assert acted["cause"]["reason"] == "decision-stale", acted
@@ -437,9 +416,7 @@ def test_the_landed_rows_carry_what_rekordbox_loads_and_no_analysis_value(native
         cfg,
         f"SELECT ID, FolderPath, DeviceID, MasterDBID, {rb_writer.FILE_ID_COLUMN}, "
         f"{rb_writer.CONTENT_LINK_COLUMN}, {', '.join(defaults)}, {', '.join(native.LEFT_EMPTY)} "
-        "FROM djmdContent WHERE FolderPath LIKE ?",
-        f"%/{FILED_AS}/%",
-    )
+        "FROM djmdContent WHERE FolderPath LIKE ?", f"%/{FILED_AS}/%")
     assert len(rows) == 2
     # Defaults COMPARED AS TEXT: the binding declares ``DJPlayCount`` a string.
     wanted = {column: str(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()}
@@ -479,7 +456,6 @@ def _file_id_lies_once(monkeypatch):
     def lying_once(path: Path) -> int:
         calls.append(path)
         return real(path) + (1 if len(calls) == 1 else 0)
-
     monkeypatch.setattr(native, "file_id_of", lying_once)
     return rb_writer.FILE_ID_COLUMN, lambda value, path: int(value) == Path(path).stat().st_ino + 1
 
@@ -491,15 +467,13 @@ def _link_keeps_the_bindings(monkeypatch):
     def keeping_the_bindings(content, row, plan):
         real(content, row, plan)
         setattr(content, rb_writer.CONTENT_LINK_COLUMN, BINDING_LINK)
-
     monkeypatch.setattr(native, "_restamp", keeping_the_bindings)
     return rb_writer.CONTENT_LINK_COLUMN, lambda value, _path: value == BINDING_LINK
 
 
 @pytest.mark.parametrize("dropped", [_file_id_lies_once, _link_keeps_the_bindings])
 def test_a_row_whose_file_id_or_link_did_not_take_is_refused_after_the_commit(
-    one_staged, monkeypatch, dropped
-):
+        one_staged, monkeypatch, dropped):
     """A dropped column makes a row rekordbox will not load; the read back names the restore."""
     cfg = one_staged
     column, durable = dropped(monkeypatch)
@@ -522,7 +496,6 @@ def test_a_failure_after_the_commit_landed_is_recorded_and_still_refuses(one_sta
     def committed_then_failed(*args, **kwargs):
         real(*args, **kwargs)
         raise RuntimeError("a step after the commit failed")
-
     monkeypatch.setattr(rb_writer, "commit_guarded", committed_then_failed)
     _land_fails()
     (record,) = session.records(cfg)
@@ -532,15 +505,13 @@ def test_a_failure_after_the_commit_landed_is_recorded_and_still_refuses(one_sta
 def _landed(*rows: native.AddedRow, content_link: int | None = None) -> native.NativeLanded:
     return native.NativeLanded(
         tree_id=INTAKE, playlist="p", playlist_id="9", added=tuple(rows), present=(),
-        memberships_added=len(rows), session_id="s-1", content_link=content_link,
-    )
+        memberships_added=len(rows), session_id="s-1", content_link=content_link)
 
 
 def _added_row(path: Path, content_id: str, file_id: str, link: int) -> native.AddedRow:
     return native.AddedRow(
         target=path, content_id=content_id, title="t", folder_path=str(path), empty={},
-        file_id=file_id, content_link=link,
-    )
+        file_id=file_id, content_link=link)
 
 
 def test_assert_rows_identified_holds_the_file_id_and_the_link_to_the_ones_planned(tmp_path):
@@ -638,7 +609,6 @@ def _majority(cfg: config.Config, rows: dict[str, tuple[int | str | None, int]])
     """Replace the library's content rows with ``rows`` (link, deleted) and read the majority."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
-
     _execute(cfg, "DELETE FROM djmdContent")
     for content_id, (link, deleted) in rows.items():
         _execute(
@@ -706,8 +676,7 @@ def test_the_link_is_not_an_analysis_column_and_not_bookkeeping():
 
 
 def test_the_gate_screen_names_every_row_its_columns_the_playlist_and_the_database(
-    native_library, one_staged
-):
+        native_library, one_staged):
     """And the gate takes no inline answer, and an abort moves and writes nothing."""
     cfg, root_id = native_library
     inline = _asked(["-d", f"{GATE}=apply", *_land()])
@@ -788,7 +757,6 @@ def test_a_second_approved_run_over_the_landed_files_adds_nothing(native_library
         with _opened(cfg) as db:
             plan = native.plan_rows(cfg, db, tree_id=INTAKE, registry=registry, batch=BATCH, files=files)
             return native.apply_rows(cfg, db, plan, analysis_roots=[Path(cfg.library.root)])
-
     first = run()
     assert len(first.added) == 3 and first.memberships_added == 3
     second = run()
@@ -800,8 +768,7 @@ def test_a_second_approved_run_over_the_landed_files_adds_nothing(native_library
 
 
 def test_the_same_files_staged_again_are_refused_at_the_move_and_the_collection_is_unchanged(
-    one_staged, silence
-):
+        one_staged, silence):
     cfg = one_staged
     _landed_ok()
     before = _landed_rows(cfg)
@@ -842,8 +809,7 @@ def _assert_refused_before_the_gate(cfg: config.Config, code: int, envelope: dic
 
 
 def test_an_intake_tree_on_the_bridge_is_refused_before_the_gate_naming_the_cutover(
-    acknowledged, silence
-):
+        acknowledged, silence):
     """No --export and no cutover: the refusal names the cutover, and the engine's does too."""
     cfg = acknowledged
     _stage(cfg, silence, "One.flac")
@@ -869,8 +835,7 @@ def test_no_acknowledgment_refuses_before_the_gate(machine, silence):
 
 
 def test_rekordbox_running_or_an_export_on_a_native_tree_is_refused_before_the_gate(
-    one_staged, tmp_path, monkeypatch
-):
+        one_staged, tmp_path, monkeypatch):
     cfg = one_staged
     export = tmp_path / "fresh.xml"
     export.write_text("<DJ_PLAYLISTS/>\n", encoding="utf-8")
@@ -893,13 +858,11 @@ def test_an_empty_staging_folder_is_a_plan_of_nothing_and_asks_no_explicit_gate(
 
 
 def test_a_failure_on_the_second_file_leaves_the_database_as_it_was_and_names_the_moves(
-    native_library, silence, monkeypatch
-):
+        native_library, silence, monkeypatch):
     cfg, _root = native_library
     for name in ("One.flac", "Two.flac", "Three.flac"):
         _stage(cfg, silence, name)
     from pyrekordbox.db6.database import Rekordbox6Database
-
     real = Rekordbox6Database.add_content
     calls: list[str] = []
 
@@ -908,7 +871,6 @@ def test_a_failure_on_the_second_file_leaves_the_database_as_it_was_and_names_th
         if len(calls) == 2:
             raise RuntimeError("the second file broke the binding")
         return real(self, path, **kwargs)
-
     monkeypatch.setattr(Rekordbox6Database, "add_content", failing)
     acted = _land_fails()
     assert len(calls) == 2
@@ -938,18 +900,15 @@ def test_a_failure_on_the_second_file_leaves_the_database_as_it_was_and_names_th
     ],
 )
 def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commit(
-    one_staged, monkeypatch, sql, named
-):
+        one_staged, monkeypatch, sql, named):
     """Written by SQL after the flush, past the in memory judge, so refused on the row stored."""
     from sqlalchemy import text
-
     cfg = one_staged
     real = native._restamp
 
     def restamp_and_taint(content, row, plan):
         real(content, row, plan)
         content._sa_instance_state.session.execute(text(sql), {"id": str(content.ID)})
-
     monkeypatch.setattr(native, "_restamp", restamp_and_taint)
     acted = _land_fails()
     assert acted["cause"]["reason"] == "whitelist-violation"
@@ -991,13 +950,11 @@ def test_the_stored_path_is_nfc_and_the_swap_is_anchored_on_a_whole_component(tm
     # No drives recorded: the mounted path, composed.
     decomposed = tmp_path / "Nöpi.flac"
     assert native.stored_folder_path(decomposed, base_drive=None, current_drive=None) == str(
-        tmp_path / "Nöpi.flac"
-    )
+        tmp_path / "Nöpi.flac")
 
 
 def test_a_suffix_the_database_has_no_type_for_is_left_in_staging_and_the_batch_lands(
-    one_staged, silence
-):
+        one_staged, silence):
     """One file's problem is one file's refusal: the binding's file type is an enum of five."""
     cfg = one_staged
     odd = _stage(cfg, silence, "Two.flac")
@@ -1015,8 +972,7 @@ def test_a_suffix_the_database_has_no_type_for_is_left_in_staging_and_the_batch_
 
 
 def test_a_file_whose_tags_resolve_to_no_sub_stays_in_staging_on_the_native_medium_too(
-    one_staged, silence, monkeypatch
-):
+        one_staged, silence, monkeypatch):
     """A row with no route is refused, driven at the check's seam."""
     cfg = one_staged
     _stage(cfg, silence, "Two.flac")
@@ -1027,10 +983,8 @@ def test_a_file_whose_tags_resolve_to_no_sub_stays_in_staging_on_the_native_medi
             return landing.Refused(
                 path=path, reason="intake-list-unusable",
                 sentence=f"{path.name} resolves to a bucket with no declared sub, so it "
-                f"was left in staging; run crate tag folder over it and land it again",
-            )
+                f"was left in staging; run crate tag folder over it and land it again")
         return real(path, declared)
-
     monkeypatch.setattr(landing, "_unplaceable", unplaceable)
     acted = _landed_ok()
     assert _staged_names(cfg) == ["Two.flac"]
@@ -1064,8 +1018,7 @@ def _strings(value) -> list[str]:
 
 
 def test_the_same_files_against_a_copy_at_another_path_digest_equal_and_each_screen_names_its_path(
-    one_staged, silence
-):
+        one_staged, silence):
     """R-922: a copy at another path digests equal, each screen naming its file; an answer
     over the live file is pinned to it, so the copy's continuation is stale (U161)."""
     cfg = one_staged
@@ -1096,8 +1049,7 @@ def test_the_same_files_against_a_copy_at_another_path_digest_equal_and_each_scr
 
 
 def test_the_engine_identity_names_the_device_and_master_id_and_no_database_path(
-    one_staged, monkeypatch
-):
+        one_staged, monkeypatch):
     """The device and master id identify the library and are digested; the path is not."""
     cfg = one_staged
     real = native.identity
@@ -1128,13 +1080,11 @@ def test_the_engine_identity_names_the_device_and_master_id_and_no_database_path
 
 
 def test_a_decision_recorded_against_the_path_bearing_digest_is_stale_and_writes_nothing(
-    one_staged, monkeypatch
-):
+        one_staged, monkeypatch):
     """An answer recorded against a digest that named the file is stale, and writes nothing."""
     real = native.identity
     monkeypatch.setattr(
-        native, "identity", lambda plan: {**real(plan), "database": str(plan.database)}
-    )
+        native, "identity", lambda plan: {**real(plan), "database": str(plan.database)})
     refused, run_id = _answered(_land())
     monkeypatch.setattr(native, "identity", real)
     code, acted = drive(["--run", run_id, *_land()])

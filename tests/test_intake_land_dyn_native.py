@@ -13,6 +13,7 @@ import pytest
 
 from cratekit.core import config, rb_writer, session, tags
 from cratekit.intake import drift, land_cli, native, rekordbox_check
+from tests import test_intake_land_vox_native as vox_suite
 from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
 from tests.test_intake_land_native import _asked, _execute, _land, _lands, _query, _stage
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -24,14 +25,6 @@ from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
-from tests.test_intake_land_vox_native import (
-    _add_rows,
-    _added,
-    _content_id,
-    _my_tag,
-    _plan,
-    _refused_at_the_commit,
-)
 
 #: A category of the person's own, which the writer copies the Analysis category's shape from.
 MOOD_ID = "8000"
@@ -62,7 +55,7 @@ def _marked(cfg: config.Config) -> frozenset[str]:
 def writable(native_library):
     """The landing library, holding one category of the person's and no dyn tag."""
     cfg = native_library[0]
-    _add_rows(cfg, _my_tag(MOOD_ID, "Mood", "root", "mood"))
+    vox_suite._add_rows(cfg, vox_suite._my_tag(MOOD_ID, "Mood", "root", "mood"))
     return cfg
 
 
@@ -93,12 +86,9 @@ def _added_item(shown: dict, name: str) -> dict:
         ("4.4", drift.VARIABLE, drift.VARIABLE, True),
         ("1.5", drift.VARIABLE, drift.VARIABLE, True), ("1.4", drift.STEADY, drift.STEADY, False),
         ("0.0", drift.STEADY, drift.STEADY, False), (None, drift.UNKNOWN, drift.UNKNOWN, False),
-    ],
-    ids=["moving", "exactly-at-the-cut", "below", "still", "too-little-pulse"],
-)
+    ], ids=["moving", "exactly-at-the-cut", "below", "still", "too-little-pulse"])
 def test_a_landed_row_is_tagged_dyn_exactly_when_its_drift_reads_variable(
-    writable, silence, level, verdict, planned, tagged
-):
+        writable, silence, level, verdict, planned, tagged):
     cfg = writable
     assert cfg.analysis.drift_cut == config.DEFAULT_DRIFT_CUT == 1.5
     _read(cfg, silence, "One.flac", level, verdict)
@@ -106,7 +96,7 @@ def test_a_landed_row_is_tagged_dyn_exactly_when_its_drift_reads_variable(
     item = _added_item(_shown(refused), "One.flac")
     assert item["drift_verdict"] == planned and item["dyn"] is tagged
     assert item["drift"] == (None if level is None else float(level))
-    content_id = _content_id(cfg, "One.flac")
+    content_id = vox_suite._content_id(cfg, "One.flac")
     assert (content_id in _marked(cfg)) is tagged, "the check reads another answer"
     (landed,) = [i for i in acted["data"]["items"] if i.get("content_id") == content_id]
     assert landed["dyn"] is tagged, "the report's read back disagrees with the table"
@@ -120,8 +110,7 @@ def test_a_landed_row_is_tagged_dyn_exactly_when_its_drift_reads_variable(
 
 
 def test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_each_selection(
-    writable, silence
-):
+        writable, silence):
     cfg = writable
     _read(cfg, silence, "Live.flac", "6.2", drift.VARIABLE)
     _read(cfg, silence, "Two.flac", "9.9", drift.VARIABLE)
@@ -129,7 +118,7 @@ def test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_eac
     _read(cfg, silence, "Ambient.flac", None, drift.UNKNOWN)
     _read(cfg, silence, "Older.flac", None, None)
     acted, refused = _lands()
-    tagged = {_content_id(cfg, name) for name in ("Live.flac", "Two.flac")}
+    tagged = {vox_suite._content_id(cfg, name) for name in ("Live.flac", "Two.flac")}
     assert _marked(cfg) == tagged
     categories = _query(cfg, "SELECT ID FROM djmdMyTag WHERE Name = ?", native.DYN_CATEGORY)
     values = _query(cfg, "SELECT ID, ParentID FROM djmdMyTag WHERE Name = ?", native.DYN_VALUE)
@@ -191,8 +180,7 @@ def test_a_landing_whose_every_row_is_dyn_says_the_visit_ends_on_dynamic(writabl
 # Never a guess
 @pytest.mark.parametrize(("level", "verdict"), [(None, None), ("lots", drift.VARIABLE)])
 def test_a_file_with_no_drift_reading_or_no_number_is_counted_unscored_and_untagged(
-    writable, silence, level, verdict
-):
+        writable, silence, level, verdict):
     """A score that is not a number is unscored whatever its verdict says."""
     cfg = writable
     _read(cfg, silence, "Older.flac", level, verdict)
@@ -231,8 +219,7 @@ def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(cf
         "other row to run Normal the visit ends on Dynamic: Live.flac" in message
     ), message
     assert native.DYN_NO_CATEGORY.endswith(
-        "with Analysis Mode Dynamic by hand, before any Normal run and left out of it"
-    )
+        "with Analysis Mode Dynamic by hand, before any Normal run and left out of it")
 
 
 def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(cfg, silence):
@@ -245,10 +232,9 @@ def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(cfg, 
 
 def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(cfg, silence):
     """Over a removed dyn value the check's own read back counts no tag and names the row."""
-    _add_rows(
-        cfg, _my_tag(ANALYSIS_ID, native.DYN_CATEGORY, "root", "analysis-category", seq=1),
-        _my_tag(DYN_ID, native.DYN_VALUE, ANALYSIS_ID, "dyn-value", removed=1),
-    )
+    vox_suite._add_rows(
+        cfg, vox_suite._my_tag(ANALYSIS_ID, native.DYN_CATEGORY, "root", "analysis-category", seq=1),
+        vox_suite._my_tag(DYN_ID, native.DYN_VALUE, ANALYSIS_ID, "dyn-value", removed=1))
     _read(cfg, silence, "One.flac", "5.0", drift.VARIABLE)
     acted = _lands()[0]
     assert "dyn tagged" not in acted["data"]["totals"]
@@ -261,7 +247,7 @@ def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(cfg, sile
 
 def test_a_refused_commit_leaves_no_tag(writable, silence, monkeypatch):
     _read(writable, silence, "One.flac", "5.0", drift.VARIABLE)
-    _refused_at_the_commit(writable, monkeypatch)
+    vox_suite._refused_at_the_commit(writable, monkeypatch)
 
 
 # What is approved
@@ -286,7 +272,7 @@ def test_the_engine_digest_covers_each_rows_drift_verdict_and_answer():
     """At the engine, where the file's own fingerprint is not in the digest."""
     variable = {"drift": 4.0, "drift_verdict": drift.VARIABLE}
     every = [
-        native.identity(_plan((_added("One.flac", **row),), drift_cut=cut, **blocked))
+        native.identity(vox_suite._plan((vox_suite._added("One.flac", **row),), drift_cut=cut, **blocked))
         for row, cut, blocked in (
             ({**variable, "dyn": True}, 1.5, {}), ({**variable, "dyn": False}, 1.5, {}),
             ({**variable, "drift": 4.1, "dyn": True}, 1.5, {}),
@@ -301,13 +287,13 @@ def test_the_engine_digest_covers_each_rows_drift_verdict_and_answer():
 
 def test_the_plan_counts_each_kind_of_row():
     rows = (
-        _added("A.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=True),
-        _added("B.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=False),
-        _added("C.flac", drift=0.1, drift_verdict=drift.STEADY),
-        _added("D.flac", drift_verdict=drift.UNKNOWN),
-        _added("E.flac", drift_verdict=drift.UNSCORED),
+        vox_suite._added("A.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=True),
+        vox_suite._added("B.flac", drift=4.0, drift_verdict=drift.VARIABLE, dyn=False),
+        vox_suite._added("C.flac", drift=0.1, drift_verdict=drift.STEADY),
+        vox_suite._added("D.flac", drift_verdict=drift.UNKNOWN),
+        vox_suite._added("E.flac", drift_verdict=drift.UNSCORED),
     )
-    plan = _plan(rows, drift_cut=1.5)
+    plan = vox_suite._plan(rows, drift_cut=1.5)
     assert [row.file_name for row in plan.dyn_tagged()] == ["A.flac"]
     assert [row.file_name for row in plan.drift_variable()] == ["A.flac", "B.flac"]
     assert [row.file_name for row in plan.drift_unscored()] == ["E.flac"]

@@ -123,7 +123,6 @@ def _spy_preflight(monkeypatch) -> list[dict]:
     def spied(plan, **kwargs):
         asked.append(kwargs)
         return real(plan, **kwargs)
-
     monkeypatch.setattr(landing, "preflight", spied)
     return asked
 
@@ -141,14 +140,12 @@ def _watch_apply(monkeypatch, before=None, after=None) -> list[str]:
         if after:
             seen.append(after())
         return landed
-
     monkeypatch.setattr(landing, "apply", watched)
     return seen
 
 
 def test_the_first_run_stops_at_the_gate_and_an_abort_moves_nothing(
-    cfg, silence, export, monkeypatch
-):
+        cfg, silence, export, monkeypatch):
     """The screen names the files and the intake file, never the payload, and the
     preflight leaves an older answer fresh (R-677)."""
     from tests.test_intake_land_vox_native import _calibrate
@@ -337,8 +334,7 @@ def _manifest(tmp_path: Path, listed: list[tuple[str, str, str, str, int]]) -> P
 
 
 def test_a_manifest_is_on_the_gate_and_its_labels_reported(
-    cfg, silence, export, tmp_path, monkeypatch
-):
+        cfg, silence, export, tmp_path, monkeypatch):
     """The engine is handed the manifest rows and fingerprint the gate compared."""
     _stage(cfg, silence, "One.flac")
     never = ("2", "Probe", "Never Arrived", "Kompakt", 2024)
@@ -458,11 +454,9 @@ def _intake_there(cfg, tmp_path: Path, export: Path) -> tuple[Path, str]:
         (_no_intake_folder, "library-export-unusable", ExitCode.PRECONDITION),
         (_unmounted, "library-root-unreachable", ExitCode.LIBRARY_UNAVAILABLE),
         (_intake_there, "output-exists", ExitCode.PRECONDITION),
-    ],
-)
+    ])
 def test_a_plan_the_engine_would_refuse_refuses_before_the_gate(
-    cfg, silence, export, tmp_path, unusable, reason, exit_code
-):
+        cfg, silence, export, tmp_path, unusable, reason, exit_code):
     """Refused with no gate offered, no run left to resume, and nothing moved."""
     _stage(cfg, silence, "One.flac")
     given, named = unusable(cfg, tmp_path, export)
@@ -497,8 +491,7 @@ def test_a_recorded_abort_is_honored_over_what_went_missing(cfg, silence, export
 
 
 def test_an_apply_over_a_missing_export_is_the_engine_s_refusal(
-    cfg, silence, export, tmp_path, monkeypatch
-):
+        cfg, silence, export, tmp_path, monkeypatch):
     """An answered apply reaches the engine, which asks its own checks again; over a
     missing export the person is told the plan moved."""
     _stage(cfg, silence, "One.flac")
@@ -581,7 +574,6 @@ def _every_target_taken(cfg, export, patched) -> None:
 def _an_engine_failing_with_no_refusal(cfg, export, patched) -> None:
     def broken(plan, **kwargs):
         raise RuntimeError("the engine failed with no cause")
-
     patched.setattr(landing, "apply", broken)
 
 
@@ -590,11 +582,9 @@ def _an_engine_failing_with_no_refusal(cfg, export, patched) -> None:
     [
         _an_export_that_is_not_there, _an_intake_file_already_there, _every_target_taken,
         _an_engine_failing_with_no_refusal,
-    ],
-)
+    ])
 def test_the_lock_is_released_by_every_refusal(
-    cfg, silence, export, tmp_path, monkeypatch, arrange
-):
+        cfg, silence, export, tmp_path, monkeypatch, arrange):
     """Watched from inside the engine call, so a lock taken late or dropped early is seen."""
     _stage(cfg, silence, "One.flac")
     kept = tmp_path / "kept.xml"
@@ -614,7 +604,6 @@ def test_the_lock_is_released_by_every_refusal(
     def written() -> str:
         assert _intake(cfg, BATCH).exists()
         return _held_now()
-
     seen = _watch_apply(monkeypatch, before=_held_now, after=written)
     code, envelope = _drive(_answered(export, "--name", BATCH))
     assert code == int(ExitCode.PENDING_HUMAN), envelope
@@ -655,8 +644,7 @@ def test_a_landing_in_another_process_refuses_this_one_until_it_ends(cfg, silenc
     _stage(cfg, silence, "One.flac")
     holder = subprocess.Popen(
         [sys.executable, "-c", _HOLDER, BATCH],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
-    )
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     try:
         assert holder.stdout.readline().strip() == "held"
         code, envelope = _drive(_answered(export, "--name", BATCH))

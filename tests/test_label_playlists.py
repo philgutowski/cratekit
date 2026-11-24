@@ -72,8 +72,7 @@ def _catalogue(releases=None, listed=None, **kwargs) -> FakeCatalogue:
     return FakeCatalogue(
         artists={LABEL_ID: FakePagedArtist(list(LISTED if listed is None else listed))},
         releases=dict(RELEASES if releases is None else releases),
-        confirmed={"r1", "r2", "r3", "r4", "r5", "r7"}, **kwargs,
-    )
+        confirmed={"r1", "r2", "r3", "r4", "r5", "r7"}, **kwargs)
 
 
 def _faked(monkeypatch, cfg, fake=None):
@@ -232,8 +231,7 @@ def test_a_catalogue_read_in_part_is_refused_before_the_gate(installed, monkeypa
 def test_a_release_whose_tracks_cannot_be_read_refuses_the_plan(installed, monkeypatch):
     labels.RegistryStore().add(LABEL)
     fake = UnreadableCatalogue(
-        artists={LABEL_ID: FakePagedArtist(list(LISTED))}, releases=dict(RELEASES)
-    )
+        artists={LABEL_ID: FakePagedArtist(list(LISTED))}, releases=dict(RELEASES))
     _faked(monkeypatch, installed, fake)
     _refused(["label", "playlists", LABEL], "label-playlists-incomplete")
 
@@ -763,8 +761,7 @@ def test_a_renamed_label_is_a_different_plan_and_its_approval_is_stale(kompakt):
     first = _plan(cfg, fake, account)
     read = playlists_cli.read_catalogue(cfg, _entry(), fake)
     renamed = folders.LabelCatalogue(
-        label_id=read.label_id, name="Kompakt Records", years=read.years
-    )
+        label_id=read.label_id, name="Kompakt Records", years=read.years)
     assert first.identity() != folders.plan(cfg, renamed, account).identity()
 
 
@@ -835,8 +832,7 @@ def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(buil
         pass
     def plan(
         store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
-        paired=frozenset(), mirrored=frozenset(),
-    ):
+        paired=frozenset(), mirrored=frozenset()):
         handed.append(label_built)
         raise Stop
     monkeypatch.setattr(sync_playlists, "plan", plan)

@@ -98,8 +98,7 @@ def three() -> tuple[dict, ...]:
 
 # One id is listed, anything else is handed on
 def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
-    cfg, library, recognised, monkeypatch
-):
+        cfg, library, recognised, monkeypatch):
     """One set read every way: nothing written until every answer is in hand, then the one id
     listed, the rest handed on to a text list that reads back, and a second run the same."""
     from cratekit.core.cause import refuse
@@ -175,8 +174,7 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     from cratekit.cli import ISRC_LOOKUPS
     from cratekit.label import tidal_catalogue
     client = _CountingClient(
-        {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]}
-    )
+        {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]})
     monkeypatch.setattr(catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client))
     first = _ok(missing(job_id))
     assert sorted(client.asked) == [ONE, TWO]
@@ -200,8 +198,7 @@ def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(cfg, l
 def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked(cfg, library, recognised, monkeypatch):
     job_id = finished_set(
         library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc="qz-aaa-26-00001"),
-        hit("Nova Reef", "Tide", isrc="CAT-0042"),
-    )
+        hit("Nova Reef", "Tide", isrc="CAT-0042"))
     fake = bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001")]}))
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
@@ -226,8 +223,7 @@ def test_the_same_id_twice_in_one_answer_is_one_id_and_is_listed(cfg, library, r
 # Nothing is written unless every answer is in hand
 def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(cfg, library, recognised, monkeypatch):
     job_id = finished_set(
-        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide")
-    )
+        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide"))
     def never(cfg):
         raise AssertionError("the catalogue was resolved with nothing to ask it")
     monkeypatch.setattr(catalogue, "resolve", never)
@@ -238,8 +234,7 @@ def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_writ
     """One row no text line can hold is named on its own check; the rest are still written."""
     job_id = finished_set(
         library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE),
-        hit("Kite - Harbor", "Low Tide Signal"), hit("Mira Vale", "Glass Hour"),
-    )
+        hit("Kite - Harbor", "Low Tide Signal"), hit("Mira Vale", "Glass Hour"))
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001")]}))
     envelope = _ok(missing(job_id))
     summary = envelope["data"]["summary"]

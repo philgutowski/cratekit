@@ -106,8 +106,7 @@ TWO = ("Foxtrot", "Golf")
 
 
 def test_a_landing_fills_analyze_once_names_it_made_then_found_and_the_rotation_leaves_it(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     # THE GATE SCREEN NAMES ANALYZE, and says it is made, before anything is written.
     for name in FIVE:
@@ -130,7 +129,6 @@ def test_a_landing_fills_analyze_once_names_it_made_then_found_and_the_rotation_
     (record,) = session.records(cfg)
     counted = {change.tree: change.created for change in record.change.trees}
     assert counted[DECLARED.intake.id] == 10
-
     # A SECOND LANDING ADDS ITS OWN BESIDE THEM, and the playlist is never made twice.
     first = _analyze_id(cfg, root_id)
     for name in TWO:
@@ -140,7 +138,6 @@ def test_a_landing_fills_analyze_once_names_it_made_then_found_and_the_rotation_
     assert _analyze_id(cfg, root_id) == first
     assert _titles(cfg, first) == [*FIVE, *TWO]
     assert _screen(refused)["analyze"].endswith(f"found (row {first})")
-
     # THE ROTATION LEAVES ANALYZE ALONE, a year on, while it plans the batches.
     with _handle(cfg) as handle:
         plan = rotate.plan_rotation(
@@ -152,8 +149,7 @@ def test_a_landing_fills_analyze_once_names_it_made_then_found_and_the_rotation_
 
 
 def test_a_held_row_is_not_added_to_analyze_and_analyze_removed_after_approval_refuses(
-    native_library, silence
-):
+        native_library, silence):
     """Only a row the landing created awaits analysis; a held row is rekordbox's already."""
     cfg, root_id = native_library
     # Landed into again by its own name (U164), so the batch goes back to its
@@ -169,8 +165,7 @@ def test_a_held_row_is_not_added_to_analyze_and_analyze_removed_after_approval_r
         conn.execute(
             "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
             "updated_at) VALUES ('held-2', 'held', ?, 0, '2026-01-01', '2026-01-01')",
-            (held,),
-        )
+            (held,))
         _advance_usn(conn)
     code, acted, _refused = _land_acts(verb)
     assert code == int(ExitCode.OK), acted
@@ -178,7 +173,6 @@ def test_a_held_row_is_not_added_to_analyze_and_analyze_removed_after_approval_r
     assert _titles(cfg, _analyze_id(cfg, root_id)) == ["Zero", "Alpha"]
     (warning,) = [w for w in acted["warnings"] if w["code"] == land_cli.AWAITING_ANALYSIS]
     assert warning["message"].startswith("1 row(s)")
-
     # ANALYZE REMOVED AFTER THE APPROVAL is refused and nothing lands: the
     # digest names the playlist the plan found, so its removal is another plan.
     analyze_id = _analyze_id(cfg, root_id)
@@ -220,8 +214,7 @@ def test_a_removed_smart_or_outside_node_named_analyze_is_never_written_into(nat
 
 
 def test_after_an_analysis_of_three_the_clear_removes_exactly_three_and_no_track(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_five", FIVE)
     analyze_id = _analyze_id(cfg, root_id)
@@ -246,8 +239,7 @@ def test_after_an_analysis_of_three_the_clear_removes_exactly_three_and_no_track
     assert len(record) == 1 and record[0].state is session.SessionState.CLOSED
     assert record[0].detail[analyzed.RECORD_KEY]["playlist"]["id"] == analyze_id
     assert sorted(record[0].detail[analyzed.RECORD_KEY]["removed"]) == sorted(
-        _content_id(cfg, stem) for stem in ("Alpha", "Charlie", "Echo")
-    )
+        _content_id(cfg, stem) for stem in ("Alpha", "Charlie", "Echo"))
     codes = [w["code"] for w in acted["warnings"]]
     assert analyzed_cli.WAITING in codes and analyzed_cli.CLEARED in codes
 
@@ -273,8 +265,7 @@ def test_a_row_with_no_analysis_path_or_analysed_unset_stays(native_library, sil
 
 
 def test_a_row_removed_from_the_collection_or_missing_from_it_stays_and_is_named(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_two", TWO)
     analyze_id = _analyze_id(cfg, root_id)
@@ -291,8 +282,7 @@ def test_a_row_removed_from_the_collection_or_missing_from_it_stays_and_is_named
             "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted, "
             "created_at, updated_at) VALUES ('sp-ghost', ?, 'ghost', 9, 0, '2026-10-28', "
             "'2026-10-28')",
-            (analyze_id,),
-        )
+            (analyze_id,))
         conn.execute(bump)
     code, acted, _ = _clear_acts()
     assert code == int(ExitCode.OK), acted
@@ -307,19 +297,16 @@ def test_a_row_removed_from_the_collection_or_missing_from_it_stays_and_is_named
 
 
 def test_nothing_analysed_asks_a_late_analysis_is_stale_a_track_held_twice_clears_once_then_nothing(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_two", TWO)
     analyze_id = _analyze_id(cfg, root_id)
-
     # NOTHING ANALYSED STILL ASKS and ends no_op.
     code, acted, _ = _clear_acts()
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     assert analyzed_cli.NOTHING in [w["code"] for w in acted["warnings"]]
     assert _titles(cfg, analyze_id) == list(TWO)
-
     # AN ANALYSIS FINISHED AFTER THE APPROVAL is refused by the engine's own
     # stale check, with no gate in front.
     _analysed(cfg, "Foxtrot")
@@ -331,7 +318,6 @@ def test_nothing_analysed_asks_a_late_analysis_is_stale_a_track_held_twice_clear
     assert getattr(caught.value, "cause", None) is not None
     assert caught.value.cause.reason == "decision-stale"
     assert _titles(cfg, analyze_id) == list(TWO)
-
     # A TRACK HELD TWICE is one row cleared and counted once.
     with _handle(cfg) as handle:
         # A second membership of the same track, the way the binding adds one.
@@ -344,7 +330,6 @@ def test_nothing_analysed_asks_a_late_analysis_is_stale_a_track_held_twice_clear
     assert _titles(cfg, analyze_id) == []
     (record,) = [r for r in session.records(cfg) if r.workflow == analyzed.WORKFLOW]
     assert {c.tree: c.updated for c in record.change.trees} == {DECLARED.intake.id: 2}
-
     # A SECOND CLEAR PLANS NOTHING.
     code, again, _ = _clear_acts()
     assert code == int(ExitCode.OK), again
@@ -358,7 +343,6 @@ def test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused(nat
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     assert _analyze_nodes(cfg, root_id) == []
-
     # A BATCH NAMED ANALYZE is refused before the gate and nothing moves.
     _stage(cfg, silence, "Alpha.flac")
     code, refused = drive(["intake", "land", "--name", native.ANALYZE])
@@ -386,8 +370,7 @@ def _clear_plan(*members: analyzed.Member) -> analyzed.AnalyzedPlan:
 def test_the_read_back_refuses_a_waiting_row_gone_or_a_cleared_row_kept_and_the_digest_reads_all():
     plan = _clear_plan(
         analyzed.Member("1", "a", analyzed.CLEAR),
-        analyzed.Member("2", "b", analyzed.WAIT, why=analyzed.NOT_ANALYSED),
-    )
+        analyzed.Member("2", "b", analyzed.WAIT, why=analyzed.NOT_ANALYSED))
     analyzed.assert_read_back(plan, analyzed.Cleared("s", "p", ("1",), ("2",)))
     for read in ((), ("1", "2")):
         with pytest.raises(Exception) as caught:
@@ -415,8 +398,7 @@ def test_the_playlist_is_inbox_slash_analyze_and_no_account_playlist_takes_its_n
 
 
 def test_inbox_refill_never_takes_analyze_for_an_account_playlist_of_that_name(
-    native_library, silence, offline
-):
+        native_library, silence, offline):
     """The second review's drive: an account playlist named Analyze, every track owned."""
     from tests.test_inbox_refill import _two_acts as _refill_acts
     from tests.test_intake_land_account_playlists_native import PASS, _owned, swept
@@ -452,8 +434,7 @@ def test_the_rotation_never_takes_analyze_for_a_batch_whatever_a_record_says():
 
 
 def test_a_removal_that_did_not_take_is_refused_after_the_commit(
-    native_library, silence, monkeypatch
-):
+        native_library, silence, monkeypatch):
     """The first mutation table's zero: the verb holds its answer to the read back."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_two", TWO)

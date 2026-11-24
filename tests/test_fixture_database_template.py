@@ -1,8 +1,5 @@
-"""The suite's disposable database is built once per worker and copied (U256).
-
-Every caller still gets a file of its own that no other caller can see or change, and the file is
-the database a build from nothing would make, its timestamps aside.
-"""
+"""The suite's disposable database is built once per worker and copied (U256): every caller gets
+a file no other can see or change, the database a build from nothing makes, its timestamps aside."""
 
 from __future__ import annotations
 
@@ -30,7 +27,6 @@ def cold(monkeypatch):
     def counted(self, *args, **kwargs):
         calls.append(1)
         return real(self, *args, **kwargs)
-
     monkeypatch.setattr(MetaData, "create_all", counted)
     return calls
 
@@ -52,7 +48,6 @@ def _titles(path: Path) -> dict[str, str]:
 def _stamp_columns() -> dict[str, set[str]]:
     """Each table's timestamp columns, the binding's own date type, by table name."""
     from pyrekordbox.db6 import tables
-
     return {
         name: {column.name for column in table.columns if isinstance(column.type, tables.DateTime)}
         for name, table in tables.Base.metadata.tables.items()
@@ -76,10 +71,8 @@ def _contents(path: Path) -> dict[str, object]:
             rows[table] = sorted(
                 tuple(
                     (name, value is not None if name in hidden else value)
-                    for name, value in zip(names, row, strict=True)
-                )
-                for row in cursor
-            )
+                    for name, value in zip(names, row, strict=True))
+                for row in cursor)
         return {"schema": schema, "modes": modes, "rows": rows}
 
 
@@ -165,7 +158,6 @@ def test_a_path_already_holding_a_file_is_built_from_nothing_as_before(tmp_path,
 def test_a_second_build_over_the_same_database_still_refuses(tmp_path, cold):
     """Today's answer to a path that already holds the database, kept: it raises."""
     from sqlalchemy.exc import IntegrityError
-
     path = tmp_path / "db" / "master.db"
     fixture._build_disposable_database(path)
     with pytest.raises(IntegrityError):

@@ -138,7 +138,6 @@ def test_a_name_that_is_a_date_alone_files_as_downloads(cfg, silence):
 def test_a_filed_folder_on_another_device_is_refused_at_the_move(cfg, silence, monkeypatch):
     """The device is checked against the folder the plan chose; nothing leaves staging."""
     from cratekit.intake import landing
-
     _stage(cfg, silence, "One.flac")
     run_id = _answered(["intake", "land", "--name", NAMED])[1]
     real = landing._device_of
@@ -146,7 +145,6 @@ def test_a_filed_folder_on_another_device_is_refused_at_the_move(cfg, silence, m
 
     def elsewhere(path):
         return -1 if str(path).startswith(processed) else real(path)
-
     monkeypatch.setattr(landing, "_device_of", elsewhere)
     code, acted = drive(["--run", run_id, "intake", "land", "--name", NAMED])
     assert code != int(ExitCode.OK), acted

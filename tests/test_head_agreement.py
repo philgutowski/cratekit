@@ -31,8 +31,7 @@ SCRIPT = REPO_ROOT / "scripts" / "head_agreement.py"
         (124, 120.00, agreement.OTHER_LEVEL), (83, 166.00, agreement.HALF_OR_DOUBLE),
         (166, 83.13, agreement.HALF_OR_DOUBLE), (83, 126.00, agreement.OTHER_LEVEL),
         (123, 90.96, agreement.OTHER_LEVEL), (120, 0.0, agreement.OTHER_LEVEL),
-    ],
-)
+    ])
 def test_the_four_tempo_buckets(head, reference, bucket):
     assert agreement.tempo_bucket(head, reference) == bucket
 
@@ -50,8 +49,7 @@ def test_a_head_rounds_half_up_the_way_the_source_system_did():
         ("Gb", "02B"), ("F#", "02B"), ("C", "08B"), ("Abm", "01A"), ("G#m", "01A"),
         ("Bb", "06B"), ("A#", "06B"), ("  8a ", "08A"),
         ("", None), (None, None), ("13A", None), ("0A", None), ("H", None), ("Amaj", None),
-    ],
-)
+    ])
 def test_either_key_notation_maps_to_one_padded_camelot(name, camelot):
     assert agreement.camelot_from_scale_name(name) == camelot
 
@@ -65,8 +63,7 @@ def test_every_classic_name_reaches_one_of_the_twenty_four_codes():
 def _row_of(identifier, filename, hundredths, scale_name):
     return agreement.HeadRow(
         identifier=identifier, filename=filename, stored_hundredths=hundredths,
-        scale_name=scale_name, folder_path=None,
-    )
+        scale_name=scale_name, folder_path=None)
 
 
 ROWS = [
@@ -137,8 +134,7 @@ def _own_file(tmp_path, monkeypatch) -> tuple[Path, config.Config, Path]:
 
 
 def test_reanalysis_samples_rekordbox_own_rows_with_a_file_and_buckets_the_detector(
-    tmp_path, monkeypatch
-):
+        tmp_path, monkeypatch):
     root, cfg, on_disk = _own_file(tmp_path, monkeypatch)
     rows = [
         agreement.HeadRow("1", "01A - 100 - own.flac", 12650, "8A", str(on_disk)),
@@ -151,7 +147,6 @@ def test_reanalysis_samples_rekordbox_own_rows_with_a_file_and_buckets_the_detec
     def detector(path):
         seen.append(path)
         return {"rate": 127}
-
     found = agreement.reanalyse(rows, cfg, detector=detector, limit=10)
     assert seen == [on_disk]
     assert found.files == 1
@@ -171,7 +166,6 @@ def test_the_sample_stops_resolving_rows_once_it_is_full(tmp_path, monkeypatch):
     def counted(row, **kwargs):
         resolved.append(row.identifier)
         return real(row, **kwargs)
-
     monkeypatch.setattr(agreement, "local_path", counted)
     chosen = agreement.sample_for_reanalysis(rows, cfg, limit=3, step=1)
     assert [row.identifier for row, _path in chosen] == ["1", "2", "3"]
@@ -187,8 +181,7 @@ def test_the_sample_stops_resolving_rows_once_it_is_full(tmp_path, monkeypatch):
 def test_the_script_refuses_a_step_below_one_before_it_reads_anything():
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), "--analyse", "3", "--step", "0"],
-        capture_output=True, text=True, check=False,
-    )
+        capture_output=True, text=True, check=False)
     assert completed.returncode == 2
     assert "--step must be one or more" in completed.stderr
 
@@ -197,7 +190,6 @@ def test_the_script_refuses_a_step_below_one_before_it_reads_anything():
 def _platform_seams(monkeypatch):
     """What a temporary library cannot speak for, as the cutover suite patches it."""
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
@@ -206,8 +198,7 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
-        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
-    )
+        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
 
 
@@ -228,7 +219,6 @@ def _fixture_library(tmp_path, monkeypatch) -> config.Config:
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
-
     root = tmp_path / "library"
     (root / "db").mkdir(parents=True)
     (root / "Music").mkdir(parents=True)
@@ -249,13 +239,11 @@ def _fixture_library(tmp_path, monkeypatch) -> config.Config:
             db_session.add(_row(
                 tables.DjmdContent, ID=identifier, Title=filename, FileNameL=filename,
                 FolderPath=str(root / "Music" / filename), BPM=hundredths, KeyID=key_ids[name],
-                Length=300, FileType=5, rb_local_deleted=0,
-            ))
+                Length=300, FileType=5, rb_local_deleted=0))
         # A deleted row is not a row.
         db_session.add(_row(
-            tables.DjmdContent, ID="19", Title="gone", FileNameL="01A - 100 - gone.flac",
-            BPM=10000, KeyID=key_ids["8A"], rb_local_deleted=1,
-        ))
+            tables.DjmdContent, ID="19", Title="gone", FileNameL="01A - 100 - gone.flac", BPM=10000,
+            KeyID=key_ids["8A"], rb_local_deleted=1))
         db_session.commit()
     engine.dispose()
     return cfg
@@ -269,7 +257,6 @@ def test_the_measurement_reads_a_disposable_copy_and_buckets_the_fixture(tmp_pat
     def watched(source, **kwargs):
         opened.append(Path(source))
         return real(source, **kwargs)
-
     monkeypatch.setattr(rb_writer, "read_only_copy", watched)
     found = agreement.measure(cfg)
     assert opened == [Path(cfg.library.db_path)]
@@ -292,7 +279,6 @@ def test_the_live_path_is_never_handed_to_the_binding(tmp_path, monkeypatch):
     def watched(target, *args, **kwargs):
         handed.append(Path(target))
         return real(target, *args, **kwargs)
-
     monkeypatch.setattr(rb_writer, "open_db", watched)
     agreement.measure(cfg)
     assert handed and all(path != Path(cfg.library.db_path) for path in handed)
@@ -334,13 +320,11 @@ def test_the_script_prints_the_four_buckets_over_a_fixture_copy(tmp_path, monkey
         "_real = rb_writer.integrity_ok\n"
         "rb_writer.integrity_ok = lambda target, **k: _real(target, unlock=False)\n"
         "preflight.local_mount_points = lambda: ()\n",
-        encoding="utf-8",
-    )
+        encoding="utf-8")
     env["PYTHONPATH"] = str(sitecustomize)
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), "--database", str(copy)],
-        capture_output=True, text=True, env=env, check=False,
-    )
+        capture_output=True, text=True, env=env, check=False)
     assert completed.returncode == 0, completed.stderr
     out = completed.stdout
     for line in (
@@ -418,8 +402,7 @@ def test_the_window_defaults_are_the_source_system_window():
         ({"tempo_ceiling": "fast"}, "tempo_ceiling must be a whole number"),
         ({"tempo_floor": True}, "tempo_floor must be a whole number"),
         ({"tempo_floor": 80.5}, "tempo_floor must be a whole number"),
-    ],
-)
+    ])
 def test_an_empty_or_ill_typed_window_is_refused_at_load(tmp_path, analysis, fragment):
     data = valid_data(tmp_path / "library", analysis=analysis)
     problems = config.validate(data)
@@ -429,7 +412,6 @@ def test_an_empty_or_ill_typed_window_is_refused_at_load(tmp_path, analysis, fra
 def test_a_raised_window_loads_and_reaches_the_detector_binding(tmp_path, monkeypatch):
     from cratekit.analysis import cli as analysis_cli
     from cratekit.analysis import energy, light
-
     data = valid_data(tmp_path / "library", analysis={"tempo_floor": 100, "tempo_ceiling": 200})
     assert config.validate(data) == []
     cfg = config.from_dict(data)

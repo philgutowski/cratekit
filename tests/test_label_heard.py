@@ -88,7 +88,6 @@ def test_nothing_on_the_heard_path_reaches_rekordbox_a_grid_a_tempo_or_a_rating(
     """No rekordbox or tag writer, grid, tempo or rating; the guarded writer is banned with its
     parts (R-1890), since ``cratekit.core.rb_nodes`` does not start with its name."""
     from tests._split_modules import names_of
-
     banned = (*names_of("cratekit.core.rb_writer"), "cratekit.write", "cratekit.core.tags")
     for module in (heard, heard_cli):
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
@@ -228,8 +227,7 @@ def test_a_date_no_go_took_anything_on_is_refused(kompakt):
 
 
 @pytest.mark.parametrize(
-    "argv", [[LABEL, "23", DAY], [LABEL, "2023", "2026-13-01"], [LABEL, "2023", "yesterday"]],
-)
+    "argv", [[LABEL, "23", DAY], [LABEL, "2023", "2026-13-01"], [LABEL, "2023", "yesterday"]])
 def test_a_year_or_date_that_is_not_one_is_refused(kompakt, argv):
     code, refused = drive(["label", "heard", *argv])
     assert refused["cause"]["reason"] == "label-heard-invalid"

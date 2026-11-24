@@ -299,8 +299,7 @@ def _tables(playlists: dict, memberships: dict | None = None, content: dict | No
     return rb_writer.NodeTables(
         content=content or {"c1": "x"}, playlists=playlists,
         memberships=memberships if memberships is not None else {"m1": ("m1", "a", "c1", 1, 0)},
-        playlist_columns=_P_COLS, membership_columns=_M_COLS,
-    )
+        playlist_columns=_P_COLS, membership_columns=_M_COLS)
 
 
 _BEFORE = {
@@ -335,8 +334,7 @@ def test_the_planned_order_is_confined():
     ids=[
         "renamed", "reparented", "removed", "not-made", "unplanned-move", "source-moved",
         "row-added", "row-gone", "membership-changed", "membership-gone", "content-changed",
-    ],
-)
+    ])
 def test_an_order_reaching_what_it_did_not_plan_is_a_violation(after, memberships, content, seated, expected):
     after = _tables(after, memberships, content)
     violations = order.order_violations(_tables(_BEFORE), after, folder_id="f", seated=seated)
@@ -424,7 +422,6 @@ def test_a_commit_that_landed_and_then_raised_is_recorded_once(monkeypatch):
     @contextmanager
     def witnessing(_db):
         yield SimpleNamespace(landed=True)
-
     monkeypatch.setattr(spine.rb_writer, "commit_witness", witnessing)
     monkeypatch.setattr(spine.trees, "rollback_quietly", lambda db: None)
     recorded = []

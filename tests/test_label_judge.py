@@ -55,8 +55,7 @@ GENRES, GATE_RUN = genre_gate.GENRES_FIELD, genre_gate.GATE_RUN_FIELD
 
 def queue_release(
     cfg: config.Config, *release_ids: str, label_id: str = SLUG, label_name: str = LABEL,
-    filed_by: str | None = FILED_BY, **stamp,
-) -> str:
+    filed_by: str | None = FILED_BY, **stamp) -> str:
     """Each release pending in review, as a sweep before the gate filed it. The last item id."""
     with review.open_store(cfg) as store:
         for release_id in release_ids:
@@ -148,8 +147,7 @@ def withhold(store, item_id: str, *, run_id: str = "judge-1", reason: str = "ano
     return review.withhold(
         store, item_id, group=SLUG, name=LABEL, reason=reason,
         detail={"genres": ["Christian"], "kind": "dance", "placed": [["Christian", "christian"]]},
-        run_id=run_id,
-    )
+        run_id=run_id)
 
 
 def held_by_hand(store, *, release_id: str = "r-1", payload: dict, reason: str, run_id: str,
@@ -157,8 +155,7 @@ def held_by_hand(store, *, release_id: str = "r-1", payload: dict, reason: str, 
     """A hold written straight through the store, under this file's label."""
     return review.hold(
         store, queue=QUEUE, kind=sweep.KIND, identity={"release_id": release_id},
-        payload=payload, group=SLUG, name=LABEL, reason=reason, detail={}, run_id=run_id, **kwargs,
-    )
+        payload=payload, group=SLUG, name=LABEL, reason=reason, detail={}, run_id=run_id, **kwargs)
 
 
 def deferred(store, item_id: str) -> None:
@@ -211,8 +208,7 @@ def _unreadable(store, item_id: str) -> review.Item:
         pytest.param(_resolved(review.Verdict.REJECTED), id="rejected"),
         pytest.param(_superseded, id="superseded"),
         pytest.param(_unreadable, id="a-verdict-this-build-cannot-read"),
-    ],
-)
+    ])
 def test_a_decided_item_is_not_withheld_and_stays_exactly_as_it_was(installed, decide):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
@@ -227,8 +223,7 @@ def test_a_release_a_person_returned_is_never_withheld_again(installed):
     with review.open_store(installed) as store:
         held_by_hand(
             store, payload={}, reason="returned by hand while it was in review",
-            run_id="", returned=True,
-        )
+            run_id="", returned=True)
         assert withhold(store, item_id) is None
         assert review.find(store, item_id) is not None
         assert review.find_hold(store, queue=QUEUE, item_id=item_id).state == review.HOLD_RETURNED
@@ -312,8 +307,7 @@ def test_an_open_item_is_redescribed_and_keeps_its_place(installed):
 @pytest.mark.parametrize(
     "decide",
     [pytest.param(_resolved(review.Verdict.REJECTED), id="rejected"),
-     pytest.param(_unreadable, id="an-unreadable-verdict")],
-)
+     pytest.param(_unreadable, id="an-unreadable-verdict")])
 def test_redescribing_a_decided_item_changes_nothing(installed, decide):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
@@ -337,8 +331,7 @@ def test_a_refreshed_hold_keeps_the_run_its_release_was_filed_under(installed):
         withhold(store, item_id)
         def refresh(payload: dict):
             return held_by_hand(
-                store, payload=payload, reason="still another kind", run_id="sweep-2",
-            )
+                store, payload=payload, reason="still another kind", run_id="sweep-2")
         # Described as never filed, it keeps its filing run and its withheld word.
         assert refresh({"identity": "r-1", "title": "T"}).payload == {
             "identity": "r-1", "title": "T", sweep.SWEEP_RUN: FILED_BY, review.WITHHELD_FIELD: True,
@@ -353,8 +346,7 @@ def test_a_refreshed_hold_that_never_named_a_run_gains_none(installed):
         for title in ("first", "second"):
             hold = held_by_hand(
                 store, payload={"identity": "r-1", "title": title}, reason="another kind",
-                run_id="sweep-1",
-            )
+                run_id="sweep-1")
     assert hold.payload == {"identity": "r-1", "title": "second"}
 
 
@@ -420,11 +412,9 @@ def test_a_returned_release_is_not_judged_again_and_nobody_is_asked(installed, m
                      {GATE: "passed",
                       NOTE: "its label is followed for any kind of music"},
                      tally(1, 0, 1, 0), [], id="a-label-marked-any-has-nothing-held-nobody-asked"),
-    ],
-)
+    ])
 def test_a_queued_release_that_stays_in_review_says_what_the_gate_made_of_it(
-    installed, monkeypatch, table, argv, stamped, tallied, warned
-):
+    installed, monkeypatch, table, argv, stamped, tallied, warned):
     lookup = never_asked if table is None else Lookup(table)
     provider = pending(installed, monkeypatch, {"r-1": isrc(1)}, lookup, *argv)
     job_id, envelope = judge_once()
@@ -494,8 +484,7 @@ def test_a_release_decided_while_it_was_being_judged_is_not_held(installed, monk
 
 
 def test_an_artist_put_right_while_a_release_was_being_judged_is_kept_by_the_stamp(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """R-840. The stamp is made on the payload as it stands, not as it was read."""
     register()
     item_id = queue_release(installed, "r-dance")
@@ -514,8 +503,7 @@ def test_an_artist_put_right_while_a_release_was_being_judged_is_kept_by_the_sta
 
 
 def test_a_release_on_a_label_nobody_follows_any_more_is_judged_as_the_default_kind(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     queue_release(installed, "r-christian", label_id="gone-label", label_name="Gone Label")
     provider_of(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     _, envelope = judge_once()
@@ -537,8 +525,7 @@ def test_words_the_item_recorded_pass_a_release_with_no_request_at_all(installed
 
 
 def test_recorded_words_that_would_hold_are_asked_about_before_the_release_is_held(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """Judged against the kind the label has now, and held on what the catalogue says now."""
     stamp = recorded("passed", "filed when the label was a dance label", "matched", "Dance")
     lookup = Lookup({isrc(2): ("Dance",)})
@@ -553,8 +540,7 @@ def test_recorded_words_that_would_hold_are_asked_about_before_the_release_is_he
 
 
 def test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_passes(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """A sweep stops asking at the first passing track, so its record can be one album."""
     register()
     stamp = recorded("passed", "filed on its first track", "matched", "Christian")
@@ -572,8 +558,7 @@ def test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_pas
 
 @pytest.mark.parametrize("answer", ["matched", "miss", "no-isrc"])
 def test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_again(
-    installed, monkeypatch, answer
-):
+    installed, monkeypatch, answer):
     stamp = recorded("not-judged", "what the sweep was told", answer)
     provider = pending(installed, monkeypatch, {"r-known-nothing": isrc(4)}, never_asked, **stamp)
     job_id, envelope = judge_once()
@@ -625,8 +610,7 @@ def test_an_item_that_names_no_release_is_not_judged_and_nothing_is_read(install
         with store.immediate() as conn:
             conn.execute(
                 "UPDATE review_items SET identity = NULL, payload = ? WHERE item_id = ?",
-                ('{"label_id": "tide-works", "label_name": "Tide Works"}', item_id),
-            )
+                ('{"label_id": "tide-works", "label_name": "Tide Works"}', item_id))
     provider = provider_of(monkeypatch, {"r-1": isrc(1)}, never_asked)
     job_id, envelope = judge_once()
     assert provider.releases_asked_for == []
@@ -644,8 +628,7 @@ def test_an_item_that_names_no_release_is_not_judged_and_nothing_is_read(install
 
 
 def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_itself(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """An imported item carries no identity, and its payload is all there is to go on."""
     register()
     item_id = queue_release(installed, "r-1")
@@ -655,8 +638,7 @@ def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_it
         with store.immediate() as conn:
             conn.execute(
                 "UPDATE review_items SET identity = NULL, payload = ? WHERE item_id = ?",
-                ('{"identity": "r-2", "label_id": "tide-works"}', item_id),
-            )
+                ('{"identity": "r-2", "label_id": "tide-works"}', item_id))
         untouched = review.get(store, other)
     provider = provider_of(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
     job_id, _ = judge_once()
@@ -726,8 +708,7 @@ def test_the_job_is_one_item_per_pending_release_and_carries_no_harvested_name(i
     with review.open_store(installed) as store:
         review.offer(
             store, queue=QUEUE, kind="harvested-label", identity={"label": "someone"},
-            payload={"name": "Someone"}, handler_key="label.harvest",
-        )
+            payload={"name": "Someone"}, handler_key="label.harvest")
     job_id = queued_job()
     assert item_states(job_id) == {first: "pending", second: "pending"}
 
@@ -751,11 +732,9 @@ class Interrupting(Lookup):
         (("Christian",), tally(3, 2, 1, 0)),
         (("Dance",), tally(3, 1, 2, 0)),
     ],
-    ids=["stopped-on-a-held-release", "stopped-on-a-passed-release"],
-)
+    ids=["stopped-on-a-held-release", "stopped-on-a-passed-release"])
 def test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none(
-    installed, monkeypatch, words, expected
-):
+    installed, monkeypatch, words, expected):
     """The release in flight when the run stopped was written and not marked done."""
     lookup = Interrupting({isrc(1): ("Dance",), isrc(2): words, isrc(3): ("Christian",)},
                           on=isrc(2))
@@ -781,8 +760,7 @@ def test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none(
 
 
 def test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """One refusal is enough. The lookup would answer every later release from memory."""
     lookup = Lookup({isrc(n): "blocked" for n in range(1, 6)})
     provider = five_pending(installed, monkeypatch, lookup)
@@ -806,8 +784,7 @@ def test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_l
 
 
 def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     lookup = Lookup({isrc(n): "unreachable" for n in range(1, 6)})
     provider = five_pending(installed, monkeypatch, lookup)
     job_id = queued_job()
@@ -865,8 +842,7 @@ def test_a_refusal_from_the_provider_parks_the_run_on_that_refusal(installed, mo
             if self.refusing and release_id == "r-2":
                 raise refuse(
                     "credential-missing", "the provider session has expired",
-                    steps=("log in again with: crate login",), origin=("suite",),
-                )
+                    steps=("log in again with: crate login",), origin=("suite",))
             return super().release_tracks(release_id)
     fake = Expired(releases={
         f"r-{n}": ([Track(f"t-{n}", "Artist", "Song", isrc(n))], 2026) for n in (1, 2)
@@ -940,8 +916,7 @@ def test_a_taxonomy_that_cannot_be_read_refuses_before_anything_is_queued(instal
 
 
 def test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """One cause, one stop. Failing each release in turn would mark a whole queue failed."""
     provider = pending(installed, monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
     job_id = queued_job()
@@ -953,8 +928,7 @@ def test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release
 
 
 def test_a_library_whose_taxonomy_has_no_published_rules_holds_nothing_and_asks_nothing(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     provider = pending(installed, monkeypatch, {"r-christian": isrc(1)}, never_asked)
     active_copy_without_published_rules(installed)
     _, envelope = judge_once()
@@ -1006,8 +980,7 @@ def test_a_release_another_job_withheld_meanwhile_is_not_filed_again(installed, 
 
 
 def test_a_release_another_job_held_while_this_one_was_asking_is_counted_held(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """Reported as what it is now. Not as gone, and not as decided by a person."""
     register()
     item_id = queue_release(installed, "r-1")
@@ -1037,8 +1010,7 @@ def moved_registry(monkeypatch, old_id: str) -> None:
 
 
 def test_a_release_filed_under_a_labels_old_identifier_is_in_a_run_scoped_to_the_label(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """The scope reads the registry the way the worker does, and the hold is the label's."""
     lookup = Lookup({isrc(1): ("Christian",)})
     pending(installed, monkeypatch, {"r-1": isrc(1)}, lookup, label_id="tide-works-old")
@@ -1052,8 +1024,7 @@ def test_a_release_filed_under_a_labels_old_identifier_is_in_a_run_scoped_to_the
 
 
 def test_a_release_held_under_an_earlier_holds_run_is_counted_held_when_it_is_redone(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """The hold keeps the run that FIRST held the release, which is not this job's."""
     register()
     item_id = queue_release(installed, "r-1")
@@ -1124,8 +1095,7 @@ def test_the_next_sweep_keeps_the_hold_and_does_not_file_the_release_again(insta
     queue_release(installed, "r-christian")
     fake = FakeCatalogue(
         artists={SLUG: FakePagedArtist([FakeRelease("r-christian", year="2026")])},
-        releases={"r-christian": ([Track("t-1", "Label Act", "Release", isrc(1))], 2026)},
-    )
+        releases={"r-christian": ([Track("t-1", "Label Act", "Release", isrc(1))], 2026)})
     serve(monkeypatch, fake, Lookup({isrc(1): ("Christian",)}))
     job_id, _ = judge_once()
     assert held_ids(installed) == ["r-christian"]
@@ -1143,8 +1113,7 @@ def test_the_next_sweep_keeps_the_hold_and_does_not_file_the_release_again(insta
 
 
 def test_label_held_does_not_say_a_sweep_was_refused_over_what_a_judge_run_met(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     pending(installed, monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): "unreachable"}))
     with review.open_store(installed) as store:
         review.record_round(store, queue=QUEUE, run_id=FILED_BY, group=SLUG, name=LABEL, beyond=0)
@@ -1168,15 +1137,13 @@ def test_a_release_a_sweep_held_is_still_returned_under_that_sweep(installed, mo
             store, queue=QUEUE, kind=sweep.KIND, identity={"release_id": "r-swept"},
             payload={"identity": "r-swept", "label_id": SLUG, "label_name": LABEL, "title": "T"},
             group=SLUG, name=LABEL, reason="held by a sweep",
-            detail={"genres": ["Christian"], "kind": "dance", "placed": []}, run_id="sweep-9",
-        )
+            detail={"genres": ["Christian"], "kind": "dance", "placed": []}, run_id="sweep-9")
     held_ok("return", "r-swept")
     assert item_of(installed, "r-swept").payload[sweep.SWEEP_RUN] == "sweep-9"
 
 
 def test_a_withheld_release_the_window_does_not_reach_is_not_dropped_when_its_kind_changes(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """It was in front of a person. Dropped past the window, it would be in neither place."""
     register("--offer", "1")
     queue_release(installed, "r-new", "r-old")
@@ -1200,8 +1167,7 @@ def test_a_withheld_release_the_window_does_not_reach_is_not_dropped_when_its_ki
 
 
 def test_a_withheld_release_filed_before_runs_were_recorded_is_returned_under_no_run(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """Never under the judging job, which filed nothing."""
     lookup = Lookup({isrc(1): ("Christian",)})
     pending(installed, monkeypatch, {"r-legacy": isrc(1)}, lookup, filed_by=None)
@@ -1220,8 +1186,7 @@ def test_a_stale_hold_beside_a_release_the_gate_passes_is_dropped(installed, mon
     with review.open_store(installed) as store:
         held_by_hand(
             store, release_id="r-dance", payload={"identity": "r-dance"}, reason="an older reason",
-            run_id="sweep-0",
-        )
+            run_id="sweep-0")
     provider_of(monkeypatch, {"r-dance": isrc(2)}, Lookup({isrc(2): ("Dance",)}))
     judge_once()
     assert held_ids(installed) == []

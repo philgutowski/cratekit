@@ -58,8 +58,7 @@ def _codes(envelope: dict) -> set[str]:
 
 
 def test_a_landing_that_finishes_two_custom_playlists_writes_two_twins_and_marks_two_pairs(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Two")), "pl-b": ("Deep Cuts", ("Three",))})
     for title in ("One", "Two", "Three"):
@@ -102,8 +101,7 @@ def test_an_account_playlist_already_paired_gets_no_second_twin(native_library, 
 
 
 def test_a_twin_name_the_folder_holds_is_left_and_named_and_the_landing_still_lands(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     folder = _make(cfg, FOLDER, folder=True)
     _make(cfg, "Sunset Warmup", parent=folder)
@@ -135,6 +133,5 @@ def test_a_plan_with_no_account_playlist_plans_no_twin_and_digests_as_before():
     plan = native.NativePlan(
         tree_id="t", root_id="r", root_name="INBOX", playlist="b", database=Path("x"),
         device_id="d", master_db_id="m", base_drive=None, current_drive=None, rows=(), link=None,
-        digest="",
-    )
+        digest="")
     assert "twins" not in native.identity(plan)

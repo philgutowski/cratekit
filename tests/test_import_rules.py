@@ -204,12 +204,10 @@ REGISTRY = "class Registry: ...\n"
                     "    return _exclusive_lock()\n"
                 ),
             },
-            LOCK_CROSSING, id="a-lazy-import-still-fails",
-        ),
+            LOCK_CROSSING, id="a-lazy-import-still-fails"),
         pytest.param(
             {"core__config": LOCK, "sync__run": "from ..core.config import _exclusive_lock\n"},
-            LOCK_CROSSING, id="a-relative-import-is-resolved-and-cannot-hide-it",
-        ),
+            LOCK_CROSSING, id="a-relative-import-is-resolved-and-cannot-hide-it"),
         # The import statement names a public module; the crossing is the attribute.
         pytest.param(
             {
@@ -217,8 +215,7 @@ REGISTRY = "class Registry: ...\n"
                 "tagging__rows": "from cratekit.write import trees\n\ntrees._rollback_quietly()\n",
             },
             {"tagging": ["private cratekit.write.trees._rollback_quietly"]},
-            id="reached-through-an-imported-module",
-        ),
+            id="reached-through-an-imported-module"),
         pytest.param(
             {
                 "core___locks": "def take(): ...\n",
@@ -227,8 +224,7 @@ REGISTRY = "class Registry: ...\n"
                 ),
             },
             {"sync": ["private cratekit.core._locks.take"]},
-            id="a-private-module-of-another-package-and-a-dunder-does-not",
-        ),
+            id="a-private-module-of-another-package-and-a-dunder-does-not"),
         pytest.param(
             {
                 "write__trees": ROLLBACK,
@@ -239,8 +235,7 @@ REGISTRY = "class Registry: ...\n"
                 "intake": ["private cratekit.write.trees._rollback_quietly"],
                 "tagging": ["private cratekit.write.trees._rollback_quietly"],
             },
-            id="a-dotted-import-under-another-name-is-followed-to-its-module",
-        ),
+            id="a-dotted-import-under-another-name-is-followed-to-its-module"),
         pytest.param(
             {
                 "core__art": "def _open(): ...\n",
@@ -248,10 +243,8 @@ REGISTRY = "class Registry: ...\n"
                 "tagging__tag": "from cratekit.core import tags\n\ntags.art._open()\n",
             },
             {"tagging": ["private cratekit.core.art._open"]},
-            id="a-name-of-a-module-handed-over",
-        ),
-    ],
-)
+            id="a-name-of-a-module-handed-over"),
+    ])
 def test_a_private_name_crossing_a_package_fails_however_it_is_reached(modules, expected):
     assert _private(_tree(**modules)) == expected
 
@@ -262,10 +255,8 @@ def test_a_private_name_crossing_a_package_fails_however_it_is_reached(modules, 
         pytest.param({"core__config": LOCK, "core__session": IMPORT_LOCK}, id="its-own-package"),
         pytest.param(
             {"acquire__vendored": "from cratekit._vendor.streamrip import client\n"},
-            id="the-vendored-tree",
-        ),
-    ],
-)
+            id="the-vendored-tree"),
+    ])
 def test_a_private_import_that_crosses_no_package_passes(modules):
     assert measure.private_crossings(_tree(**modules)) == {}
 
@@ -305,8 +296,7 @@ def test_a_relative_import_in_a_package_initializer_starts_from_that_package():
                 ),
             },
             {"intake": ["off-interface cratekit.core.drift"]},
-            id="imported",
-        ),
+            id="imported"),
         pytest.param(
             {
                 "core__pool": "def size(): ...\n",
@@ -315,8 +305,7 @@ def test_a_relative_import_in_a_package_initializer_starts_from_that_package():
                 ),
             },
             {"analysis": ["off-interface cratekit.core.pool"]},
-            id="a-lazy-reach-still-fails",
-        ),
+            id="a-lazy-reach-still-fails"),
         pytest.param(
             {
                 "core__restore": "class Plan: ...\n",
@@ -327,10 +316,8 @@ def test_a_relative_import_in_a_package_initializer_starts_from_that_package():
                 ),
             },
             {"session": ["off-interface cratekit.core.restore"]},
-            id="a-reach-under-type-checking-is-still-a-reach",
-        ),
-    ],
-)
+            id="a-reach-under-type-checking-is-still-a-reach"),
+    ])
 def test_a_core_module_off_the_list_fails_from_a_feature_package(modules, expected):
     assert _off(_tree(**modules)) == expected
 
@@ -339,8 +326,7 @@ def test_the_same_import_passes_from_core_write_and_the_shell():
     source = "from cratekit.core.drift import check\n"
     tree = _tree(
         core__drift="def check(): ...\n", core__session=source, write__trees=source,
-        cli__doctor=source,
-    )
+        cli__doctor=source)
     assert measure.off_interface(tree, ["config"]) == {}
 
 
@@ -357,8 +343,7 @@ def test_a_name_a_listed_module_re_exports_is_reached_through_the_list():
         analysis__light=(
             "from cratekit.core import jobs\nfrom cratekit.core.jobs import plan_pool\n\n"
             "jobs.plan_pool()\n"
-        ),
-    )
+        ))
     assert measure.off_interface(tree, ["jobs"]) == {}
     assert measure.core_names(tree) == {"analysis": {"cratekit.core.jobs.plan_pool"}}
 
@@ -370,8 +355,7 @@ def test_a_module_handed_over_by_a_listed_one_is_a_reach_of_that_module():
         core__tags="from cratekit.core import art\n",
         tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n",
         tagging__summary="from cratekit.core.tags import art as pictures\n\npictures.write()\n",
-        sync__run="from cratekit.core import tags\n\nkept = tags.art\n",
-    )
+        sync__run="from cratekit.core import tags\n\nkept = tags.art\n")
     assert _off(tree, "tags") == {
         "sync": ["off-interface cratekit.core.art"], "tagging": ["off-interface cratekit.core.art"]
     }
@@ -393,8 +377,7 @@ def test_a_module_handed_over_twice_is_followed_to_the_module_it_is():
             "from cratekit.core import tags\n\ntags.art.codec.decode()\n"
             "tags.cratekit.core.codec.decode()\n"
         ),
-        tagging__rows="from cratekit.core.tags import art\n\nart.codec.decode()\n",
-    )
+        tagging__rows="from cratekit.core.tags import art\n\nart.codec.decode()\n")
     assert _off(tree, "tags") == {
         "tagging": ["off-interface cratekit.core.art", "off-interface cratekit.core.codec"]
     }
@@ -408,12 +391,10 @@ def test_a_module_handed_over_twice_is_followed_to_the_module_it_is():
 def test_a_module_passed_on_by_name_through_a_third_module_is_followed_to_it():
     """``tags`` took ``art`` from ``pictures``, which imported it: still ``core.art``."""
     tree = _tree(
-        core__art="def read(): ...\n",
-        core__pictures="from cratekit.core import art\n",
+        core__art="def read(): ...\n", core__pictures="from cratekit.core import art\n",
         core__tags="from cratekit.core.pictures import art as covers\n",
         tagging__tag="from cratekit.core import tags\n\ntags.covers.read()\n",
-        tagging__rows="from cratekit.core.tags import covers\n\ncovers.read()\n",
-    )
+        tagging__rows="from cratekit.core.tags import covers\n\ncovers.read()\n")
     assert _off(tree, "tags") == {"tagging": ["off-interface cratekit.core.art"]}
     assert "cratekit.core.art.read" in measure.core_names(tree)["tagging"]
 
@@ -422,14 +403,12 @@ def test_the_module_an_import_names_is_still_reached_when_the_name_is_a_module()
     """Following the name adds a reach and takes none away: each rule still reads the
     module the statement names, as it did before the follow."""
     tree = _tree(
-        core__cause="",
-        core__preflight="from cratekit.core import cause\n",
+        core__cause="", core__preflight="from cratekit.core import cause\n",
         core___hidden="from cratekit.core import cause\n",
         label__registry="from cratekit.core import cause\n",
         intake__landing="from cratekit.core.preflight import cause\n",
         sync__run="from cratekit.label.registry import cause\n",
-        adopt__move="from cratekit.core._hidden import cause\n",
-    )
+        adopt__move="from cratekit.core._hidden import cause\n")
     assert _off(tree, "cause") == {
         "adopt": ["off-interface cratekit.core._hidden"],
         "intake": ["off-interface cratekit.core.preflight"],
@@ -449,8 +428,7 @@ def test_a_function_that_imports_its_module_when_called_is_not_that_module():
         core__session_ack="from cratekit.core.session_call_time import session as _session\n",
         core__tags="def cover():\n    from cratekit.core import art\n    return art\n",
         core__art="def read(): ...\n",
-        tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n",
-    )
+        tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n")
     assert tree.loads["cratekit.core.session_ack"] == frozenset({"cratekit.core.session_call_time"})
     assert measure.off_interface(tree, ["tags"]) == {}
 
@@ -458,10 +436,8 @@ def test_a_function_that_imports_its_module_when_called_is_not_that_module():
 def test_a_toggleable_module_handed_over_at_top_level_is_a_top_level_import():
     """Rule three reads the module a name is, not the always on module that passed it on."""
     tree = _tree(
-        label__registry=REGISTRY,
-        intake__landing="from cratekit.label import registry\n",
-        sync__run="from cratekit.intake.landing import registry\n",
-    )
+        label__registry=REGISTRY, intake__landing="from cratekit.label import registry\n",
+        sync__run="from cratekit.intake.landing import registry\n")
     assert _top(tree)["sync"] == ["top-level cratekit.label.registry"]
 
 
@@ -474,13 +450,11 @@ def test_a_toggleable_module_handed_over_at_top_level_is_a_top_level_import():
         pytest.param(
             {"sync__run": "from cratekit.label.registry import Registry\n"},
             {"sync": ["top-level cratekit.label.registry.Registry"]},
-            id="at-top-level-from-an-always-on-package-fails",
-        ),
+            id="at-top-level-from-an-always-on-package-fails"),
         pytest.param(
             {"sync__run": "class Pass:\n    from cratekit.label import registry\n"},
             {"sync": ["top-level cratekit.label.registry"]},
-            id="in-a-class-body-runs-at-import-time-and-fails",
-        ),
+            id="in-a-class-body-runs-at-import-time-and-fails"),
         pytest.param(
             {
                 "sync__run": (
@@ -492,8 +466,7 @@ def test_a_toggleable_module_handed_over_at_top_level_is_a_top_level_import():
                 ),
             },
             {"sync": ["top-level cratekit.label.registry"]},
-            id="under-type-checking-never-runs-and-passes",
-        ),
+            id="under-type-checking-never-runs-and-passes"),
         pytest.param(
             {
                 "sync__run": (
@@ -503,16 +476,12 @@ def test_a_toggleable_module_handed_over_at_top_level_is_a_top_level_import():
                 ),
             },
             {},
-            id="type-checking-spelled-through-its-module-is-read-the-same",
-        ),
+            id="type-checking-spelled-through-its-module-is-read-the-same"),
         # Rule three is about the always on packages. Rule four reads the rest.
         pytest.param(
-            {"export__cli": "from cratekit.label.registry import Registry\n"},
-            {},
-            id="a-toggleable-package-may-import-another",
-        ),
-    ],
-)
+            {"export__cli": "from cratekit.label.registry import Registry\n"}, {},
+            id="a-toggleable-package-may-import-another"),
+    ])
 def test_an_import_of_a_toggleable_package_is_read_by_when_it_runs(modules, expected):
     assert _top(_tree(label__registry=REGISTRY, **modules)) == expected
 
@@ -524,8 +493,7 @@ def test_the_same_import_under_a_function_passes():
             "def favourites():\n"
             "    from cratekit.label.registry import Registry\n"
             "    return Registry()\n"
-        ),
-    )
+        ))
     assert measure.top_level_toggleable(tree, HOMES) == {}
     assert _top(tree, lazy=True) == {"sync": ["top-level cratekit.label.registry.Registry"]}
 
@@ -533,14 +501,11 @@ def test_the_same_import_under_a_function_passes():
 def test_each_imported_name_is_one_place():
     """The survey counted its 54 this way, so the reading does too."""
     tree = _tree(
-        label__registry="A = B = 1\n",
-        sync__run="from cratekit.label.registry import A, B\n",
-        sync__pair="from cratekit.label.registry import A\n",
-    )
+        label__registry="A = B = 1\n", sync__run="from cratekit.label.registry import A, B\n",
+        sync__pair="from cratekit.label.registry import A\n")
     found = measure.top_level_toggleable(tree, HOMES)
     assert found["sync"] == collections.Counter(
-        {"top-level cratekit.label.registry.A": 2, "top-level cratekit.label.registry.B": 1}
-    )
+        {"top-level cratekit.label.registry.A": 2, "top-level cratekit.label.registry.B": 1})
 
 
 # ── Rule four: with a toggle off, every verb that remains still builds ───────
@@ -558,8 +523,7 @@ def _dangling(tree, *verbs: measure.Verb) -> list:
 def test_a_core_verb_whose_module_imports_a_toggled_off_package_dangles():
     tree = _tree(
         label__registry="",
-        organize__cli="from cratekit.label import registry\n\ndef build(parser, entry): ...\n",
-    )
+        organize__cli="from cratekit.label import registry\n\ndef build(parser, entry): ...\n")
     (labels, export, repair) = _dangling(tree, _verb("organize", "cratekit.organize.cli"))
     assert (labels.toggle, labels.verbs) == ("labels", ("organize",))
     assert labels.edges == (("cratekit.organize.cli", "cratekit.label.registry"),)
@@ -578,10 +542,8 @@ def test_the_toggles_own_verbs_are_off_and_so_never_dangle():
 def test_a_verb_dangles_through_a_module_it_only_reaches_indirectly():
     """The import is filed under the package that holds it, not the verb's."""
     tree = _tree(
-        label__registry="",
-        intake__landing="from cratekit.label import registry\n",
-        sync__cli="from cratekit.intake import landing\n\ndef build(parser, entry): ...\n",
-    )
+        label__registry="", intake__landing="from cratekit.label import registry\n",
+        sync__cli="from cratekit.intake import landing\n\ndef build(parser, entry): ...\n")
     found = _dangling(tree)
     assert found[0].verbs == ("sync",)
     assert _lines(measure.dangling_lines(tree, found)) == {
@@ -605,21 +567,17 @@ def test_an_import_written_in_the_builder_runs_when_the_verb_builds_and_dangles(
             "def build_set(parser, entry):\n"
             "    from cratekit.intake import set_playlist\n"
             "def build_other(parser, entry): ...\n"
-        ),
-    )
+        ))
     found = _dangling(
-        tree,
-        _verb("intake.set", "cratekit.intake.cli", builder="build_set"),
-        _verb("intake.other", "cratekit.intake.cli", builder="build_other"),
-    )
+        tree, _verb("intake.set", "cratekit.intake.cli", builder="build_set"),
+        _verb("intake.other", "cratekit.intake.cli", builder="build_other"))
     assert found[0].verbs == ("intake.set",)
 
 
 def test_a_home_imported_directly_in_the_builder_dangles_the_verb():
     tree = _tree(
         label__registry="",
-        sync__cli="def build(parser, entry):\n    from cratekit.label import registry\n",
-    )
+        sync__cli="def build(parser, entry):\n    from cratekit.label import registry\n")
     found = _dangling(tree)
     assert found[0].verbs == ("sync",)
     assert found[0].edges == (("cratekit.sync.cli", "cratekit.label.registry"),)
@@ -636,8 +594,7 @@ def test_an_import_under_type_checking_is_never_loaded_for_a_verb():
             "def build(parser, entry):\n"
             "    if TYPE_CHECKING:\n"
             "        from cratekit.label import registry\n"
-        ),
-    )
+        ))
     verbs = (_verb("sync", "cratekit.sync.cli"), _verb("intake", "cratekit.intake.cli"))
     assert [item.verbs for item in _dangling(tree, *verbs)] == [(), (), ()]
 
@@ -653,8 +610,7 @@ def test_an_import_guarded_by_try_is_read_as_one_that_runs():
             "except ImportError:\n"
             "    registry = None\n"
             "def build(parser, entry): ...\n"
-        ),
-    )
+        ))
     assert _dangling(tree)[0].verbs == ("sync",)
 
 
@@ -685,10 +641,8 @@ def test_a_package_initializer_is_loaded_with_any_module_inside_it():
 def test_nothing_is_followed_through_a_module_that_cannot_be_imported():
     """An import past the switched off package never runs, so it is no cause."""
     tree = _tree(
-        export__cli="",
-        label__registry="from cratekit.export import cli\n",
-        sync__cli="from cratekit.label import registry\n\ndef build(parser, entry): ...\n",
-    )
+        export__cli="", label__registry="from cratekit.export import cli\n",
+        sync__cli="from cratekit.label import registry\n\ndef build(parser, entry): ...\n")
     labels, export, _ = _dangling(tree)
     assert labels.edges == (("cratekit.sync.cli", "cratekit.label.registry"),)
     assert export.edges == (("cratekit.label.registry", "cratekit.export.cli"),)
@@ -703,8 +657,7 @@ def test_core_names_are_counted_across_feature_packages_and_only_there():
         core__jobs="from cratekit.core.config import save\n",
         cli__doctor="from cratekit.core.config import save\n",
         intake__landing="from cratekit.core.config import load\n",
-        sync__run="from cratekit.core import config\n\nconfig.load()\nconfig.locate()\n",
-    )
+        sync__run="from cratekit.core import config\n\nconfig.load()\nconfig.locate()\n")
     assert measure.core_names(tree) == {
         "intake": {"cratekit.core.config.load"},
         "sync": {"cratekit.core.config.load", "cratekit.core.config.locate"},
@@ -724,8 +677,7 @@ def test_a_name_imported_from_the_core_package_itself_is_a_core_name():
 def test_a_name_bound_in_an_except_branch_is_a_name_the_module_defines():
     tree = _tree(
         core__config="try:\n    import tomllib\nexcept ImportError:\n    def fallback(): ...\n",
-        sync__run="from cratekit.core import config\n\nconfig.fallback()\nconfig.tomllib\n",
-    )
+        sync__run="from cratekit.core import config\n\nconfig.fallback()\nconfig.tomllib\n")
     assert measure.core_names(tree) == {
         "sync": {"cratekit.core.config.fallback", "cratekit.core.config.tomllib"}
     }
@@ -739,8 +691,7 @@ def test_a_local_variable_named_as_an_imported_module_is_not_a_use_of_it():
             "from cratekit.core import config\n\n"
             "def run(config):\n"
             "    return config.library, config._cache, config.load\n"
-        ),
-    )
+        ))
     assert measure.core_names(tree) == {"sync": {"cratekit.core.config.load"}}
     assert measure.private_crossings(tree) == {}
 
@@ -748,10 +699,8 @@ def test_a_local_variable_named_as_an_imported_module_is_not_a_use_of_it():
 def test_a_module_that_answers_for_any_name_has_every_attribute_counted():
     """A ``__getattr__`` or a star import means the listed names are not all of them."""
     tree = _tree(
-        core__config="def __getattr__(name): ...\n",
-        core__naming="from os.path import *\n",
-        sync__run="from cratekit.core import config, naming\n\nconfig.anything()\nnaming.join()\n",
-    )
+        core__config="def __getattr__(name): ...\n", core__naming="from os.path import *\n",
+        sync__run="from cratekit.core import config, naming\n\nconfig.anything()\nnaming.join()\n")
     assert measure.core_names(tree) == {
         "sync": {"cratekit.core.config.anything", "cratekit.core.naming.join"}
     }
@@ -881,8 +830,7 @@ def test_with_a_toggle_off_every_remaining_verb_builds_and_formats_its_help():
     homes = {toggle: TOGGLE_HOMES[toggle] for toggle in DRIVEN_TOGGLES}
     finished = subprocess.run(
         [sys.executable, "-c", measure._DRIVE, json.dumps(homes)],
-        capture_output=True, text=True, check=False, cwd=REPO_ROOT,
-    )
+        capture_output=True, text=True, check=False, cwd=REPO_ROOT)
     assert finished.returncode == 0, finished.stderr[-2000:]
     failed = json.loads(finished.stdout.strip().splitlines()[-1])
     assert failed == {toggle: [] for toggle in DRIVEN_TOGGLES}
@@ -913,13 +861,11 @@ def test_no_package_crosses_a_seam_beyond_its_allowance():
     # A reading that read nothing would pass, so the reading is checked first.
     assert len(sources) > 100 and sum(map(len, tree.uses.values())) > 1_000
     assert all(verb.module in tree.modules for verb in verbs), "a verb names no module"
-
     # U328: a part of the verb table is imported by the registry alone, so a verb is read
     # through cli.registry, where the suite patches the table.
     part = f"{registry.__name__}_"
     reach = {use.path for uses in tree.uses.values() for use in uses if use.target.startswith(part)}
     assert reach == {measure.REGISTRY}, f"a part of the verb table is imported past it: {reach}"
-
     allowed = measure.read_allowances(REPO_ROOT, measure.IMPORT_ALLOWANCES)
     excess = measure.over_allowance(measure.import_findings(tree, rules, verbs), allowed)
     problems = [
@@ -935,7 +881,6 @@ def test_no_package_crosses_a_seam_beyond_its_allowance():
         f"off. The allowance under {measure.IMPORT_ALLOWANCES}/ is never added to:\n"
         + "\n".join(problems)
     )
-
     used = measure.core_names(tree)
     names = {name for group in used.values() for name in group}
     assert len(names) <= CORE_NAMES_CEILING, (

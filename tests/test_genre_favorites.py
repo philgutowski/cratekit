@@ -1,8 +1,6 @@
-"""Every genre folder has a Favorites playlist that mirrors All Favorites (U119).
-
-The engine on a disposable database with a cut over routing tree, and the verb through the command
-line for its gate and refusals. D1 applies.
-"""
+"""Every genre folder has a Favorites playlist that mirrors All Favorites (U119): the engine on a
+disposable database with a cut over tree, the verb through the command line for its gate and
+refusals. D1 applies."""
 
 from __future__ import annotations
 
@@ -52,12 +50,10 @@ def db(cfg, monkeypatch):
         conn.executemany(
             "INSERT OR IGNORE INTO djmdContent (ID, Title, rb_local_deleted, created_at, "
             "updated_at) VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
-            [(content_id, f"track {content_id}") for content_id in ROWS],
-        )
+            [(content_id, f"track {content_id}") for content_id in ROWS])
         conn.executemany(
             "UPDATE djmdContent SET FolderPath = ?, rb_local_deleted = 0 WHERE ID = ?",
-            [(f"{cfg.library.root}/Music/track {row}.flac", row) for row in ROWS],
-        )
+            [(f"{cfg.library.root}/Music/track {row}.flac", row) for row in ROWS])
         conn.commit()
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
@@ -78,8 +74,7 @@ class Tree:
         db.session.commit()
         record = tree_registry.TreeRecord(
             tree_id=TREE, mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 10, 9),
-            root_id=str(self.root.ID), source=tree_registry.DerivationSource.TAXONOMY,
-        )
+            root_id=str(self.root.ID), source=tree_registry.DerivationSource.TAXONOMY)
         self.registry = tree_registry.Registry((record,))
         tree_registry.write(cfg, self.registry)
         self.folders: dict[str, object] = {}
@@ -140,8 +135,7 @@ def _plan(tree: Tree, declared=DECLARED):
 def _apply(tree: Tree, plan, *, remove=True):
     return genre_favorites.apply_refresh(
         tree.cfg, tree.db, plan, declared=DECLARED, registry=tree.registry,
-        analysis_roots=[Path(tree.cfg.library.root)], remove=remove,
-    )
+        analysis_roots=[Path(tree.cfg.library.root)], remove=remove)
 
 
 def _refresh(tree: Tree, *, remove=True):
@@ -394,8 +388,7 @@ def _placements(tree: Tree):
 def _check(tree: Tree, placed, gaps):
     return rebuild.check(
         tree.cfg, tree.db, tree_id=TREE, registry=tree.registry, declared=DECLARED,
-        placements=placed, rows=_rows(tree.cfg), root_exists=lambda _root: True, not_compared=gaps,
-    )
+        placements=placed, rows=_rows(tree.cfg), root_exists=lambda _root: True, not_compared=gaps)
 
 
 def _rebuild_track_one(tree: Tree):
@@ -406,8 +399,7 @@ def _rebuild_track_one(tree: Tree):
     return rebuild.rebuild_tree(
         cfg, tree.db, tree_id=TREE, registry=tree.registry, declared=DECLARED, rows=_rows(cfg)[:1],
         root_exists=lambda _root: True, analysis_roots=[Path(cfg.library.root)],
-        vocal_threshold=None, truth=truth,
-    )
+        vocal_threshold=None, truth=truth)
 
 
 def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(tree):
@@ -423,8 +415,7 @@ def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(tr
 
 
 def test_the_check_reports_a_favourite_missing_from_its_favorites_and_not_a_hand_added_one_as_foreign(
-    tree,
-):
+    tree):
     """A favourite the folder lacks is missing, a Favorites non-favourite unexpected, neither foreign."""
     _hand_added(tree)
     report = _check(tree, *_placements(tree))
@@ -437,12 +428,10 @@ def test_the_check_reports_a_favourite_missing_from_its_favorites_and_not_a_hand
 
 def test_with_favorites_leaves_another_tree_and_an_undeclared_class_alone(tree, cfg, db):
     placements, gaps = rebuild.with_favorites(
-        cfg, db, DECLARED, tree.registry, _rows(cfg), (), ("vocal",), tree_id="another_tree"
-    )
+        cfg, db, DECLARED, tree.registry, _rows(cfg), (), ("vocal",), tree_id="another_tree")
     assert placements == () and gaps == ("vocal",)
     placements, gaps = rebuild.with_favorites(
-        cfg, db, UNDECLARED, tree.registry, _rows(cfg), (), (), tree_id=TREE
-    )
+        cfg, db, UNDECLARED, tree.registry, _rows(cfg), (), (), tree_id=TREE)
     assert placements == () and gaps == ()
 
 
@@ -622,7 +611,6 @@ def test_the_summary_keeps_the_removals_owed_past_an_attempt_that_filed_nothing(
         @staticmethod
         def committed(_cfg, _job_id):
             return reports
-
     real = module.artifacts
     module.artifacts = _Artifacts  # type: ignore[assignment]
     try:
@@ -642,17 +630,14 @@ def test_a_read_back_disagreement_at_an_adoptions_end_is_a_note_not_a_clean_coun
 
 
 def test_the_additive_half_turns_any_refusal_into_a_skip_once_the_adoption_has_landed(
-    tree, cfg, db, monkeypatch
-):
+    tree, cfg, db, monkeypatch):
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
     rb_writer.close_db(db)
 
     def stale(*_args, **_kwargs):
         from cratekit.core.cause import refuse
-
         raise refuse("decision-stale", "the plan moved", origin=("test",))
-
     monkeypatch.setattr(genre_favorites, "plan_refresh", stale)
     roots = [Path(cfg.library.root)]
     outcome = genre_favorites.refresh_additive(cfg, DECLARED, analysis_roots=roots)
@@ -687,8 +672,7 @@ def test_a_removed_favorites_under_the_folder_is_not_written_into(tree, db):
 
 def _record_band(cfg, bucket: taxonomy.Bucket, folder_id: str, playlist_id: str, sub: str) -> None:
     node = convergence.DestinationNode(
-        bucket=bucket.id, sub=sub, folder_id=folder_id, playlist_id=playlist_id
-    )
+        bucket=bucket.id, sub=sub, folder_id=folder_id, playlist_id=playlist_id)
     convergence.record_nodes(cfg, TREE, [node])
 
 
@@ -755,7 +739,6 @@ def test_a_check_with_no_source_leaves_the_recorded_favorites_out_and_names_the_
 def _broken_removal(monkeypatch) -> None:
     def broken(*_args, **_kwargs):
         raise RuntimeError("the disk went away")
-
     monkeypatch.setattr(rb_writer, "remove_memberships", broken)
 
 
@@ -788,7 +771,6 @@ def test_a_removal_commit_that_lands_and_then_raises_is_recorded_with_its_count(
         real_commit(*args, **kwargs)
         if removing:
             raise OSError("the playlist file could not be saved")
-
     monkeypatch.setattr(rb_writer, "remove_memberships", remove)
     monkeypatch.setattr(db, "commit", lands_then_fails)
     with pytest.raises(genre_favorites.RefreshInterrupted):
@@ -798,8 +780,7 @@ def test_a_removal_commit_that_lands_and_then_raises_is_recorded_with_its_count(
 
 
 def test_the_verb_reports_an_interrupted_refresh_with_the_additions_that_committed(
-    tree, monkeypatch
-):
+    tree, monkeypatch):
     _hand_added(tree)
     _closed(tree.db)
     _broken_removal(monkeypatch)
@@ -817,7 +798,6 @@ def test_the_additive_half_carries_the_additions_when_interrupted_past_them(tree
 
     def broken(*_args, **_kwargs):
         raise RuntimeError("the record went away")
-
     monkeypatch.setattr(convergence, "record_nodes", broken)
     roots = [Path(cfg.library.root)]
     outcome = genre_favorites.refresh_additive(cfg, DECLARED, analysis_roots=roots)

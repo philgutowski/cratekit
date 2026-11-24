@@ -1,7 +1,5 @@
-"""R-837: a set becomes a private playlist on the account, and is archived.
-
-Through the real dispatcher with catalogue and account faked; a real account is attended.
-"""
+"""R-837: a set becomes a private playlist on the account, and is archived, through the real
+dispatcher with catalogue and account faked; a real account is attended."""
 
 from __future__ import annotations
 
@@ -384,11 +382,9 @@ def _filler(count: int, start: int = 0) -> list[Hit]:
     ("album", "handed", "listed"),
     # R-572: the set path reads the album beside the ISRC the way file_identity does.
     [("", "", "held.txt"), ("  Tidal Lines ", "Tidal Lines", "held-album.txt")],
-    ids=["no-album-tag", "its-album-tag-handed-over"],
-)
+    ids=["no-album-tag", "its-album-tag-handed-over"])
 def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
-    account, silence, album, handed, listed
-):
+    account, silence, album, handed, listed):
     cfg, fake, held = account
     _held(silence, cfg, isrc="QZABC2600007", album=album)
     held.catalog["set-row-1"] = "tid-by-file"
@@ -418,8 +414,7 @@ def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(acc
     row = _seventh(cfg, "held.txt")
     assert row["action"] == "unmatched"
     assert row["why"].startswith(
-        "the provider names no single track under its library file's ISRC QZABC2600007; "
-    )
+        "the provider names no single track under its library file's ISRC QZABC2600007; ")
     assert fake.searched_for == [SEVEN, SEVEN]
 
 
@@ -432,8 +427,7 @@ def test_held_copies_carrying_different_isrcs_ask_the_account_nothing(account, s
     row = _seventh(cfg, "held.txt")
     assert held.matches == []
     assert row["why"].startswith(
-        "the library holds it in 2 file(s) carrying 2 different ISRCs, so none was asked about; "
-    )
+        "the library holds it in 2 file(s) carrying 2 different ISRCs, so none was asked about; ")
 
 
 def test_another_versions_isrc_is_not_the_rows(account, silence):
@@ -449,8 +443,7 @@ def test_another_versions_isrc_is_not_the_rows(account, silence):
 @pytest.mark.parametrize(
     "isrc, name",
     [("QZABC2600010", "Title Seven (Extended Mix)"), ("QZABC2600008", "Another Title")],
-    ids=["held-only-at-another-version", "not-held"],
-)
+    ids=["held-only-at-another-version", "not-held"])
 def test_a_row_the_library_does_not_hold_asks_the_account_nothing(account, silence, isrc, name):
     """A file of another version, or another title, is not the row's."""
     cfg, _fake, held = account
@@ -486,8 +479,7 @@ def test_a_full_first_page_with_one_exact_and_a_second_with_none_lists_it(accoun
     "hits",
     [[*_filler(50), Hit("tid-7", *SEVEN)],
      [Hit("tid-7", *SEVEN), *_filler(49), Hit("tid-7", *SEVEN)]],
-    ids=["on-the-second-page-alone", "served-again-on-the-next-page"],
-)
+    ids=["on-the-second-page-alone", "served-again-on-the-next-page"])
 def test_one_exact_track_over_two_pages_is_listed(account, hits):
     row, _fake = _paged(account, hits)
     assert (row["id"], row["how"]) == ("tid-7", "search")
@@ -504,8 +496,7 @@ def test_no_exact_match_on_any_page_leaves_it_out_as_none(account):
     row, _fake = _paged(account, [*_filler(50), *_filler(5, start=50), near])
     assert row["action"] == "unmatched"
     assert row["why"].startswith(
-        "the provider's search returned 56 hit(s) over 2 page(s) and none matches it exactly"
-    )
+        "the provider's search returned 56 hit(s) over 2 page(s) and none matches it exactly")
 
 
 def test_the_page_bound_reached_leaves_it_out_and_says_so(account):
@@ -573,8 +564,7 @@ class _Unreadable:
         ("Artist Seven - Title Seven", [Hit("", *SEVEN)], None),
     ],
     ids=["two-exact-matches", "a-title-that-reads-two-ways", "an-unreadable-row",
-         "an-exact-match-with-no-identifier"],
-)
+         "an-exact-match-with-no-identifier"])
 def test_a_full_first_page_that_can_list_nothing_reads_no_second_page(line, hits, said):
     answer, asked = _walk(line, [*hits, *_filler(60)])
     if said is not None:
@@ -767,8 +757,7 @@ def _loop(option: str, apply, *plans: tuple[str, bool]) -> dict:
     ctx = SimpleNamespace(
         gate=SimpleNamespace(require=lambda *_a, **_k: option),
         entry=SimpleNamespace(gates=(BUILD,)),
-        envelope=lambda **shown: shown,
-    )
+        envelope=lambda **shown: shown)
     planned = [SimpleNamespace(name=name, writes=writes) for name, writes in plans]
     payload = {"totals": {"writes": True}}
     backfill = set_cli._SET_BACKFILL
@@ -789,7 +778,6 @@ def test_a_backfill_skips_the_planless_and_names_only_what_wrote():
     def apply(_cfg, one):
         asked.append(one.name)
         return None, [], one.name == "wrote"
-
     done = _loop("apply", apply, ("planless", False), ("wrote", True), ("unchanged", True))
     assert asked == ["wrote", "unchanged"]
     assert done["data"]["totals"]["applied"] == {"playlists": ["wrote"]}
@@ -801,7 +789,6 @@ def test_a_backfill_failing_before_anything_landed_raises_it_as_is():
 
     def apply(_cfg, _one):
         raise boom
-
     with pytest.raises(RuntimeError) as raised:
         _loop("apply", apply, ("first", True))
     assert raised.value is boom
@@ -809,8 +796,7 @@ def test_a_backfill_failing_before_anything_landed_raises_it_as_is():
 
 # 4. Add only, by the suite's own scan
 @pytest.mark.parametrize(
-    "source", [Path(sets.__file__), *sorted(Path(set_cli.__file__).parent.glob("set_*.py"))]
-)
+    "source", [Path(sets.__file__), *sorted(Path(set_cli.__file__).parent.glob("set_*.py"))])
 def test_no_removal_shape_appears_in_the_set_path(source):
     called = {
         node.func.attr

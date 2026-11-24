@@ -65,7 +65,6 @@ def without(default_raw):
         del bucket["genre_sub"]
         bucket["aliases"] = [alias for alias in bucket["aliases"] if alias != GENRE]
         data["schema_version"] = 4
-
     return build_taxonomy(_mutated(default_raw, strip))
 
 
@@ -180,7 +179,6 @@ def test_the_tagger_writes_the_source_it_matched_when_a_sub_has_two(default_raw)
         bucket = _bucket(data, BUCKET)
         bucket["aliases"].append("Romanian Minimal")
         bucket["genre_sub"][0]["sources"] = [GENRE, "Romanian Minimal"]
-
     declared = build_taxonomy(_mutated(default_raw, two))
     assert routing.suggest_tag(declared, "romanian minimal").tag == "Romanian Minimal"
     assert routing.suggest_tag(declared, "rominimal").tag == GENRE
@@ -200,7 +198,6 @@ def test_a_former_place_naming_the_genre_sub_is_refused_through_that_list(defaul
         data["schema_version"] = GENRE_SUB_SCHEMA_VERSION
         place = {"id": "old_rominimal", "bucket": BUCKET, "sub": SUB, "display": "Rominimal"}
         _bucket(data, "techno").setdefault("formerly", []).append(place)
-
     problems = _problems(default_raw, former)
     assert any("still declares the sub 'rominimal'" in p for p in problems)
     assert any("still holds a sub named 'Rominimal'" in p for p in problems)
@@ -229,14 +226,11 @@ def _genre(data: dict) -> dict:
         ("id", "unsorted", "id 'unsorted' is already a band"),
         ("id", "with_vox", "id 'with_vox' is already a band"),
         ("id", "candy", "id 'candy' is already a band"),
-    ],
-)
+    ])
 def test_a_genre_sub_colliding_with_a_band_or_a_sub_class_is_refused_by_name(
-    default_raw, field, value, said
-):
+        default_raw, field, value, said):
     def collide(data):
         _genre(data)[field] = value
-
     problems = _problems(default_raw, collide)
     assert any(f"[[bucket]] {BUCKET} genre_sub" in p and said in p for p in problems), problems
 
@@ -306,8 +300,7 @@ def _on_single_sub(data):
         "two-of-one-name", "two-of-one-identifier", "one-source-in-two", "source-not-an-alias",
         "source-another-bucket-routes", "identifier-not-one", "empty-display",
         "bucket-routes-by-source", "bucket-with-one-sub",
-    ],
-)
+    ])
 def test_a_genre_sub_that_is_not_a_place_of_its_own_is_refused_by_name(default_raw, mutate, said):
     problems = _problems(default_raw, mutate)
     assert any(all(part in p for part in said) for p in problems), problems
@@ -320,7 +313,6 @@ def test_sources_must_be_a_non_empty_list_of_words(default_raw, sources):
             del _genre(data)["sources"]
         else:
             _genre(data)["sources"] = sources
-
     assert any("sources must be a non-empty list" in p for p in _problems(default_raw, bad))
 
 
@@ -338,7 +330,6 @@ def test_a_genre_sub_under_an_older_schema_version_is_refused_by_name(default_ra
         if version < 2:
             for bucket in data["bucket"]:
                 bucket.pop("formerly", None)
-
     problems = _problems(default_raw, older)
     said = f"declares a genre sub under schema_version {version}; write schema_version = 5"
     assert any(said in p for p in problems), problems
@@ -347,12 +338,10 @@ def test_a_genre_sub_under_an_older_schema_version_is_refused_by_name(default_ra
 @pytest.mark.parametrize(
     "shape",
     [{"id": "x", "display": "One table", "sources": ["X"]}, "a bare name", ["a bare name"]],
-    ids=["one-table", "string", "list-of-strings"],
-)
+    ids=["one-table", "string", "list-of-strings"])
 def test_a_genre_sub_in_the_wrong_shape_is_a_problem_and_not_a_crash(default_raw, shape):
     def mutate(data):
         _bucket(data, BUCKET)["genre_sub"] = shape
-
     assert any("genre_sub must be an array of tables" in p for p in _problems(default_raw, mutate))
 
 

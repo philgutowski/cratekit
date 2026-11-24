@@ -1,8 +1,6 @@
-"""A gated database verb says when another run of it holds or just answered its gate (U186).
-
-The write is already safe, since the apply refuses ``decision-stale``; the warning tells a second
-session why its numbers moved, and refuses nothing. D1 applies.
-"""
+"""A gated database verb says when another run of it holds or just answered its gate (U186). The
+apply already refuses ``decision-stale``; the warning tells a second session why its numbers
+moved, and refuses nothing. D1 applies."""
 
 from __future__ import annotations
 
@@ -198,8 +196,7 @@ QUIET = {
 
 @pytest.mark.parametrize(("sibling", "offers", "option"), QUIET.values(), ids=list(QUIET))
 def test_decide_says_nothing_of_a_sibling_whose_answer_this_one_does_not_repeat(
-    native_library, sibling, offers, option
-):
+    native_library, sibling, offers, option):
     sibling()
     second = _planned()["run_id"]
     if offers is not None:
@@ -308,7 +305,6 @@ def test_a_refusal_before_the_gate_names_no_sibling(machine):
 def test_a_reading_that_breaks_says_so_and_leaves_the_gate_as_it_was(native_library, monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("a probe")
-
     monkeypatch.setattr(gates, "siblings", broken)
     refused = _planned()
     assert refused["exit_code"] == int(ExitCode.DECISION_REQUIRED)

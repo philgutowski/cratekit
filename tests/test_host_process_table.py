@@ -77,7 +77,6 @@ def test_a_test_that_fakes_rekordbox_at_the_seam_still_sees_it(rekordbox_on_the_
 
         def Process(self, pid):  # noqa: N802 - psutil's own name
             return _host_processes._Open(pid, "rekordboxAgent")
-
     monkeypatch.setattr(processes, "_platform", Table)
     assert processes.rekordbox_processes_running() == ("rekordboxAgent",)
 

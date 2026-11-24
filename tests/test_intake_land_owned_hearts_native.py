@@ -12,21 +12,11 @@ from cratekit.core import config, rb_writer, session, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import backfill
 from cratekit.intake import land_cli
+from tests import test_intake_land_hearts_native as hearts
 from tests.cli_drive import drive
 from tests.test_intake_land_account_playlists_native import PASS, _opened, _stage
 from tests.test_intake_land_account_playlists_native import pinned_day as pinned_day
-from tests.test_intake_land_hearts_native import (
-    NOV,
-    PINK_ID,
-    RED_ID,
-    SEP,
-    SOURCE,
-    UNKNOWN,
-    _colour_of,
-    _favorites,
-    _home,
-    hearts_swept,
-)
+from tests.test_intake_land_hearts_native import NOV, PINK_ID, RED_ID, SEP, SOURCE, UNKNOWN
 from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
 from tests.test_intake_land_native import _answered, _execute, _lands, _query
 from tests.test_intake_land_native import _platform_seams as _platform_seams
@@ -96,14 +86,13 @@ def _mark_removed(cfg: config.Config, playlist_id: str, content_id: str) -> None
 
 
 def test_an_owned_track_hearted_today_joins_all_favorites_and_its_month_with_nothing_downloaded(
-    cfg, silence
-):
-    folder_id, source_id = _home(cfg)
+        cfg, silence):
+    folder_id, source_id = hearts._home(cfg)
     row = _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV})
+    hearts.hearts_swept(cfg, {"Owned": NOV})
     rows_before = _content_count(cfg)
     acted, refused = _lands(verb=LAND)
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
     # Nothing was downloaded or landed: no row made, staging untouched, no INBOX batch.
     assert _content_count(cfg) == rows_before
     assert list(Path(cfg.paths.download_staging).iterdir()) == []
@@ -126,39 +115,38 @@ def test_an_owned_track_hearted_today_joins_all_favorites_and_its_month_with_not
     assert source_id
     # Run again, every owned heart is placed, so it asks nothing and ends no-op.
     assert _no_op()["data"]["totals"] == {"count": 0}
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
     # Removed from All Favorites by hand and still hearted, it joins again.
     _mark_removed(cfg, source_id, row)
     assert _live(cfg, source_id) == []
-    hearts_swept(cfg, {"Owned": NOV})
+    hearts.hearts_swept(cfg, {"Owned": NOV})
     acted, _refused = _lands(verb=LAND)
     assert _live(cfg, source_id) == [row]
-    assert _favorites(cfg, folder_id)["2026-11"] == ["Owned"]
+    assert hearts._favorites(cfg, folder_id)["2026-11"] == ["Owned"]
     assert acted["data"]["totals"]["hearts placed"] == 1, "the month already held it"
 
 
 def test_a_pass_with_no_hearts_job_opens_nothing_and_ends_no_op(cfg, monkeypatch):
     """The empty landing as it always was: no owned heart, no database opened."""
-    _home(cfg)
+    hearts._home(cfg)
     opened: list[object] = []
     real = rb_writer.open_db
 
     def counting(*args, **kwargs):
         opened.append(args)
         return real(*args, **kwargs)
-
     monkeypatch.setattr(rb_writer, "open_db", counting)
     _no_op()
     assert opened == []
 
 
 def test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one(cfg, silence):
-    folder_id, _source_id = _home(cfg)
+    folder_id, _source_id = hearts._home(cfg)
     _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": SEP, "Fresh": NOV})
+    hearts.hearts_swept(cfg, {"Owned": SEP, "Fresh": NOV})
     _stage(cfg, silence, "Fresh")
     acted, refused = _lands(verb=LAND)
-    placed = _favorites(cfg, folder_id)
+    placed = hearts._favorites(cfg, folder_id)
     assert sorted(placed[SOURCE]) == ["Fresh", "Owned"]
     assert (placed["2026-09"], placed["2026-11"]) == (["Owned"], ["Fresh"])
     shown = refused["cause"]["detail"]["shown"]
@@ -169,7 +157,7 @@ def test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one(cfg, silenc
     # One session wrote the batch and both hearts, each row coloured Pink (U153).
     (record,) = [r for r in session.records(cfg) if "favorites_placed" in r.detail]
     assert record.detail["favorites_placed"]["added_source"] == 2
-    assert (_colour_of(cfg, "Owned"), _colour_of(cfg, "Fresh")) == (PINK_ID, PINK_ID)
+    assert (hearts._colour_of(cfg, "Owned"), hearts._colour_of(cfg, "Fresh")) == (PINK_ID, PINK_ID)
     assert shown["rows to colour Pink"] == 2
     both = _query(cfg, "SELECT ID FROM djmdContent WHERE Title IN ('Fresh', 'Owned')")
     coloured = record.detail["favorites_placed"]["coloured"]
@@ -177,34 +165,34 @@ def test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one(cfg, silenc
 
 
 def test_an_owned_heart_all_favorites_holds_is_no_write_beside_a_landing(cfg, silence):
-    folder_id, source_id = _home(cfg)
+    folder_id, source_id = hearts._home(cfg)
     row = _owned(cfg, silence, "Owned")
     _hold(cfg, source_id, row)
-    hearts_swept(cfg, {"Owned": SEP, "Fresh": NOV})
+    hearts.hearts_swept(cfg, {"Owned": SEP, "Fresh": NOV})
     _stage(cfg, silence, "Fresh")
     acted, refused = _lands(verb=LAND)
     assert "owned hearts" not in refused["cause"]["detail"]["shown"]
-    assert sorted(_favorites(cfg, folder_id)[SOURCE]) == ["Fresh", "Owned"]
-    assert "2026-09" not in _favorites(cfg, folder_id)
+    assert sorted(hearts._favorites(cfg, folder_id)[SOURCE]) == ["Fresh", "Owned"]
+    assert "2026-09" not in hearts._favorites(cfg, folder_id)
 
 
 def test_an_owned_heart_the_account_dates_nowhere_goes_to_undated(cfg, silence):
     """Once acknowledged: an owned only pass refuses before the gate without it."""
-    folder_id, _source_id = _home(cfg)
+    folder_id, _source_id = hearts._home(cfg)
     _owned(cfg, silence, "Dateless")
-    hearts_swept(cfg, {"Dateless": None})
+    hearts.hearts_swept(cfg, {"Dateless": None})
     session.ack_path(cfg).unlink()
     code, refused = drive(LAND)
     assert code == int(ExitCode.ACK_REQUIRED), refused
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: []}
     session.record_acknowledgment(cfg, terminal=lambda: True)
     acted, _refused = _lands(verb=LAND)
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Dateless"], "Undated": ["Dateless"]}
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: ["Dateless"], "Undated": ["Dateless"]}
 
 
 def test_with_no_all_favorites_an_owned_only_pass_ends_no_op_and_says_why(cfg, silence):
     _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV})
+    hearts.hearts_swept(cfg, {"Owned": NOV})
     acted = _no_op()
     (note,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_SKIPPED]
     assert "no owned heart was placed" in note["message"]
@@ -214,7 +202,7 @@ def test_with_no_all_favorites_an_owned_only_pass_ends_no_op_and_says_why(cfg, s
 def test_owned_hearts_an_empty_landing_cannot_place_alone_are_no_write(cfg, silence):
     """No listing dates a job that froze no date key, and Undated is undone by nothing; a file
     two active rows claim answers nothing (U128); a held heart's month is the backfill's."""
-    folder_id, source_id = _home(cfg)
+    folder_id, source_id = hearts._home(cfg)
     _owned(cfg, silence, "Old")
     _hold(cfg, source_id, _owned(cfg, silence, "Held"))
     _owned(cfg, silence, "Twice Imported")
@@ -228,54 +216,54 @@ def test_owned_hearts_an_empty_landing_cannot_place_alone_are_no_write(cfg, sile
         handle.session.commit()
     elsewhere.unlink()
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE FolderPath = ?", str(path))) == 2
-    hearts_swept(cfg, {"Old": UNKNOWN, "Held": NOV, "Twice Imported": NOV})
+    hearts.hearts_swept(cfg, {"Old": UNKNOWN, "Held": NOV, "Twice Imported": NOV})
     _no_op()
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Held"]}
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: ["Held"]}
 
 
 def test_landing_an_older_pass_places_no_owned_heart_once_a_later_hearts_job_ran(cfg, silence):
     """A later hearts job is the account's later word: an older pass puts back no dropped heart."""
-    folder_id, _source_id = _home(cfg)
+    folder_id, _source_id = hearts._home(cfg)
     _owned(cfg, silence, "Dropped")
-    hearts_swept(cfg, {"Dropped": NOV})
-    hearts_swept(cfg, {"Other": NOV}, run_id="2026-10-04T101500Z-ef56")
+    hearts.hearts_swept(cfg, {"Dropped": NOV})
+    hearts.hearts_swept(cfg, {"Other": NOV}, run_id="2026-10-04T101500Z-ef56")
     _no_op()
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: []}
 
 
 def test_an_owned_heart_joins_beside_a_landed_file_that_is_no_heart(cfg, silence):
-    folder_id, _source_id = _home(cfg)
+    folder_id, _source_id = hearts._home(cfg)
     _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV})
+    hearts.hearts_swept(cfg, {"Owned": NOV})
     _stage(cfg, silence, "Loose")
     acted, _refused = _lands(verb=LAND)
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
     assert acted["data"]["totals"]["landed"] == 1
 
 
 def test_an_owned_heart_placed_by_hand_between_the_two_acts_makes_the_answer_stale(cfg, silence):
     """The digest covers the owned hearts, so one placed by hand between the acts is stale."""
-    folder_id, source_id = _home(cfg)
+    folder_id, source_id = hearts._home(cfg)
     row = _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV, "Fresh": NOV})
+    hearts.hearts_swept(cfg, {"Owned": NOV, "Fresh": NOV})
     _stage(cfg, silence, "Fresh")
     run_id = _answered(LAND, land_cli.NATIVE_GATE)[1]
     _hold(cfg, source_id, row)
     code, acted = drive(["--run", run_id, *LAND])
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted["cause"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"]}, "nothing was written"
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: ["Owned"]}, "nothing was written"
 
 
 def test_an_owned_heart_is_coloured_pink_and_one_a_person_coloured_is_held(cfg, silence):
-    folder_id, _source_id = _home(cfg)
+    folder_id, _source_id = hearts._home(cfg)
     _owned(cfg, silence, "Owned")
     chosen = _owned(cfg, silence, "Chosen")
     _colour_red(cfg, chosen)
-    hearts_swept(cfg, {"Owned": NOV, "Chosen": NOV})
+    hearts.hearts_swept(cfg, {"Owned": NOV, "Chosen": NOV})
     acted, refused = _lands(verb=LAND)
-    assert sorted(_favorites(cfg, folder_id)[SOURCE]) == ["Chosen", "Owned"]
-    assert (_colour_of(cfg, "Owned"), _colour_of(cfg, "Chosen")) == (PINK_ID, RED_ID)
+    assert sorted(hearts._favorites(cfg, folder_id)[SOURCE]) == ["Chosen", "Owned"]
+    assert (hearts._colour_of(cfg, "Owned"), hearts._colour_of(cfg, "Chosen")) == (PINK_ID, RED_ID)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["rows to colour Pink"] == 1
     # The held line reads the row's own title, which is the bare tag here.
@@ -288,12 +276,12 @@ def test_an_owned_heart_is_coloured_pink_and_one_a_person_coloured_is_held(cfg, 
 
 def test_a_present_coloured_owned_heart_beside_a_landed_file_is_held_and_named(cfg, silence):
     """U153 L2: beside a landing file, the held note names an owned heart a person coloured."""
-    _home(cfg)
+    hearts._home(cfg)
     chosen = _owned(cfg, silence, "Chosen")
     _colour_red(cfg, chosen)
-    hearts_swept(cfg, {"Chosen": SEP, "Fresh": NOV})
+    hearts.hearts_swept(cfg, {"Chosen": SEP, "Fresh": NOV})
     _stage(cfg, silence, "Fresh")
     acted, _refused = _lands(verb=LAND)
-    assert _colour_of(cfg, "Chosen") == RED_ID and _colour_of(cfg, "Fresh") == PINK_ID
+    assert hearts._colour_of(cfg, "Chosen") == RED_ID and hearts._colour_of(cfg, "Fresh") == PINK_ID
     (held,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_COLOUR_HELD]
     assert held["message"].endswith("keep it: Chosen (Red)")

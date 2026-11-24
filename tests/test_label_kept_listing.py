@@ -34,8 +34,7 @@ class Budget:
     def tick(self, what: str) -> None:
         if self.ceiling is not None and self.calls >= self.ceiling:
             raise jobs.Parked(
-                refuse(provider_gate.CEILING, f"this command made {self.calls} calls").cause
-            )
+                refuse(provider_gate.CEILING, f"this command made {self.calls} calls").cause)
         self.calls += 1
         self.asked.append(what)
 
@@ -82,8 +81,7 @@ def roster_client(budget: Budget, *, acts: int = 4) -> CountedClient:
     artists = [
         CountedArtist(
             budget, f"Act {number}", [label_release(f"{number}01", by=str(number))],
-            [label_release(f"{number}02", by=str(number))], artist_id=str(number),
-        )
+            [label_release(f"{number}02", by=str(number))], artist_id=str(number))
         for number in range(1, acts + 1)
     ]
     found = [label_release(f"{one.id}01", by=one.id) for one in artists]
@@ -230,15 +228,13 @@ def test_a_listing_kept_in_the_future_is_not_fresh(entry, clock, budget):
 
 @pytest.mark.parametrize(
     "changed",
-    [{"match": "Kept Recordings Ltd"}, {"seed_artists": ("id:1",)}, {"name": "Kept Records"}],
-)
+    [{"match": "Kept Recordings Ltd"}, {"seed_artists": ("id:1",)}, {"name": "Kept Records"}])
 def test_a_label_entry_that_changed_reads_the_kept_listing_as_empty(entry, clock, changed, budget):
     adapter(roster_client(budget)).artist_for(entry)
     whole = budget.calls
     other = labels.LabelEntry(
         label_id=entry.label_id, name=changed.get("name", entry.name), match=changed.get("match"),
-        seed_artists=changed.get("seed_artists", ()),
-    )
+        seed_artists=changed.get("seed_artists", ()))
     try:
         roster = adapter(roster_client(budget)).artist_for(other)
     except tidal_catalogue.LabelUnresolvable:
@@ -289,8 +285,7 @@ def _store(**sections: dict) -> str:
         _store(searched={"q": {"read_at": "2026-11-05T12:00:00", "value": []}}),
         _store(searched={"q": {"read_at": "yesterday", "value": []}}),
         _store(listed={"1 get_albums": {"read_at": NOW.isoformat(), "value": [{"id": 1}]}}),
-    ],
-)
+    ])
 def test_a_kept_listing_that_cannot_be_read_refuses_before_any_call(entry, clock, written, budget):
     path = kept_listing.path_for(entry.label_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -303,8 +298,7 @@ def test_a_kept_listing_that_cannot_be_read_refuses_before_any_call(entry, clock
 
 
 def test_a_write_the_filesystem_refuses_is_said_and_the_listing_still_made(
-    entry, clock, monkeypatch, budget
-):
+    entry, clock, monkeypatch, budget):
     def refused(payload, path, **kwargs):
         raise OSError("read only volume")
     monkeypatch.setattr(kept_listing.config, "atomic_write_bytes", refused)
@@ -349,8 +343,7 @@ def test_a_second_label_sync_next_of_the_label_makes_no_provider_call(clock, cfg
     budget = Budget()
     own = CountedArtist(
         budget, LABEL, [Release("r1", copyright="(P) 2025 Another Label", year="2025")],
-        [Release("r2", copyright="(P) 2024 Another Label", year="2024")], artist_id="77",
-    )
+        [Release("r2", copyright="(P) 2024 Another Label", year="2024")], artist_id="77")
     client = CountedClient(budget, artists=[own], albums_by_query={})
     monkeypatch.setattr(catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client))
     code, envelope = drive(["label", "registry", "add", LABEL])
@@ -418,8 +411,7 @@ def test_a_kept_seed_the_provider_no_longer_has_is_unread_not_empty(entry, clock
     client.artists = [one for one in client.artists if one.id != "2"]
     roster = adapter(client).artist_for(seeded)
     assert any(
-        one.listing == "get_albums" and "no longer has" in one.reason for one in roster.unread
-    )
+        one.listing == "get_albums" and "no longer has" in one.reason for one in roster.unread)
 
 
 def test_a_failed_artist_read_in_discovery_still_refuses_rather_than_skipping(entry, clock, budget):
@@ -479,8 +471,7 @@ def test_a_search_that_fails_on_a_continue_is_counted_so_the_line_stays_true(ent
 
 @pytest.mark.parametrize(
     ("field", "value", "said"),
-    [("version", 2, "version 2"), ("label_id", "another-label", "another-label")],
-)
+    [("version", 2, "version 2"), ("label_id", "another-label", "another-label")])
 def test_a_kept_listing_valid_but_for_its_version_or_label_refuses(entry, clock, field, value, said):
     """Each check alone, on a document every other check accepts."""
     budget = Budget()

@@ -1,7 +1,5 @@
-"""U140: a set's account playlist follows the library's rename, ledger and frozen name with it.
-
-The account is faked, the INSPIRATION row stood in for (``tests/test_set_inspiration_playlist.py``).
-"""
+"""U140: a set's account playlist follows the library's rename, ledger and frozen name with it;
+the account faked, the INSPIRATION row stood in for (``tests/test_set_inspiration_playlist.py``)."""
 
 from __future__ import annotations
 
@@ -115,8 +113,7 @@ def renamed(account, monkeypatch):
     remote_id = _recorded(cfg, held, OLD)
     live = {"name": NEW}
     monkeypatch.setattr(
-        set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live["name"])
-    )
+        set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live["name"]))
     return cfg, held, job.job_id, remote_id, live
 
 
@@ -170,8 +167,7 @@ def test_an_aborted_rename_writes_nothing(renamed):
 
 
 def test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it(
-    account, monkeypatch
-):
+    account, monkeypatch):
     """R-1004's twin: no frozen name, exported as queued, INSPIRATION now as posted."""
     cfg, _fake, held = account
     job = _succeeded_set_job(cfg, "", created="2026-10-09T12:00:00+00:00")

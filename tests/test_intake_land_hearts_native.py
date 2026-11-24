@@ -19,15 +19,8 @@ from cratekit.intake import account_playlists, batch_name, land_cli, missing_cli
 from cratekit.intake import cli as intake_cli
 from cratekit.write import genre_favorites
 from tests import cutover_fixtures
+from tests import test_intake_land_account_playlists_native as accounts
 from tests.cli_drive import drive
-from tests.test_intake_land_account_playlists_native import (
-    PASS,
-    RUN,
-    _inbox,
-    _opened,
-    _stage,
-    swept,
-)
 from tests.test_intake_land_account_playlists_native import pinned_day as pinned_day
 from tests.test_intake_land_native import _answered, _members, _music, _query, _two_acts
 from tests.test_intake_land_native import _platform_seams as _platform_seams
@@ -53,8 +46,7 @@ def cfg(native_library) -> config.Config:
 
 
 def hearts_swept(
-    cfg: config.Config, titles: dict[str, str | None], *, run_id: str = RUN
-) -> jobs.Job:
+        cfg: config.Config, titles: dict[str, str | None], *, run_id: str = accounts.RUN) -> jobs.Job:
     """One hearts job, ``title -> when hearted, None for undated, UNKNOWN for no key``, run."""
     tracks = {}
     for title, hearted in titles.items():
@@ -65,8 +57,7 @@ def hearts_swept(
     with jobs.open_store() as store:
         job = intake_cli.queue_playlist(
             store, cfg, handler_key="intake.playlist", reference=intake_cli.FAVORITES,
-            tracks=tracks, run_id=run_id, source_id=intake_cli.FAVORITES_SOURCE_ID,
-        )
+            tracks=tracks, run_id=run_id, source_id=intake_cli.FAVORITES_SOURCE_ID)
     code, resumed = drive(cli_jobs.argv_for(job))
     assert code == int(ExitCode.OK), resumed
     return job
@@ -82,21 +73,19 @@ def _colours(cfg: config.Config, *, pink: bool = True) -> None:
     from pyrekordbox.db6 import tables
 
     from tests.test_rb_writer_db import _row
-
-    with _opened(cfg) as handle:
+    with accounts._opened(cfg) as handle:
         have = {str(row.ID) for row in handle.get_color()}
         for wanted, row_id, code, name in ((pink, PINK_ID, 1, "Pink"), (True, RED_ID, 2, "Red")):
             if wanted and row_id not in have:
                 handle.session.add(
-                    _row(tables.DjmdColor, ID=row_id, ColorCode=code, SortKey=code, Commnt=name)
-                )
+                    _row(tables.DjmdColor, ID=row_id, ColorCode=code, SortKey=code, Commnt=name))
         handle.session.commit()
 
 
 def _home(cfg: config.Config, *, folder: bool = True, pink: bool = True) -> tuple[str, str]:
     """The Favorites folder holding an empty All Favorites, as the source system left it, and the colours."""
     _colours(cfg, pink=pink)
-    with _opened(cfg) as handle:
+    with accounts._opened(cfg) as handle:
         parent = handle.create_playlist_folder("Favorites") if folder else None
         row = handle.create_playlist(SOURCE, parent=parent)
         handle.session.commit()
@@ -117,7 +106,7 @@ def _favorites(cfg: config.Config, folder_id: str) -> dict[str, list[str]]:
     return {str(name): [titles[m] for m in _members(cfg, str(pid))] for pid, name in rows}
 
 
-def _land(pass_name: str = PASS) -> list[str]:
+def _land(pass_name: str = accounts.PASS) -> list[str]:
     return ["intake", "land", "--pass", pass_name]
 
 
@@ -131,20 +120,19 @@ def _hearted(cfg: config.Config, silence: Path, titles: dict[str, str | None], *
     """One hearts job run, and each of its titles staged as a downloaded file."""
     hearts_swept(cfg, titles, **job)
     for title in titles:
-        _stage(cfg, silence, title)
+        accounts._stage(cfg, silence, title)
 
 
 def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     folder_id, source_id = _home(cfg)
-    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
-    _stage(cfg, silence, "One")
+    accounts.swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    accounts._stage(cfg, silence, "One")
     _hearted(cfg, silence, {"Hearted": NOV})
-    batch = batch_name.readable(cfg, pass_name=PASS)
+    batch = batch_name.readable(cfg, pass_name=accounts.PASS)
     acted, refused = _landed()
-    assert _inbox(cfg, root_id) == {batch: ["Hearted"], "Sunset Warmup 2026-10-03": ["One"]}
+    assert accounts._inbox(cfg, root_id) == {batch: ["Hearted"], "Sunset Warmup 2026-10-03": ["One"]}
     assert _favorites(cfg, folder_id) == {SOURCE: ["Hearted"], "2026-11": ["Hearted"]}
     # The screen said where the heart goes before anybody answered.
     shown = refused["cause"]["detail"]["shown"]
@@ -178,8 +166,7 @@ def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it
 
 
 def test_a_heart_of_the_twentieth_of_october_joins_its_month_and_an_undated_one_undated(
-    cfg, silence
-):
+        cfg, silence):
     """U145's AE1: the landing given a pass files by month, never by quarter."""
     folder_id, _source_id = _home(cfg)
     _hearted(cfg, silence, {"October": "2026-10-20T18:30:00+00:00", "Hearted": None})
@@ -194,8 +181,7 @@ def test_a_heart_of_the_twentieth_of_october_joins_its_month_and_an_undated_one_
 
 
 def test_once_a_band_holds_the_heart_the_additive_refresh_puts_it_in_that_folders_favorites(
-    cfg, silence
-):
+        cfg, silence):
     """R11: a genre Favorites takes the heart once adoption files it, writing no grid or rating."""
     _home(cfg)
     _hearted(cfg, silence, {"Hearted": NOV})
@@ -205,25 +191,23 @@ def test_once_a_band_holds_the_heart_the_additive_refresh_puts_it_in_that_folder
     assert placed["source"] == SOURCE and placed["added_source"] == 1
     assert [(q["name"], q["added"]) for q in placed["months"]] == [("2026-11", 1)]
     assert placed["created"] == ["2026-11"]
-    assert record.detail[native.PASS_KEY] == PASS
+    assert record.detail[native.PASS_KEY] == accounts.PASS
     changes = {c.tree: c.created for c in record.change.trees}
     assert changes[placement.RECORD_KEY] == 2
     # U166: the batch's one membership and INBOX / Analyze's one.
     assert changes[DECLARED.intake.id] == 2 and changes[rb_writer.CONTENT_TABLE] == 1
     ((bpm, rating, analysis),) = _query(
-        cfg, "SELECT BPM, Rating, AnalysisDataPath FROM djmdContent WHERE Title = ?", "Hearted"
-    )
+        cfg, "SELECT BPM, Rating, AnalysisDataPath FROM djmdContent WHERE Title = ?", "Hearted")
     assert bpm in (None, 0) and rating in (None, 0) and not analysis
     ((content_id,),) = _query(cfg, "SELECT ID FROM djmdContent WHERE Title = ?", "Hearted")
     # The routing tree cut over, one genre folder, one band holding the heart.
     root_id = cutover_fixtures.one_root(cfg, DECLARED.tree.display)
     record = tree_registry.TreeRecord(
         tree_id=DECLARED.tree.id, mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 10, 10),
-        root_id=root_id, source=tree_registry.DerivationSource.TAXONOMY,
-    )
+        root_id=root_id, source=tree_registry.DerivationSource.TAXONOMY)
     tree_registry.write(cfg, tree_registry.read(cfg).with_record(record))
     soul = DECLARED.bucket("deep_house")
-    with _opened(cfg) as handle:
+    with accounts._opened(cfg) as handle:
         folder = handle.create_playlist_folder(soul.display, parent=handle.get_playlist(ID=root_id))
         band = handle.create_playlist("Low", parent=folder)
         handle.add_to_playlist(band, str(content_id))
@@ -235,15 +219,14 @@ def test_once_a_band_holds_the_heart_the_additive_refresh_puts_it_in_that_folder
     assert outcome.refreshed.added == 1
     (favorites,) = _query(
         cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND ParentID = ? AND rb_local_deleted = 0",
-        CLASS.display, folder_id,
-    )
+        CLASS.display, folder_id)
     assert _members(cfg, str(favorites[0])) == [str(content_id)]
 
 
 def test_two_hearts_of_two_months_and_an_existing_month_is_added_to_not_made(cfg, silence):
     """With no Pink row the landing still places the hearts, and warns."""
     folder_id, _source_id = _home(cfg, pink=False)
-    with _opened(cfg) as handle:
+    with accounts._opened(cfg) as handle:
         handle.create_playlist("2026-09", parent=handle.get_playlist(ID=folder_id))
         handle.session.commit()
     _hearted(cfg, silence, {"Older": SEP, "Newer": NOV})
@@ -266,22 +249,21 @@ def test_two_hearts_of_two_months_and_an_existing_month_is_added_to_not_made(cfg
 
 
 def test_a_heart_a_playlist_also_asked_for_is_in_that_playlist_and_in_all_favorites(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     folder_id, _source_id = _home(cfg)
-    swept(cfg, {"pl-a": ("Sunset Warmup", ("Shared",))})
+    accounts.swept(cfg, {"pl-a": ("Sunset Warmup", ("Shared",))})
     _hearted(cfg, silence, {"Shared": NOV})
     _landed()
-    assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["Shared"]}
+    assert accounts._inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["Shared"]}
     assert _favorites(cfg, folder_id) == {SOURCE: ["Shared"], "2026-11": ["Shared"]}
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE Title = ?", "Shared")) == 1
 
 
 def test_a_landing_of_no_heart_touches_neither_all_favorites_nor_a_month(cfg, silence):
     folder_id, _source_id = _home(cfg)
-    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
-    _stage(cfg, silence, "One")
+    accounts.swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    accounts._stage(cfg, silence, "One")
     acted, refused = _landed()
     assert _favorites(cfg, folder_id) == {SOURCE: []}
     assert "hearts" not in refused["cause"]["detail"]["shown"]
@@ -300,13 +282,12 @@ def test_a_landing_given_no_pass_places_no_heart(cfg, silence):
 
 
 def test_with_no_source_playlist_the_batch_lands_and_the_placement_is_skipped_and_said(
-    native_library, silence
-):
+        native_library, silence):
     cfg, root_id = native_library
     _hearted(cfg, silence, {"Hearted": NOV})
-    batch = batch_name.readable(cfg, pass_name=PASS)
+    batch = batch_name.readable(cfg, pass_name=accounts.PASS)
     acted, refused = _landed()
-    assert _inbox(cfg, root_id) == {batch: ["Hearted"]}
+    assert accounts._inbox(cfg, root_id) == {batch: ["Hearted"]}
     shown = refused["cause"]["detail"]["shown"]
     assert shown["hearts"].startswith("none placed, this library holds no live playlist named")
     (skipped,) = [i for i in shown["items"] if i["action"] == land_cli.FAVORITES]
@@ -354,7 +335,6 @@ def test_the_hearts_are_in_the_digest_so_another_set_is_another_plan(cfg, silenc
 
     def broken(db, name):
         raise refuse("decision-stale", "the playlist table could not be read", origin=("t",))
-
     monkeypatch.setattr(placement, "resolve_home", broken)
     code, refused = drive(_land())
     assert code != int(ExitCode.DECISION_REQUIRED), refused
@@ -363,19 +343,18 @@ def test_the_hearts_are_in_the_digest_so_another_set_is_another_plan(cfg, silenc
 
 
 def test_the_pass_jobs_hearts_are_read_from_the_job_and_a_playlist_job_claims_no_heart(
-    cfg, silence
-):
+        cfg, silence):
     """The claim rule alone, without a landing."""
-    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    accounts.swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     hearts_swept(cfg, {"Hearted": NOV, "Nowhere": SEP})
-    staged = [_stage(cfg, silence, "One"), _stage(cfg, silence, "Hearted")]
-    found = account_playlists.hearted(cfg, PASS, staged)
+    staged = [accounts._stage(cfg, silence, "One"), accounts._stage(cfg, silence, "Hearted")]
+    found = account_playlists.hearted(cfg, accounts.PASS, staged)
     assert [(one.path.name, one.month, one.ref) for one in found] == [
         ("Hearted.flac", "2026-11", "tid-Hearted")
     ]
     assert account_playlists.hearted(cfg, None, staged) == ()
     assert account_playlists.hearted(cfg, missing_cli.synced_name("no-such-run"), staged) == ()
-    rows = account_playlists.hearts(cfg, PASS)
+    rows = account_playlists.hearts(cfg, accounts.PASS)
     assert sorted(row.ref for row in rows) == ["tid-Hearted", "tid-Nowhere"]
     assert {row.ref: row.hearted.isoformat() for row in rows} == {
         "tid-Hearted": NOV, "tid-Nowhere": SEP
@@ -384,7 +363,7 @@ def test_the_pass_jobs_hearts_are_read_from_the_job_and_a_playlist_job_claims_no
     # knows, as the backfill does.
     hearts_swept(cfg, {"Twice": UNKNOWN})
     hearts_swept(cfg, {"Twice": SEP})
-    (found,) = account_playlists.hearted(cfg, PASS, [_stage(cfg, silence, "Twice")])
+    (found,) = account_playlists.hearted(cfg, accounts.PASS, [accounts._stage(cfg, silence, "Twice")])
     assert (found.month, found.known) == ("2026-09", True)
 
 

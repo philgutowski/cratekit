@@ -93,11 +93,9 @@ def test_a_second_sweep_files_only_the_new_release_and_refiles_nothing(installed
         pytest.param((), 4, 4, 46, id="the-configured-offer-is-every-labels-default"),
         # The increment slices to the track limit after the listing, so the window must respect it.
         pytest.param(("--track-limit", "3"), None, 3, 47, id="a-track-limit-below-the-offer"),
-    ],
-)
+    ])
 def test_the_window_bounds_what_a_sweep_files_and_the_rest_is_counted(
-    installed, monkeypatch, argv, configured, count, beyond
-):
+    installed, monkeypatch, argv, configured, count, beyond):
     if configured is not None:
         config.save(replace(installed, labels=config.LabelsConfig(offer_per_sweep=configured)))
         config.reset_cache()
@@ -117,8 +115,7 @@ def test_raising_a_label_offer_after_a_sweep_files_the_difference(installed, mon
 
 
 def test_a_label_whose_window_is_already_held_records_its_beyond_with_nothing_filed(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     swept(monkeypatch)
     sweep_once()
     assert [(row["items"], row["beyond"]) for row in grouped("run")] == [(10, 40), (0, 40)]
@@ -166,8 +163,7 @@ def test_a_tombstoned_release_takes_no_place_in_the_window(installed, entry):
     DecisionStore(tombstone.STORE_KEY, installed).record(
         kind=tombstone.KIND_VERSION,
         identity=tombstone.version_identity(artist="Label Act", title="Release r2026"),
-        actor="test",
-    )
+        actor="test")
     found = window(installed, entry, catalogue_of(5), limit=2)
     assert [c.identity for c in found.candidates] == ["r2025", "r2024"]
     assert [c.identity for c in found.suppressed] == ["r2026"]
@@ -193,13 +189,11 @@ def test_a_watermark_past_every_release_still_offers_the_unowned_unoffered_ones(
     marks.advance("labels", cursor="r2026", items=1, library_id=installed.library.volume_id)
     source = sweep.LabelSource(
         installed, registry=labels.Registry(labels={entry.label_id: entry}),
-        artists={entry.label_id: FakePagedArtist(catalogue_of(12))}, verify=counting_confirm()[0],
-    )
+        artists={entry.label_id: FakePagedArtist(catalogue_of(12))}, verify=counting_confirm()[0])
     result = run.increment(
         source, owned=set(), limit=labels.effective_limit(entry), watermarks=marks,
         artifacts=artifacts.ArtifactRegistry(installed), run_id="run-past-the-mark",
-        staging=Path(installed.paths.download_staging),
-    )
+        staging=Path(installed.paths.download_staging))
     assert list(result.processed) == [f"r{y}" for y in range(2026, 2016, -1)]
     assert source.listings[0][1].beyond == 2
 
@@ -244,8 +238,7 @@ def test_a_release_with_no_copyright_line_is_unchecked_never_dropped(installed, 
 def test_the_count_past_the_window_uses_the_labels_match_needle(installed, entry):
     found = window(
         installed, replace(entry, match="Deep Recordings"), mixed_roster("Deep Recordings Ltd"),
-        verify=confirm_by_line, limit=3,
-    )
+        verify=confirm_by_line, limit=3)
     assert [c.identity for c in found.candidates] == ["own2026", "own2024", "own2022"]
     assert (found.beyond, found.beyond_unchecked) == (9, 2)
 
@@ -310,8 +303,7 @@ def test_an_offer_below_one_refuses_at_the_store(installed):
                      id="a-queue-with-no-grouping-rather-than-listing-nothing"),
         pytest.param(("--queue", "label-release", "--group-by", "label", "--limit", "5"),
                      id="a-page-limit-with-a-grouping-rather-than-being-ignored"),
-    ],
-)
+    ])
 def test_a_listing_the_grouping_cannot_mean_is_refused(installed, argv):
     code, envelope = drive(["review", "list", *argv])
     assert code != int(ExitCode.OK)
@@ -319,8 +311,7 @@ def test_a_listing_the_grouping_cannot_mean_is_refused(installed, argv):
 
 
 def test_a_dead_verifier_on_a_later_sweep_refuses_rather_than_reporting_nothing_new(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """Held releases are not re-verified, so one is on this path to catch a dead endpoint."""
     releases = swept(monkeypatch, releases=catalogue_of(5))
     bind(monkeypatch, [FakeRelease("r2028", year="2028"), *releases], confirmed=set())
@@ -334,8 +325,7 @@ def test_a_dead_verifier_on_a_later_sweep_refuses_rather_than_reporting_nothing_
 
 
 def test_held_releases_that_still_confirm_let_a_label_of_unconfirmed_releases_succeed(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """The distributor credited shape: a few releases are the label's and the rest never confirm."""
     swept(monkeypatch, releases=catalogue_of(7), confirmed={"r2026", "r2025", "r2024"})
     sweep_once()
@@ -369,8 +359,7 @@ def test_the_registry_says_when_the_track_limit_bounds_an_offer(installed):
 
 
 def test_a_later_sweep_asks_the_provider_nothing_about_releases_it_already_holds(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """Held releases are read off the queue the worker has open, not verified again."""
     releases = swept(monkeypatch)
     fake = bind(monkeypatch, [FakeRelease("r2027", year="2027"), *releases], Provider)

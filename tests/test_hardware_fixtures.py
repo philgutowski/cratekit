@@ -38,8 +38,7 @@ def _require_hdiutil() -> None:
         pytest.fail(
             "hdiutil is required to prove the volume fixtures against real mounts, and it is "
             "missing here. These fixtures target macOS, where hdiutil ships with the system. "
-            "This fails rather than skips, since a skipped hardware proof reads as a pass."
-        )
+            "This fails rather than skips, since a skipped hardware proof reads as a pass.")
 
 
 class ScriptedClock:
@@ -88,10 +87,8 @@ def test_row_reports_count_rate_median_and_worst_together() -> None:
 
 
 @pytest.mark.parametrize(
-    ("repeats", "threshold", "said"),
-    [(1, 1.0, "repeat count"), (2, 0.0, "positive")],
-    ids=["single-run", "nonpositive-threshold"],
-)
+    ("repeats", "threshold", "said"), [(1, 1.0, "repeat count"), (2, 0.0, "positive")],
+    ids=["single-run", "nonpositive-threshold"])
 def test_a_timing_of_the_wrong_shape_is_refused(repeats, threshold, said) -> None:
     with pytest.raises(ValueError, match=said):
         time_repeated(lambda: None, repeats=repeats, threshold_seconds=threshold)
@@ -184,8 +181,7 @@ def test_committed_calibration_loads() -> None:
 @pytest.mark.parametrize(
     ("asked", "said"),
     [({"size_mb": FAT32_MIN_MB - 1}, "newfs_msdos"), ({"label": "lowercase"}, "11 uppercase")],
-    ids=["a-size-fat32-cannot-hold", "a-label-off-the-rules"],
-)
+    ids=["a-size-fat32-cannot-hold", "a-label-off-the-rules"])
 def test_fat_volume_refuses_what_fat32_cannot_take(asked, said) -> None:
     with pytest.raises(ValueError, match=said):
         with fat_volume(**asked):
@@ -207,7 +203,6 @@ def test_read_only_volume_serves_content_and_refuses_writes() -> None:
 
     def populate(root: Path) -> None:
         (root / "seed.txt").write_text("populated")
-
     with read_only_volume(populate) as mount:
         assert (mount / "seed.txt").read_text() == "populated"
         assert "read-only" in mount_flags(mount)
@@ -223,7 +218,6 @@ def test_teardown_runs_when_the_body_raises() -> None:
 
     class Boom(Exception):
         pass
-
     seen: list[Path] = []
     with pytest.raises(Boom):
         with fat_volume() as mount:

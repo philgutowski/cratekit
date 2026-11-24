@@ -154,8 +154,7 @@ def test_pink_missing_is_warned_beside_dangling(installed, monkeypatch):
     assert (shown["items"], shown["pink_missing"]) == (["1", "2"], ["88"])
     assert (shown["from_playlist"], shown["from_colour"]) == (1, 1)
     exported, resolved = favorites_cli.resolve_sweep(
-        str(path), None, cfg=installed, pink_ids=("2", "88")
-    )
+        str(path), None, cfg=installed, pink_ids=("2", "88"))
     age = source.export_age(path, limit_days=installed.outbound.export_stale_days)
     warned = shell.queue_warnings(resolved, noun="favourite", age=age)
     codes = [one["code"] for one in warned]

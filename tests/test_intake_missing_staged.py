@@ -12,21 +12,8 @@ import pytest
 
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import landing
+from tests import test_intake_missing as miss
 from tests._containers import tagged_container
-from tests.test_intake_missing import (  # noqa: F401 - the fixtures are used by name
-    Track,
-    cfg,
-    fail,
-    finished,
-    finished_in_run,
-    fresh_cache,
-    in_run,
-    library,
-    lists_dir,
-    missing,
-    ok,
-    run_missing,
-)
 
 SALT = "GBAAA2600001"
 SIGNAL = "GBAAA2600002"
@@ -36,17 +23,17 @@ def staging(library: Path) -> Path:
     return library.parent / "staging"
 
 
-def rows() -> list[Track]:
-    return [_salt(), _carrying(Track("205", "Kite Harbor", "Low Tide Signal"), SIGNAL)]
+def rows() -> list[miss.Track]:
+    return [_salt(), _carrying(miss.Track("205", "Kite Harbor", "Low Tide Signal"), SIGNAL)]
 
 
-def _carrying(track: Track, isrc: str) -> Track:
+def _carrying(track: miss.Track, isrc: str) -> miss.Track:
     track.isrc = isrc
     return track
 
 
-def _salt() -> Track:
-    return _carrying(Track("204", "Lumen Drift", "Salt Road"), SALT)
+def _salt() -> miss.Track:
+    return _carrying(miss.Track("204", "Lumen Drift", "Salt Road"), SALT)
 
 
 def staged(tmp_path: Path, library: Path, name: str, **fields: str) -> Path:
@@ -64,13 +51,12 @@ def check(envelope: dict, key: str) -> dict:
 
 
 def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_listed(
-    cfg, library, tmp_path, monkeypatch
-):
+        cfg, library, tmp_path, monkeypatch):
     """One job asked of a staging folder as it fills: absent, unrelated files, files with no
     readable ISRC, its own earlier download, a wanted track, an unreadable folder, and every
     missing track staged."""
-    job_id = finished(monkeypatch, rows())
-    first = ok(job_id)[0]
+    job_id = miss.finished(monkeypatch, rows())
+    first = miss.ok(job_id)[0]
     # REVIEW ROUND ONE, F4: no staging folder yet is nothing staged, said.
     assert check(first, "staged") == {
         **check(first, "staged"),
@@ -82,7 +68,7 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
     before = path.read_bytes()
     # ANOTHER ISRC changes nothing.
     staged(tmp_path, library, "Other - Song.flac", artist="Other", title="Song", isrc="GBAAA2600009")
-    envelope, summary = ok(job_id, "--out", str(tmp_path / "other"))
+    envelope, summary = miss.ok(job_id, "--out", str(tmp_path / "other"))
     assert listed_ids(summary) == ["204", "205"]
     assert (summary["staged"], summary["staged_tracks"]) == (0, [])
     said = f"no missing track is staged already in {staging(library)}"
@@ -92,18 +78,18 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
     staged(tmp_path, library, "Lumen Drift - Salt Road (1).flac", artist="Lumen Drift",
            title="Salt Road")
     staging(library).joinpath("205.flac").write_bytes(b"not a container")
-    envelope, summary = ok(job_id, "--out", str(tmp_path / "unread"))
+    envelope, summary = miss.ok(job_id, "--out", str(tmp_path / "unread"))
     assert listed_ids(summary) == ["204", "205"]
     assert summary["staged"] == 0
     # A CONTINUED PASS reads its own downloads: a row this list's earlier copy names stays.
     staged(tmp_path, library, "Lumen Drift - Salt Road.flac", artist="Lumen Drift",
            title="Salt Road", isrc=SALT)
-    again, summary = ok(job_id)
+    again, summary = miss.ok(job_id)
     assert path.read_bytes() == before
     assert summary["staged"] == 0
     assert listed_ids(summary) == ["204", "205"]
     # ANOTHER LIST of the same job finds the wanted track staged and does not list it.
-    envelope, summary = ok(job_id, "--out", str(tmp_path / "wanted"))
+    envelope, summary = miss.ok(job_id, "--out", str(tmp_path / "wanted"))
     assert listed_ids(summary) == ["205"]
     assert (summary["written"], summary["missing"], summary["staged"]) == (1, 1, 1)
     (row,) = summary["staged_tracks"]
@@ -118,7 +104,7 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
         raise PermissionError(13, "Permission denied", str(folder))
     with monkeypatch.context() as patched:
         patched.setattr(landing, "listing", refused)
-        envelope, summary = ok(job_id, "--out", str(tmp_path / "sealed"))
+        envelope, summary = miss.ok(job_id, "--out", str(tmp_path / "sealed"))
     assert listed_ids(summary) == ["204", "205"]
     said = check(envelope, "staged")
     assert said["status"] == "fail"
@@ -127,7 +113,7 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
     staged(tmp_path, library, "b.flac", artist="Kite Harbor", title="Low Tide Signal",
            isrc="gb-aaa-26-00002")
     out = tmp_path / "all"
-    envelope, summary = ok(job_id, "--out", str(out))
+    envelope, summary = miss.ok(job_id, "--out", str(out))
     assert envelope["outcome"] == "ok"
     assert (summary["list"], summary["written"], summary["staged"]) == (None, 0, 2)
     assert not (out / f"intake-{job_id}.list.json").exists()
@@ -138,11 +124,10 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
 
 
 def test_a_track_with_no_isrc_is_never_matched_to_a_staged_file_with_none(
-    cfg, library, tmp_path, monkeypatch
-):
+        cfg, library, tmp_path, monkeypatch):
     staged(tmp_path, library, "Kite Harbor - Low Tide Signal.flac", artist="Kite Harbor")
-    job_id = finished(monkeypatch, [Track("205", "Kite Harbor", "Low Tide Signal")])
-    envelope = ok(job_id)[0]
+    job_id = miss.finished(monkeypatch, [miss.Track("205", "Kite Harbor", "Low Tide Signal")])
+    envelope = miss.ok(job_id)[0]
     assert listed_ids(envelope["data"]["summary"]) == ["205"]
     assert envelope["data"]["summary"]["staged"] == 0
     # REVIEW ROUND ONE, F2: the folder was not compared, and the row says so.
@@ -153,11 +138,10 @@ def test_a_track_with_no_isrc_is_never_matched_to_a_staged_file_with_none(
 
 @pytest.mark.parametrize("named", ["204.flac", "Lumen Drift - Salt Road.flac"])
 def test_a_staged_file_counts_under_its_provider_name_or_its_given_name(
-    cfg, library, tmp_path, monkeypatch, named
-):
+        cfg, library, tmp_path, monkeypatch, named):
     staged(tmp_path, library, named, artist="Lumen Drift", title="Salt Road", isrc=SALT)
-    job_id = finished(monkeypatch, rows())
-    _code, envelope = missing(job_id)
+    job_id = miss.finished(monkeypatch, rows())
+    _code, envelope = miss.missing(job_id)
     assert envelope["data"]["summary"]["staged"] == 1
 
 
@@ -179,27 +163,24 @@ def _earlier(out: Path, name: str, track: dict) -> None:
         ({"id": "204", "artist": "a", "title": "t"}, True),
         ({"id": "999", "artist": "a", "title": "t", "isrc": SALT}, True),
         ({"id": "999", "artist": "a", "title": "t"}, False),
-    ],
-    ids=["by-provider-id", "by-isrc", "neither"],
-)
+    ], ids=["by-provider-id", "by-isrc", "neither"])
 def test_each_half_of_the_own_rows_rule_keeps_a_row_alone(cfg, library, tmp_path, earlier, kept):
     """The earlier copy claims a row by provider id, or by ISRC when the ids differ."""
     from cratekit.intake import missing_cli
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
-    out = lists_dir(library)
+    out = miss.lists_dir(library)
     _earlier(out, "own", earlier)
     found = missing_cli._staged([_wanted("204", SALT)], out=out, name="own")
     assert (found.found == ()) is kept, found
 
 
 def test_a_track_held_since_the_job_is_never_said_to_carry_no_isrc(
-    cfg, library, tmp_path, monkeypatch
-):
+        cfg, library, tmp_path, monkeypatch):
     """Nothing missing asks the staging folder nothing, and the row says so (review round two)."""
-    job_id = finished(monkeypatch, [_salt()])
+    job_id = miss.finished(monkeypatch, [_salt()])
     (library / "Music" / "Lumen Drift - Salt Road.flac").write_bytes(b"")
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
-    envelope, summary = ok(job_id)
+    envelope, summary = miss.ok(job_id)
     assert (summary["missing"], summary["owned_since"], summary["staged"]) == (0, 1, 0)
     said = "no track is missing, so none was asked whether it is staged"
     assert check(envelope, "staged")["detail"] == said
@@ -207,11 +188,11 @@ def test_a_track_held_since_the_job_is_never_said_to_carry_no_isrc(
 
 def test_a_run_with_a_failed_job_and_every_finished_row_staged_answers_ok(cfg, library, tmp_path):
     """The left out refusal stands aside when the finished rows are staged; the skip still fails."""
-    kept = finished_in_run(cfg, "pl-a", [_salt()])
-    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
-    fail(broken)
+    kept = miss.finished_in_run(cfg, "pl-a", [_salt()])
+    broken = miss.in_run(cfg, "pl-b", [miss.Track("205", "Kite Harbor", "Low Tide Signal")])
+    miss.fail(broken)
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
-    code, envelope = run_missing("--skip-failed")
+    code, envelope = miss.run_missing("--skip-failed")
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["jobs"], summary["skipped"]) == ([kept], [broken])

@@ -1,7 +1,5 @@
-"""U157: the drift verdict, its cut, and the two file tags, without the analysis extra.
-
-The librosa measurement is ``tests/test_analysis_drift.py``.
-"""
+"""U157: the drift verdict, its cut and its two file tags, without the analysis extra; the
+librosa measurement is ``tests/test_analysis_drift.py``."""
 
 from __future__ import annotations
 
@@ -32,8 +30,7 @@ from tests.test_no_beatgrid_ever import FORBIDDEN_TAG_KEYS
     ("measured", "expected"),
     [(4.4, drift.VARIABLE), (1.5, drift.VARIABLE), (1.49, drift.STEADY), (0.0, drift.STEADY),
      (None, drift.UNKNOWN), (math.nan, drift.UNKNOWN)],
-    ids=["moving", "at-the-cut", "just-below", "still", "unmeasured", "nan"],
-)
+    ids=["moving", "at-the-cut", "just-below", "still", "unmeasured", "nan"])
 def test_a_drift_at_or_above_the_cut_is_variable_and_no_measurement_is_unknown(measured, expected):
     assert drift.verdict(measured, 1.5) == expected
 
@@ -56,11 +53,9 @@ def test_a_drift_at_or_above_the_cut_is_variable_and_no_measurement_is_unknown(m
         "score-over-cut", "score-wins-over-a-stale-verdict", "score-under-cut", "unknown",
         "unknown-padded", "nothing", "verdict-without-score", "not-a-number", "negative",
         "infinite",
-    ],
-)
+    ])
 def test_a_landing_reads_the_score_against_the_cut_now_and_the_verdict_only_for_unknown(
-    score, verdict, expected
-):
+    score, verdict, expected):
     assert drift.reading(score, verdict, 1.5) == expected
 
 
@@ -165,7 +160,6 @@ def _detector(**drift_fields):
     def detect_(path: Path):
         return {"path": path, "camelot": "8A", "rate": 124, "energy": 6,
                 "energy_status": "calibrated", **drift_fields}
-
     return detect_
 
 

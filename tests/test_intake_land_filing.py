@@ -124,7 +124,6 @@ def test_a_plan_after_the_commit_that_differs_files_nothing_and_says_so(cfg, sil
         plan = real(cfg, declared, **kwargs)
         entries = tuple(replace(entry, sub="elsewhere") for entry in plan.entries)
         return replace(plan, entries=entries)
-
     monkeypatch.setattr(filing.apply_cli, "current_plan", moved)
     acted = _lands()[0]
     code = filing.FILED_DIFFERENTLY_WARNING
@@ -155,8 +154,7 @@ def test_a_rehearsal_digests_as_the_live_landing_that_files_and_land_only_apart(
 
 
 def test_a_routing_tree_on_the_bridge_files_nothing_and_the_screen_names_it(
-    native_library, silence
-):
+        native_library, silence):
     cfg, _root = native_library
     _file(cfg, silence, "One.flac", genre="Deep House", energylevel=7)
     acted, refused = _lands()
@@ -169,8 +167,7 @@ def test_a_routing_tree_on_the_bridge_files_nothing_and_the_screen_names_it(
 def test_a_landing_that_adds_no_row_files_nothing():
     landed = native.NativeLanded(
         tree_id="t", playlist="p", playlist_id="", added=(), present=(), memberships_added=0,
-        session_id="s",
-    )
+        session_id="s")
     place = filing.plan_engine.predicted_place(DECLARED, "Deep House", 7, vox=False)
     predicted = (filing.Prediction(target=Path("/nowhere/One.flac"), place=place),)
     found = filing.file_landed(None, DECLARED, predicted, landed, actor="session")
@@ -211,8 +208,7 @@ def test_an_entry_whose_vocal_is_not_added_reads_no_vocal_sub():
     entry = plan_engine.PlanEntry(
         entry_id="e", content_id="9", recorded="One.flac", disposition=Disposition.ROUTE,
         category=next(iter(Readability)), genre="Deep House", tree=DECLARED.tree.id,
-        bucket="deep_house", sub="mid", vocal=plan_engine.VOCAL_PRESENT, vocal_sub="vocal",
-    )
+        bucket="deep_house", sub="mid", vocal=plan_engine.VOCAL_PRESENT, vocal_sub="vocal")
     assert plan_engine.Predicted.of(entry).vocal_sub == ""
     added = replace(entry, vocal=plan_engine.VOCAL_ADD)
     assert plan_engine.Predicted.of(added).vocal_sub == "vocal"
@@ -225,8 +221,7 @@ def test_the_census_a_landing_files_walks_only_the_rows_it_made(monkeypatch):
     monkeypatch.setattr(apply_cli.collection, "read_collection", lambda _cfg, **_: rows)
     monkeypatch.setattr(apply_cli.collection, "prefix_rules", lambda _cfg: ())
     monkeypatch.setattr(
-        apply_cli.scan, "scan_rows", lambda got, *_a, **_k: scanned.append(tuple(got)) or ()
-    )
+        apply_cli.scan, "scan_rows", lambda got, *_a, **_k: scanned.append(tuple(got)) or ())
     cfg = SimpleNamespace(library=SimpleNamespace(root="/library"))
     apply_cli.census(cfg, DECLARED, scope=frozenset({"2"}))
     apply_cli.census(cfg, DECLARED)

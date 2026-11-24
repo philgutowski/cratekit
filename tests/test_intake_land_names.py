@@ -35,22 +35,18 @@ def pinned_day(monkeypatch):
 
 
 def _queued(
-    cfg: config.Config, reference: str, *, source_id: str, run_id: str = RUN,
-    ended: jobs.JobState = jobs.JobState.SUCCEEDED,
-) -> None:
+        cfg: config.Config, reference: str, *, source_id: str, run_id: str = RUN,
+        ended: jobs.JobState = jobs.JobState.SUCCEEDED) -> None:
     """One intake job of a pass, queued as ``crate sync all`` does and ended as its worker does."""
     with jobs.open_store() as store:
         job = intake_cli.queue_playlist(
             store, cfg, handler_key="intake.playlist", reference=reference,
-            tracks={"t1": {"artist": "A", "title": "T"}}, run_id=run_id, source_id=source_id,
-        )
+            tracks={"t1": {"artist": "A", "title": "T"}}, run_id=run_id, source_id=source_id)
         stopped = Cause(
             reason="internal-error", message="stopped for the test",
-            remediation=Remediation(steps=("nothing",)), origin=("test",),
-        )
+            remediation=Remediation(steps=("nothing",)), origin=("test",))
         jobs.transition(
-            store, job.job_id, ended, cause=None if ended is jobs.JobState.SUCCEEDED else stopped
-        )
+            store, job.job_id, ended, cause=None if ended is jobs.JobState.SUCCEEDED else stopped)
 
 
 def _applied(export: Path, *extra: str) -> dict:
@@ -69,8 +65,7 @@ def _playlist_names(intake: Path) -> list[str]:
 
 
 def test_a_tidal_playlist_sync_landing_is_named_and_its_intake_file_keeps_the_pass(
-    cfg, silence, export
-):
+        cfg, silence, export):
     """``sync mark`` matches the pass's jobs to its intake file's name, as the marks record."""
     _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
     _queued(cfg, "pl-other", source_id=playlists.SOURCE_ID, run_id="2026-10-02T090000Z-ffff")
@@ -98,8 +93,7 @@ def test_a_tidal_playlist_sync_landing_is_named_and_its_intake_file_keeps_the_pa
 
 
 def test_a_label_go_landing_for_one_label_is_named_for_the_date_and_that_label(
-    cfg, silence, export, tmp_path
-):
+        cfg, silence, export, tmp_path):
     _stage(cfg, silence, "One.flac")
     manifest = _manifest(tmp_path, [("1", "Probe", "One", "Sudbeat", 2025)])
     envelope = _applied(export, "--manifest", str(manifest), "--pass", "2026-10-03T120000Z-cd34")
@@ -110,8 +104,7 @@ def test_a_label_go_landing_for_one_label_is_named_for_the_date_and_that_label(
 
 
 def test_a_second_landing_the_same_day_gets_a_distinct_name_and_one_pass_is_never_merged(
-    cfg, silence, export
-):
+        cfg, silence, export):
     """A second landing of one pass is refused before its gate; another pass takes `` 2``."""
     later = "2026-10-03T180000Z-ef56"
     _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
@@ -141,8 +134,7 @@ def test_a_job_the_pass_lost_does_not_name_the_batch(cfg, silence, export):
 
 
 def test_a_default_name_taken_after_the_gate_is_refused_under_the_lock(
-    cfg, silence, export, monkeypatch
-):
+        cfg, silence, export, monkeypatch):
     """A name taken between the gate and the lock refuses stale; run again, the next is free."""
     _stage(cfg, silence, "One.flac")
     real_apply = landing.apply
@@ -153,7 +145,6 @@ def test_a_default_name_taken_after_the_gate_is_refused_under_the_lock(
     def take_then_lock(batch):
         _music(cfg, batch).mkdir(parents=True)
         return real_lock(batch)
-
     real_lock = landing.batch_lock
     monkeypatch.setattr(landing, "batch_lock", take_then_lock)
     monkeypatch.setattr(landing, "apply", taken_meanwhile)
@@ -213,8 +204,7 @@ def test_name_and_pass_together_name_the_batch_and_the_file_apart(cfg, silence, 
 
 @pytest.mark.parametrize("given", ["", " padded", ".hidden", "a/b", "a\\b"])
 def test_a_pass_that_is_not_one_plain_file_name_is_refused_before_the_gate(
-    cfg, silence, export, given
-):
+        cfg, silence, export, given):
     _stage(cfg, silence, "One.flac")
     code, refused = _drive(_land(export, "--pass", given))
     assert code != int(ExitCode.DECISION_REQUIRED), refused
@@ -234,8 +224,7 @@ def test_the_label_go_tail_hands_the_run_as_the_pass_and_names_no_batch():
 
 def _job(handler_key: str, **payload) -> jobs.Job:
     return jobs.Job(
-        "j", handler_key, payload, "", "", "lib", jobs.JobState.SUCCEEDED, created="", updated=""
-    )
+        "j", handler_key, payload, "", "", "lib", jobs.JobState.SUCCEEDED, created="", updated="")
 
 
 def test_each_kind_of_pass_job_says_its_own_word():
@@ -256,7 +245,6 @@ def test_several_words_are_joined_in_one_order_whatever_order_they_arrive_in():
 def test_label_rows_name_one_label_by_its_name_and_several_as_labels(tmp_path):
     def read(folder: str, *rows: tuple) -> landing.LabelManifest:
         return landing.read_label_manifest(_manifest(tmp_path / folder, list(rows)))
-
     one = read("a", ("1", "P", "One", "Sudbeat", 2025), ("2", "P", "Two", "sudbeat", 2024))
     several = read("b", ("1", "P", "One", "Sudbeat", 2025), ("2", "P", "Two", "Kompakt", 2024))
     unsafe = read("c", ("1", "P", "One", "AC/DC: Records", 2025))

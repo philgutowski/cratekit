@@ -68,7 +68,6 @@ def _land_three(cfg: config.Config, silence: Path, *, name: str = BATCH) -> list
 def _as_landed_before_u164(cfg: config.Config, batch: str) -> None:
     """Put a batch where a landing put one before U164, ``Music/<batch>``, rows and all."""
     from cratekit.intake import batch_name as names
-
     when, said = shelve.filed_parts(batch, on=names.today())
     filed = shelve.processed_root(cfg) / f"{when.year}" / shelve.filed_name(when, said)
     os.rename(filed, _music(cfg) / batch)
@@ -152,8 +151,7 @@ def test_parse_name_reads_the_two_shapes_and_refuses_the_rest(batch, expected):
 
 
 def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
-    cfg, silence, monkeypatch
-):
+        cfg, silence, monkeypatch):
     from cratekit.core import analysis_store
     from cratekit.core.cause import CratekitError
     from cratekit.intake import landing
@@ -162,7 +160,6 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     def untouched() -> None:
         assert sorted(p.name for p in (_music(cfg) / BATCH).iterdir()) == list(FILES)
         assert _rows(cfg) == before
-
     # THE REPORT names the target, every row and a digest, and moves nothing.
     code, envelope = drive(_shelve("--report", BATCH))
     assert code == int(ExitCode.OK), envelope
@@ -179,7 +176,6 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     untouched()
     assert not _processed(cfg).exists()
     assert _records(cfg, shelve.WORKFLOW) == []
-
     # UNDER --all, A FOLDER WITH A SUBFOLDER AND A NAME OF NEITHER SHAPE ARE SKIPPED.
     (_music(cfg) / "rekordbox_djoid").mkdir()
     (_music(cfg) / "rekordbox_djoid" / "export.xml").write_text("<x/>")
@@ -196,25 +192,21 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     assert envelope["data"]["totals"]["skipped"] == 2
     assert {w["code"] for w in envelope["warnings"]} == {shelve_cli.BATCH_SKIPPED}
     untouched()
-
     # THE GATE TAKES NO INLINE ANSWER.
     code, envelope = drive(["-d", f"{GATE}=apply", *_shelve(BATCH)])
     assert code == int(ExitCode.DECISION_REQUIRED), envelope
     untouched()
-
     # AN ABORT moves nothing and writes nothing.
     code, envelope, _ = _gated(_shelve(BATCH), gate=GATE, answer="abort")
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     untouched()
     assert _records(cfg, shelve.WORKFLOW) == []
-
     # A SUBJECT WITH A PATH PART is refused.
     code, envelope = drive(_shelve("--as", "Tidal/Favorites", BATCH))
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line"
     untouched()
-
     # A RUNNING REKORDBOX refuses before the plan is shown.
     running = rb_writer.rekordbox_running
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
@@ -222,7 +214,6 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     assert code != int(ExitCode.OK) and code != int(ExitCode.DECISION_REQUIRED), envelope
     untouched()
     monkeypatch.setattr(rb_writer, "rekordbox_running", running)
-
     # A PROCESSED TREE ON ANOTHER DEVICE refuses before any plan.
     device_of, music = landing._device_of, _music(cfg)
     monkeypatch.setattr(landing, "_device_of", lambda path: 1 if Path(path) == music else 2)
@@ -232,7 +223,6 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     assert envelope["cause"]["remediation"]["remedy"] == "fix-config-values"
     assert _rows(cfg) == before
     monkeypatch.setattr(landing, "_device_of", device_of)
-
     # A FILE WITH NO ROW refuses the batch whole.
     unimported = _music(cfg) / BATCH / "Unimported.flac"
     shutil.copyfile(silence, unimported)
@@ -243,7 +233,6 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     assert unimported.exists() and _rows(cfg) == before
     assert not _processed(cfg).exists()
     unimported.unlink()
-
     # A TARGET MADE AFTER THE APPROVAL is stale through the verb.
     run_id = _answered(_shelve(BATCH), GATE)[1]
     target = _processed(cfg) / "2026" / FILED
@@ -253,7 +242,6 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     untouched()
     assert _records(cfg, shelve.WORKFLOW) == []
     target.rmdir()
-
     # And THE ENGINE refuses one made between its plan and its apply, in its own words.
     with _open(cfg) as db:
         planned = shelve.plan(cfg, db, [BATCH])
@@ -265,11 +253,9 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     assert "exists now" in caught.value.cause.message
     untouched()
     target.rmdir()
-
     # A COMMIT THAT FAILS AFTER THE RENAME puts the folder back.
     def refuse_commit(db, **kwargs):
         raise RuntimeError("the disk went away")
-
     monkeypatch.setattr(rb_writer, "commit_guarded", refuse_commit)
     code, acted, _refused = _two_acts_of(_shelve(BATCH), GATE)
     assert code == int(ExitCode.INTERNAL), acted
@@ -315,8 +301,7 @@ def test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_ove
 
 
 def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_stays_taken(
-    cfg, silence
-):
+        cfg, silence):
     before = _land_three(cfg, silence)
     assert all(Path(row[1]).parent == _music(cfg) / BATCH for row in before)
     assert batch_name.taken(cfg, BATCH)
@@ -327,7 +312,6 @@ def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_s
     (kept / "old.flac").write_bytes(b"")
     stamp = os.stat(kept).st_mtime_ns
     _plant_ghost_row(cfg, _processed(cfg) / "2026" / FILED.upper() / "ghost.flac")
-
     # A BATCH NAMED TWICE is planned once.
     code, acted, refused = _two_acts_of(_shelve(BATCH, BATCH), GATE)
     assert code == int(ExitCode.OK), acted
@@ -360,7 +344,6 @@ def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_s
     # THE GRID SUITES STILL SEE NO TEMPO on the moved rows.
     rows = _query(cfg, "SELECT BPM FROM djmdContent WHERE Title LIKE '01A - 124 - %'")
     assert rows and all(bpm in (None, 0) for (bpm,) in rows)
-
     # A SHELVED BATCH NAME STAYS TAKEN, so a landing that day takes the next.
     assert batch_name.taken(cfg, BATCH), "the folder is gone and the name reads free"
     assert batch_name.free(cfg, BATCH) == f"{BATCH} 2"
@@ -377,11 +360,9 @@ def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_s
     [
         pytest.param("2026-09-23T222241Z-4773", id="four-hex-before-u235"),
         pytest.param("2026-09-23T222241Z-ce458ab7cceccb0b", id="sixteen-hex-since-u235"),
-    ],
-)
+    ])
 def test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given(
-    cfg, silence, run_named
-):
+        cfg, silence, run_named):
     """A batch named for a run, as ``default_name`` spells one, at either width."""
     _land_three(cfg, silence, name=run_named)
     code, envelope = drive(_shelve("--report", run_named))
@@ -395,8 +376,7 @@ def test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given
 
 
 def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_drive(
-    cfg, silence, monkeypatch
-):
+        cfg, silence, monkeypatch):
     """Rows stored under a renamed volume's base drive are still the commit's own."""
     before = _land_three(cfg, silence)
     base, current = str(Path(cfg.library.root).parent / "elsewhere"), str(cfg.library.root)
@@ -412,8 +392,7 @@ def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_dr
 
 
 def test_a_row_under_the_target_refuses_the_commit_and_the_free_target_rule_passes_it_over(
-    cfg, silence, monkeypatch
-):
+        cfg, silence, monkeypatch):
     """A folder moved since leaves rows with nothing on disk, which no plan may choose."""
     before = _land_three(cfg, silence)
     ghost = _processed(cfg) / "2026" / FILED
@@ -422,7 +401,6 @@ def test_a_row_under_the_target_refuses_the_commit_and_the_free_target_rule_pass
     real = shelve._free_target
     def unguarded(root, name, planned, *, stored_dirs, spell):
         return real(root, name, planned, stored_dirs=frozenset(), spell=spell)
-
     monkeypatch.setattr(shelve, "_free_target", unguarded)
     code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
     assert code == int(ExitCode.REFUSED_BY_POLICY), acted
@@ -443,12 +421,9 @@ def test_a_row_under_the_target_refuses_the_commit_and_the_free_target_rule_pass
     [
         (lambda path, kept: (path + "x", kept), "not the planned"),
         (lambda path, kept: (path, ("other", *kept[1:])), "changed a column"),
-    ],
-    ids=["path", "kept-column"],
-)
+    ], ids=["path", "kept-column"])
 def test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column(
-    cfg, silence, monkeypatch, alter, said
-):
+        cfg, silence, monkeypatch, alter, said):
     from cratekit.core import analysis_store
     from cratekit.core.cause import CratekitError
     _land_three(cfg, silence)
@@ -463,7 +438,6 @@ def test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column(
         first = next(iter(rows))
         path, kept = rows[first]
         return {**rows, first: alter(path, kept)}
-
     monkeypatch.setattr(shelve, "_select_rows", tampered)
     with _open(cfg) as db, pytest.raises(CratekitError) as caught:
         planned = shelve.plan(cfg, db, [BATCH])

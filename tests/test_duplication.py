@@ -105,8 +105,7 @@ def test_a_copy_that_was_only_reindented_recommented_and_rewrapped_is_still_foun
     original = _block(6)
     disguised = "def moved():\n" + "".join(
         f"    # step {number}\n    step_{number} = compute(\n        {number}\n    )\n\n"
-        for number in range(6)
-    )
+        for number in range(6))
     assert sum(_held(_sources(label=original, sync=disguised))["sync"].values()) == 1
 
 
@@ -269,8 +268,7 @@ def identical_bodies(sources: dict[str, str]) -> list[list[str]]:
     return sorted(
         sorted(place for _, place in found)
         for found in places.values()
-        if len({path for path, _ in found}) > 1
-    )
+        if len({path for path, _ in found}) > 1)
 
 
 def _function(name: str, body: str, *, docstring: str = "") -> str:

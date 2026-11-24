@@ -273,8 +273,7 @@ def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch, tmp
     ],
 )
 def test_a_held_track_is_owned_and_nothing_is_listed(
-    cfg, library, tmp_path, monkeypatch, name, tags, row
-):
+        cfg, library, tmp_path, monkeypatch, name, tags, row):
     tagged_container(tmp_path, library / "Music" / name, **tags)
     heart = Track(*row[:3])
     heart.isrc = row[3]
@@ -290,8 +289,7 @@ def test_a_held_track_is_owned_and_nothing_is_listed(
 
 # R-502: a missing row is asked again at listing time
 def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(
-    cfg, library, monkeypatch, tmp_path
-):
+        cfg, library, monkeypatch, tmp_path):
     """R-502: rows acquired since are asked again; the list's name is fixed by the job."""
     job_id = mixed_job(library, monkeypatch)
     _code, first = missing(job_id)
@@ -329,8 +327,7 @@ def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(
 
 
 def test_a_row_held_in_another_version_since_is_offered_not_listed(
-    cfg, library, monkeypatch, tmp_path
-):
+        cfg, library, monkeypatch, tmp_path):
     job_id = mixed_job(library, monkeypatch)
     remix = library / "Music" / "Lumen Drift - Salt Road (Someone Remix).flac"
     remix.write_bytes(b"")
@@ -377,8 +374,7 @@ def checks_of(envelope: dict) -> dict[str, dict]:
 
 
 def test_an_offered_row_rejected_since_is_listed_and_no_longer_offered(
-    cfg, library, monkeypatch, tmp_path
-):
+        cfg, library, monkeypatch, tmp_path):
     """R-503: a rejection lists the row, and every refusal over an earlier copy says why."""
     job_id = mixed_job(library, monkeypatch)
     _code, first = missing(job_id)
@@ -452,8 +448,7 @@ def test_an_offered_row_nobody_answered_is_unchanged_and_asks_nothing(cfg, libra
 
 
 def test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it(
-    cfg, library, monkeypatch, tmp_path
-):
+        cfg, library, monkeypatch, tmp_path):
     """A job freezes the configuration it was queued against, and the library's root may move."""
     job_id = mixed_job(library, monkeypatch)
     moved = tmp_path / "moved"
@@ -554,8 +549,7 @@ def test_a_failed_job_is_refused_carrying_its_own_cause(cfg, library, monkeypatc
 
 
 def test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     """Damaged reports refuse the job by identifier; a row nothing names is a failing check."""
     job_id = finished(monkeypatch, hearts())
     with jobs.open_store() as store:
@@ -590,8 +584,7 @@ def test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset(
 def test_a_job_of_another_verb_is_refused(cfg, library):
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store, handler_key="acquire.download", payload={"list": "x"}, cfg=cfg, item_ids=("1",)
-        )
+            store, handler_key="acquire.download", payload={"list": "x"}, cfg=cfg, item_ids=("1",))
     envelope = refused(job.job_id)
     assert envelope["cause"]["reason"] == "job-unknown"
 
@@ -606,16 +599,14 @@ def test_a_succeeded_job_with_no_items_is_refused_not_listed_empty(cfg, library)
     """Zero reports against zero items passes a comparison by id, so no items refuses."""
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store, handler_key="intake.playlist", payload={"source": "pl-1"}, cfg=cfg, item_ids=()
-        )
+            store, handler_key="intake.playlist", payload={"source": "pl-1"}, cfg=cfg, item_ids=())
         jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
     envelope = refused(job.job_id)
     assert "has no items" in envelope["cause"]["message"]
 
 
 def test_missing_tracks_none_of_which_can_be_listed_write_the_unlisted_list_not_a_no_op(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     """Nothing nameable is not a no-op: the track is handed on to a text list and said so."""
     job_id = finished(monkeypatch, [Track("205", "Kite Harbor", "Low Tide Signal")])
     unname(job_id, 0)
@@ -643,8 +634,7 @@ def test_a_track_deleted_on_purpose_is_suppressed_and_not_listed(cfg, library, m
 
 
 def test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     """R-431: a deletion whose row kept a featured credit still suppresses the heart."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
     job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path", version="Nightwave Remix")])
@@ -664,8 +654,7 @@ def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
              "artists": [{"name": "Aurora Bloom"}]},
             {"id": "2", "title": "Sun Path", "version": "Nightwave Remix",
              "artists": [{"name": "Aurora Bloom"}, {"name": "Zed"}]},
-        ]
-    )
+        ])
     assert intake_cli.thawed(intake_cli.frozen(solo)).uncredited_spellings
     assert intake_cli.thawed(intake_cli.frozen(billed)).uncredited_spellings == ()
     older = {k: v for k, v in intake_cli.frozen(solo).items() if k != "several_artists"}
@@ -673,8 +662,7 @@ def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
 
 
 def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     """The companion names one VERSION; another remix was deleted by nobody."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
     job_id = finished(monkeypatch, [Track("202", "Aurora Bloom", "Sun Path", version="Daybreak Remix")])
@@ -693,8 +681,7 @@ RUN_LIST = "2026-09-18T100000Z-ab12_synced.list.json"
 def in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN) -> str:
     """Queue one playlist job exactly as a sync pass does, and leave it open."""
     tracks = intake_cli.list_playlist(
-        FakeCatalogue(playlists={reference: FakePagedPlaylist(rows)}), reference
-    )
+        FakeCatalogue(playlists={reference: FakePagedPlaylist(rows)}), reference)
     with jobs.open_store() as store:
         job = intake_cli.queue_playlist(store, cfg, handler_key="intake.playlist", reference=reference, tracks=tracks, run_id=run_id, source_id="playlists")
     return job.job_id
@@ -707,8 +694,7 @@ def finished_in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN
 def fail(job_id: str) -> None:
     cause = Cause(
         reason="internal-error", message="stopped for the test",
-        remediation=Remediation(steps=("nothing",)), origin=("test",),
-    )
+        remediation=Remediation(steps=("nothing",)), origin=("test",))
     with jobs.open_store() as store:
         jobs.transition(store, job_id, jobs.JobState.FAILED, cause=cause)
 
@@ -788,8 +774,7 @@ def test_a_run_whose_rows_were_all_acquired_since_names_no_download(cfg, library
 
 
 def test_a_run_lists_only_its_own_finished_jobs_and_names_the_rest(
-    cfg, library, monkeypatch, tmp_path
-):
+        cfg, library, monkeypatch, tmp_path):
     """An unknown run, an open job, a failed one, --skip-failed, and the jobs no run owns."""
     kept = finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
     code, envelope = run_missing(run_id="2026-01-01T00:00:00Z-0000")
@@ -827,8 +812,7 @@ def test_a_run_lists_only_its_own_finished_jobs_and_names_the_rest(
     with jobs.open_store() as store:
         jobs.enqueue(
             store, handler_key="sync.labels", payload={"run_id": RUN}, cfg=cfg,
-            item_ids=("some-label",),
-        )
+            item_ids=("some-label",))
     queued(monkeypatch, hearts())
     envelope, summary = run_ok("--skip-failed")
     assert (summary["jobs"], ids(summary)) == ([kept], ["204"])
@@ -911,8 +895,7 @@ def bind_playlist(monkeypatch, rows: list[Track], *, declared: int | None) -> No
 
 
 def test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     bind_playlist(monkeypatch, eight(), declared=10)
     text = told(["intake", "playlist", SHORT])
     assert "warning [intake-playlist-withheld]:" in text
@@ -930,8 +913,7 @@ def test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns(
 
 @pytest.mark.parametrize("declared", [8, None])
 def test_a_full_playlist_listing_or_one_with_no_declared_count_warns_nothing(
-    cfg, library, monkeypatch, declared
-):
+        cfg, library, monkeypatch, declared):
     bind_playlist(monkeypatch, eight(), declared=declared)
     envelope = drove(["intake", "playlist", SHORT])
     assert playlist_withheld(envelope) == []

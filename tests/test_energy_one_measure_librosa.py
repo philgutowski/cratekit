@@ -82,7 +82,6 @@ def test_the_heads_old_reading_differed_from_the_restamps_on_this_track(track):
     def spying(path):
         measured.append(Path(path))
         return real(path)
-
     energy.bind_extractor(spying)
     try:
         detect.analyse_file(track, calibration=calibration())

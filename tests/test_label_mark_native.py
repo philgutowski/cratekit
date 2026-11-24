@@ -69,8 +69,7 @@ def _record_landing(
         detail[label_filing.RECORD_KEY] = list(filed)
     record = session.SessionRecord(
         session_id=f"20261007T{stamp}-landing", workflow=native.WORKFLOW, started=started,
-        state=state, sources={"intake": str(source)}, ended=started, detail=detail,
-    )
+        state=state, sources={"intake": str(source)}, ended=started, detail=detail)
     session.write_record(record, cfg)
     return record.session_id
 
@@ -133,11 +132,9 @@ def test_a_year_filed_under_another_label_or_holding_no_track_is_not_marked(nati
 
 @pytest.mark.parametrize(
     "filed", [(), (_filed(2021, label="Another Label"),), (_filed(2019),)],
-    ids=["no-label-filed", "another-label", "a-year-never-built"],
-)
+    ids=["no-label-filed", "another-label", "a-year-never-built"])
 def test_a_pass_whose_landings_filed_none_of_the_built_years_marks_nothing_and_says_so(
-    native_built, filed
-):
+    native_built, filed):
     cfg, _fake, account = native_built
     _record_landing(cfg, *filed)
     calls = account._writes
@@ -162,8 +159,7 @@ def test_a_bridge_batch_of_another_label_says_it_filed_nothing_too(built):
     "landing",
     [None, {"state": session.SessionState.ABANDONED}, {"source": session.SourceState.REFUSED},
      {"name": "ANOTHER_synced"}],
-    ids=["no-landing", "abandoned", "never-committed", "another-pass"],
-)
+    ids=["no-landing", "abandoned", "never-committed", "another-pass"])
 def test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name(native_built, landing):
     cfg, _fake, account = native_built
     if landing is not None:
@@ -197,8 +193,7 @@ def test_pass_on_an_intake_tree_on_the_bridge_is_refused_naming_xml(built):
 
 
 def test_an_unreachable_library_names_label_mark_as_the_verb_to_run_again(
-    native_built, monkeypatch
-):
+    native_built, monkeypatch):
     from cratekit.sync import mark_cli as sync_mark_cli
     unreachable = sync_mark_cli.ingest.IntakeMedium(declared=None, registry=None)
     monkeypatch.setattr(sync_mark_cli.ingest, "intake_medium", lambda cfg: unreachable)
@@ -208,8 +203,7 @@ def test_an_unreachable_library_names_label_mark_as_the_verb_to_run_again(
 
 
 @pytest.mark.parametrize(
-    "argv", [[], ["--xml", "x_inboxed.xml", "--pass", PASS]], ids=["neither", "both"],
-)
+    "argv", [[], ["--xml", "x_inboxed.xml", "--pass", PASS]], ids=["neither", "both"])
 def test_the_pass_is_named_by_exactly_one_of_the_file_and_the_name(native_built, argv):
     _cfg, _fake, account = native_built
     code, _ = drive(["label", "mark", LABEL, *argv])
@@ -227,11 +221,9 @@ def test_the_pass_is_named_by_exactly_one_of_the_file_and_the_name(native_built,
     ids=[
         "a-string", "a-list-of-strings", "a-text-year", "no-tracks", "a-bool-year", "a-bool-tracks",
         "no-label",
-    ],
-)
+    ])
 def test_a_record_naming_its_filing_in_a_form_this_build_cannot_read_is_refused(
-    native_built, labels
-):
+    native_built, labels):
     cfg, _fake, account = native_built
     session_id = _record_landing(cfg, labels=labels)
     refused = _exits(ExitCode.PRECONDITION, drive(BY_PASS))
@@ -292,8 +284,7 @@ def _record(labels) -> session.SessionRecord:
     return session.SessionRecord(
         session_id=ONE_LANDING, workflow=native.WORKFLOW, started="2026-10-07T12:00:00+00:00",
         state=session.SessionState.CLOSED, sources={},
-        detail={} if labels is None else {label_filing.RECORD_KEY: labels},
-    )
+        detail={} if labels is None else {label_filing.RECORD_KEY: labels})
 
 
 @pytest.mark.parametrize(
@@ -305,8 +296,7 @@ def _record(labels) -> session.SessionRecord:
                      id="a-label-is-compared-exactly-otherwise"),
         pytest.param([_filed(987), _filed(2021, tracks=3)], {"0987", "2021"},
                      id="a-year-is-four-digits-as-the-ledger-spells-it"),
-    ],
-)
+    ])
 def test_a_record_filed_the_years_its_label_filing_names(filing, years):
     assert label_filing.years_filed(_record(filing), LABEL) == frozenset(years)
 
@@ -346,8 +336,7 @@ def test_a_label_batch_landed_natively_with_label_is_marked_by_its_pass(landed_n
 
 
 def test_a_label_batch_landed_natively_with_a_manifest_is_marked_by_its_pass(
-    landed_natively, silence, tmp_path
-):
+    landed_natively, silence, tmp_path):
     cfg, follow = landed_natively
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)

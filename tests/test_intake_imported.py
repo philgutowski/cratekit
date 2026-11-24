@@ -34,8 +34,7 @@ def _stage(cfg: config.Config, silence: Path, name: str, *, genre: str = "Deep H
     path = Path(cfg.paths.download_staging) / name
     shutil.copyfile(silence, path)
     assert tags.write_tags(
-        path, {"title": Path(name).stem, "artist": "Probe", "genre": genre, "energylevel": 7}
-    )
+        path, {"title": Path(name).stem, "artist": "Probe", "genre": genre, "energylevel": 7})
     return path
 
 
@@ -43,8 +42,7 @@ def _land(cfg: config.Config, silence: Path, export: Path, *names: str, batch: s
     for name in names or ("One.flac",):
         _stage(cfg, silence, name)
     code, envelope = _drive(
-        ["-d", f"{GATE}=apply", "intake", "land", "--export", str(export), "--name", batch]
-    )
+        ["-d", f"{GATE}=apply", "intake", "land", "--export", str(export), "--name", batch])
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     return envelope
 
@@ -64,8 +62,7 @@ def _verified_snapshot(cfg: config.Config) -> None:
     capture = snapshot.store_root(cfg) / "2026-09-19T000000Z-deadbeefcafebabe"
     capture.mkdir(parents=True)
     record = snapshot.Capture(
-        stamp=capture.name, root=capture, database=capture / "master.db", integrity_verified=True
-    )
+        stamp=capture.name, root=capture, database=capture / "master.db", integrity_verified=True)
     manifest = json.dumps(record.to_json()) + "\n"
     (capture / snapshot.MANIFEST_NAME).write_text(manifest, encoding="utf-8")
 
@@ -100,7 +97,6 @@ def _refusing(monkeypatch, module, name: str, message: str = "the ledger could n
 
     def refusing(*args, **kwargs):
         raise refuse("internal-error", message)
-
     monkeypatch.setattr(module, name, refusing)
 
 
@@ -117,8 +113,7 @@ def _mark_routed(cfg: config.Config, record: session.SessionRecord) -> None:
 
 
 def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
-    cfg, silence, export, tmp_path
-):
+        cfg, silence, export, tmp_path):
     """Land, do what the pending action names and nothing else, ask the precheck."""
     _verified_snapshot(cfg)
     envelope = _land(cfg, silence, export, "One.flac", "Two.flac")
@@ -200,8 +195,7 @@ def test_the_intake_file_is_refused_as_its_own_proof(cfg, silence, export, tmp_p
     stub.write_bytes(
         b'<?xml version="1.0" encoding="UTF-8"?>\n<DJ_PLAYLISTS Version="1.0.0">\n'
         b'  <COLLECTION Entries="1">\n    <TRACK Name="Probe - One"/>\n  </COLLECTION>\n'
-        b"</DJ_PLAYLISTS>\n"
-    )
+        b"</DJ_PLAYLISTS>\n")
     assert collection_xml.is_stub_listing(stub.read_bytes())
     _, result = _imported(stub)
     assert result["cause"]["reason"] == "intake-export-is-stub", result
@@ -236,7 +230,6 @@ def test_the_intake_file_is_refused_as_its_own_proof(cfg, silence, export, tmp_p
 
     def denied(*args, **kwargs):
         raise PermissionError(13, "Permission denied")
-
     with monkeypatch.context() as patched:
         patched.setattr(imported_cli.os, "replace", denied)
         _, result = _imported(after)
@@ -348,19 +341,16 @@ def test_a_refusal_before_the_write_leaves_no_session_at_all(cfg, silence, expor
         b'<?xml version="1.0" encoding="UTF-8"?>\n<DJ_PLAYLISTS Version="1.0.0">\n'
         b'  <COLLECTION Entries="0">\n  </COLLECTION>\n  <PLAYLISTS>\n'
         b'    <NODE Type="0" Name="ROOT" Count="0">\n    </NODE>\n  </PLAYLISTS>\n'
-        b"</DJ_PLAYLISTS>\n"
-    )
+        b"</DJ_PLAYLISTS>\n")
     with pytest.raises(CratekitError) as caught:
         ingest.place_files(
-            [path], cfg=cfg, export=no_intake_folder, destination=path.parent / "x_inboxed.xml"
-        )
+            [path], cfg=cfg, export=no_intake_folder, destination=path.parent / "x_inboxed.xml")
     assert caught.value.cause.reason == "library-export-unusable"
     assert session.records(cfg) == ()
 
 
 def test_a_refusal_after_the_session_opens_abandons_it_and_removes_the_file(
-    cfg, silence, export, monkeypatch
-):
+        cfg, silence, export, monkeypatch):
     """The ledger refusing arrives after the write, which is the reachable case."""
     path = _in_music(cfg, silence, title="One", **PLACED)
     destination = Path(cfg.library.root) / "refused_inboxed.xml"
@@ -375,8 +365,7 @@ def test_a_refusal_after_the_session_opens_abandons_it_and_removes_the_file(
 
 
 def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(
-    cfg, silence, export, monkeypatch
-):
+        cfg, silence, export, monkeypatch):
     path = _in_music(cfg, silence, title="One", **PLACED)
     destination = Path(cfg.library.root) / "placed_inboxed.xml"
     placed = ingest.place_files([path], cfg=cfg, export=export, destination=destination)
@@ -427,8 +416,7 @@ def _volume_is_the_librarys(cfg: config.Config, monkeypatch) -> None:
 
 
 def test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_run(
-    cfg, silence, export, volume_agrees
-):
+        cfg, silence, export, volume_agrees):
     """The gated close refuses ``awaiting-import``, which is what a landing now ends in."""
     _land(cfg, silence, export)
     (record,) = session.records(cfg)
@@ -453,8 +441,7 @@ def test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_ru
 def _verified(cfg: config.Config, **changes) -> session.SessionRecord:
     record = session.open_session(cfg, workflow=ingest.INTAKE_WORKFLOW)
     session.mark_awaiting_import(
-        record, session.pending_import(record, artifact="x", summary="s", verify_verb="v"), cfg,
-    )
+        record, session.pending_import(record, artifact="x", summary="s", verify_verb="v"), cfg)
     session.mark_import_verified(record, cfg, evidence="a test")
     for name, value in changes.items():
         setattr(record, name, value)
@@ -470,8 +457,7 @@ def test_the_precheck_excuses_a_verified_run_holding_no_capture(cfg, export):
 
 @pytest.mark.parametrize(
     "changes", [{"snapshot_path": "/captures/one"}, {"state": session.SessionState.COMMITTED_UNVERIFIED}],
-    ids=["holding-a-capture", "not-open"],
-)
+    ids=["holding-a-capture", "not-open"])
 def test_the_precheck_refuses_a_verified_run_that_holds_a_capture(cfg, export, changes):
     _verified_snapshot(cfg)
     record = _verified(cfg, **changes)
@@ -530,8 +516,7 @@ def test_intake_file_with_no_export_writes_nothing_and_opens_nothing(cfg, silenc
 def test_the_pipeline_result_carries_the_session_the_action_is_on(cfg, silence, export):
     path = _in_music(cfg, silence, "Single.flac", title="Single", **PLACED)
     result = pipeline.ingest_file(
-        path, cfg=cfg, export=export, destination=path.parent / "Single_inboxed.xml"
-    )
+        path, cfg=cfg, export=export, destination=path.parent / "Single_inboxed.xml")
     (record,) = session.records(cfg)
     assert result.placed[0].session_id == record.session_id
 
@@ -601,8 +586,7 @@ def test_tracks_acknowledged_as_gone_are_not_proof_of_an_import(cfg, silence, ex
     _land(cfg, silence, export)
     (record,) = session.records(cfg)
     routing_pass.acknowledge(
-        cfg, _outstanding(cfg, record), session_id=record.session_id, actor="a-person"
-    )
+        cfg, _outstanding(cfg, record), session_id=record.session_id, actor="a-person")
     assert not routing_pass.read(cfg).outstanding(record.session_id)
     with pytest.raises(CratekitError) as caught:
         routing_cli._close_if_settled(cfg, record.session_id)
@@ -611,8 +595,7 @@ def test_tracks_acknowledged_as_gone_are_not_proof_of_an_import(cfg, silence, ex
 
 
 def test_a_refused_close_is_reported_and_tried_again_next_time(
-    cfg, silence, export, tmp_path, monkeypatch
-):
+        cfg, silence, export, tmp_path, monkeypatch):
     """A gated close refused after the proof is on the item, and the next run closes it."""
     _land(cfg, silence, export)
     (record,) = session.records(cfg)
@@ -637,8 +620,7 @@ def test_a_refused_close_is_reported_and_tried_again_next_time(
 
 
 def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
-    cfg, silence, export, monkeypatch
-):
+        cfg, silence, export, monkeypatch):
     """Nothing that can fail follows the ledger write, since an intent cannot be taken back."""
     path = _in_music(cfg, silence, title="One", **PLACED)
     _refusing(monkeypatch, session, "mark_awaiting_import", "the session log could not be written")
@@ -662,8 +644,7 @@ def test_doctor_reads_a_proven_run_as_proven_and_not_as_in_progress(cfg):
 
 
 def test_the_proof_names_the_tracks_it_proved_and_the_file_it_retired(
-    cfg, silence, export, tmp_path
-):
+        cfg, silence, export, tmp_path):
     """54 proven rows and a retired intake file printed ``intake.imported: ok``."""
     _land(cfg, silence, export, "One.flac", "Two.flac", batch="first")
     after = _export_after_import(tmp_path, _intake_file(cfg, "first"))
@@ -681,8 +662,7 @@ def test_the_proof_names_the_tracks_it_proved_and_the_file_it_retired(
 
 
 def test_a_run_the_export_does_not_prove_is_named_beside_the_one_it_does(
-    cfg, silence, export, tmp_path
-):
+        cfg, silence, export, tmp_path):
     _land(cfg, silence, export, "One.flac", batch="first")
     after_first = _export_after_import(tmp_path, _intake_file(cfg, "first"))
     _land(cfg, silence, export, "Two.flac", batch="second")

@@ -141,8 +141,7 @@ def standing_gate(store) -> genre_gate.SweepGate:
     """A gate over the store's standing holds that reads and asks nothing."""
     return genre_gate.SweepGate(
         TAXONOMY, tracks=FailingReader(set()), standing=genre_gate.StandingHolds(store),
-        lookup=never_asked,
-    )
+        lookup=never_asked)
 
 
 def sweep_once() -> str:
@@ -155,8 +154,7 @@ def sweep_once() -> str:
 def filed(cfg: config.Config) -> dict[str, review.Item]:
     with review.open_store(cfg) as store:
         page = review.list_items(
-            store, queue=str(Queue.LABEL_RELEASE), include_resolved=True, limit=None
-        )
+            store, queue=str(Queue.LABEL_RELEASE), include_resolved=True, limit=None)
     return {str(item.payload["identity"]): item for item in page.items}
 
 
@@ -213,10 +211,8 @@ def test_a_dance_label_passes_the_dance_words_and_holds_every_other(word):
         pytest.param(("Dancehall/Ragga", "Reggaeton"), ("reggae", "latin"), id="first-rule-wins"),
         pytest.param(
             ("Rhythm & Blues", "Rhythm and Blues", "Blues"), ("rnb", "rnb", "jazz"),
-            id="long-rnb-is-not-the-blues-it-contains",
-        ),
-    ],
-)
+            id="long-rnb-is-not-the-blues-it-contains"),
+    ])
 def test_a_published_word_is_matched_to_its_kind(words, kinds):
     assert tuple(routing.published_kind(TAXONOMY, word) for word in words) == kinds
 
@@ -241,8 +237,7 @@ PASS, HOLD, NOT_JUDGED = KindVerdict.PASS, KindVerdict.HOLD, KindVerdict.NOT_JUD
         pytest.param("rnb", ["Dance"], HOLD, None, (), id="an-rnb-label-holds-dance"),
         pytest.param("polka", ["Christian"], NOT_JUDGED, None, ("'polka'", "does not name"),
                      id="a-kind-the-taxonomy-does-not-name-is-not-judged-and-says-which"),
-    ],
-)
+    ])
 def test_the_labels_kind_decides_what_its_releases_words_do(kind, words, verdict, placed, says):
     """``says`` is the reason's fragments, or as a string the whole reason."""
     judged = routing.kind_verdict(TAXONOMY, kind, words)
@@ -310,40 +305,31 @@ def _says(default_raw, change, said):
     [
         pytest.param(
             _published({"kind": "polka"}),
-            ("[[label_gate.published]]", "needs all_of, any_of, or equals"), id="rule-no-matcher",
-        ),
+            ("[[label_gate.published]]", "needs all_of, any_of, or equals"), id="rule-no-matcher"),
         pytest.param(_published({"any_of": ["polka"]}), "needs a kind", id="rule-no-kind"),
         pytest.param(
             _published({"any_of": ["polka"], "kind": "any"}), "cannot be the kind of a word",
-            id="rule-reserved-kind",
-        ),
+            id="rule-reserved-kind"),
         pytest.param(
             _published({"any_of": "polka", "kind": "polka"}), "any_of must be a list of words",
-            id="matcher-not-a-list",
-        ),
+            id="matcher-not-a-list"),
         pytest.param(
             _gate("published", {"any_of": ["polka"], "kind": "polka"}), "two pairs of brackets",
-            id="rules-in-one-pair-of-brackets",
-        ),
+            id="rules-in-one-pair-of-brackets"),
         pytest.param(
             _gate("default_kind", "polka"), "default_kind 'polka' is not a kind",
-            id="default-kind-no-rule-names",
-        ),
+            id="default-kind-no-rule-names"),
         pytest.param(_gate("default_kind", 7), "default_kind must be", id="default-not-a-word"),
         pytest.param(
             _published({"any_of": ["polka"], "kind": "default"}), "clears a label's kind",
-            id="rule-kind-is-the-clearing-word",
-        ),
+            id="rule-kind-is-the-clearing-word"),
         # The registry stores a kind as one word, so a rule may name no other shape.
         pytest.param(
             _published({"any_of": ["polka"], "kind": "hip hop"}), "kind 'hip hop' is not one word",
-            id="rule-kind-of-two-words",
-        ),
+            id="rule-kind-of-two-words"),
         pytest.param(
-            _gate("default_kind", "hip hop"), "default_kind must be", id="default-of-two-words"
-        ),
-    ],
-)
+            _gate("default_kind", "hip hop"), "default_kind must be", id="default-of-two-words"),
+    ])
 def test_a_malformed_label_gate_is_refused_by_what_it_lacks(default_raw, change, said):
     assert _says(default_raw, change, said)
 
@@ -401,8 +387,7 @@ KNOWN_NO_GENRE = "the general catalogue knows it and publishes no genre for it"
                      id="a-track-the-catalogue-knows-outranks-one-it-does-not"),
         pytest.param({1: ("Dance",)}, [{"external_ids": {"isrc": isrc(1)}}], {"genres": ("Dance",)},
                      [1], id="an-isrc-under-external-ids-is-asked-about"),
-    ],
-)
+    ])
 def test_a_releases_words_are_what_the_tracks_asked_about_publish(table, rows, words, asked):
     assert genre_gate.TRACKS_ASKED == 3
     lookup = Lookup({isrc(n): said for n, said in table.items()})
@@ -425,8 +410,7 @@ def test_an_answer_that_could_not_be_read_stops_the_asking(answer):
 
 def test_a_release_with_no_isrc_asks_nothing_and_says_so():
     words = genre_gate.published_words(
-        [Track("1", "A", "One"), {"title": "Two", "isrc": "  "}], never_asked
-    )
+        [Track("1", "A", "One"), {"title": "Two", "isrc": "  "}], never_asked)
     assert words.answer == "no-isrc"
     assert not words.unread
     assert "carries an ISRC" in words.why_none
@@ -437,9 +421,7 @@ def test_a_track_the_catalogue_knows_outranks_one_it_does_not_whatever_the_order
     words = genre_gate.published_words(
         rows,
         lambda value: published.Published(
-            published.SOURCE, "no-isrc" if "not" in str(value) else "miss"
-        ),
-    )
+            published.SOURCE, "no-isrc" if "not" in str(value) else "miss"))
     assert words.answer == "miss"
 
 
@@ -458,8 +440,7 @@ def test_a_track_the_catalogue_knows_outranks_one_it_does_not_whatever_the_order
         pytest.param({1: ("Christian",), 2: "blocked"}, 3, NOT_JUDGED,
                      {"answer": "blocked", "genres": ()}, [1, 2],
                      id="a-catalogue-that-refuses-after-a-would-be-hold-holds-nothing"),
-    ],
-)
+    ])
 def test_a_release_is_judged_on_as_many_tracks_as_settle_it(table, count, verdict, judged, asked):
     lookup = Lookup({isrc(n): said for n, said in table.items()})
     rows = tracks(*range(1, count + 1))
@@ -498,8 +479,7 @@ def test_the_gate_names_the_review_kind_the_sweep_files_under():
     assert sweep.KIND == "label-release"
     assert genre_gate.RELEASE_KIND == "label-release"
     assert genre_gate.release_item_id("r1") == review.item_id_for(
-        "label-release", "label-release", {"release_id": "r1"}
-    )
+        "label-release", "label-release", {"release_id": "r1"})
 
 
 class FailingReader:
@@ -537,8 +517,7 @@ class Flaky(FakeCatalogue):
 def test_three_failed_reads_in_a_row_end_the_asking_and_a_gone_release_resets_it():
     fake = Flaky({"a", "b", "e", "f", "g"}, gone={"d"})
     gate = genre_gate.SweepGate(
-        TAXONOMY, tracks=ReleaseTracks(fake).release_tracks, lookup=Lookup({})
-    )
+        TAXONOMY, tracks=ReleaseTracks(fake).release_tracks, lookup=Lookup({}))
     reasons = [gate.judge(ENTRY, rid).reason for rid in "abdefgh"]
     # a and b fail, d is the provider answering, e f g fail, h is not asked.
     assert fake.releases_asked_for == ["a", "b", "d", "e", "f", "g"]
@@ -729,11 +708,9 @@ ABSENT = object()
                      {"genre_gate": "passed", "genre_gate_answer": "not-asked",
                       "genre_gate_note": "its label is followed for any kind of music"}, "",
                      id="a-label-followed-for-any-kind-files-everything-and-asks-nothing"),
-    ],
-)
+    ])
 def test_a_filed_release_says_what_the_gate_made_of_it(
-    installed, monkeypatch, releases, lookup, argv, stamped, note
-):
+    installed, monkeypatch, releases, lookup, argv, stamped, note):
     swept(monkeypatch, releases, lookup, argv=argv)
     [item] = filed(installed).values()
     assert {key: item.payload.get(key, ABSENT) for key in stamped} == stamped
@@ -750,8 +727,7 @@ def test_the_labels_kind_decides_what_is_filed(installed, monkeypatch):
         artists={SLUG: FakePagedArtist([FakeRelease("r-a")]),
                  "salt-flats": FakePagedArtist([FakeRelease("r-b")])},
         releases={"r-a": ([Track("1", "A", "One", isrc(1))], 2026),
-                  "r-b": ([Track("2", "A", "One", isrc(1))], 2026)},
-    )
+                  "r-b": ([Track("2", "A", "One", isrc(1))], 2026)})
     serve(monkeypatch, fake, Lookup({isrc(1): ("R&B",)}))
     sweep_once()
     assert list(filed(installed)) == ["r-a"]
@@ -797,8 +773,7 @@ def test_returning_twice_changes_nothing_the_second_time(installed, monkeypatch)
 
 
 def test_returning_a_release_nothing_holds_refuses_and_files_none_of_the_others(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     swept(monkeypatch)
     code, envelope = held_verb("return", "r-christian", "r-typo")
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -927,8 +902,7 @@ def active_copy_without_published_rules(cfg: config.Config) -> None:
 
 
 def test_a_library_whose_taxonomy_has_no_published_rules_files_as_before_and_asks_nothing(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     active_copy_without_published_rules(installed)
     swept(monkeypatch, lookup=never_asked)
     payload = filed(installed)["r-christian"].payload
@@ -940,8 +914,7 @@ def test_a_library_whose_taxonomy_has_no_published_rules_files_as_before_and_ask
 
 
 def test_a_taxonomy_that_cannot_be_read_refuses_the_sweep_before_the_provider_is_resolved(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     register()
     path = config.state_path("taxonomy_active", installed)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -983,8 +956,7 @@ def test_an_unreachable_catalogue_is_given_up_on_once_for_the_whole_sweep(instal
         releases={
             rid: ([Track(f"t-{rid}", "Label Act", f"Release {rid}", isrc(n))], 2026)
             for n, rid in enumerate(("a-1", "a-2", "b-1", "b-2"), start=1)
-        },
-    )
+        })
     lookup = Lookup({isrc(n): "unreachable" for n in (1, 2, 3, 4)})
     serve(monkeypatch, fake, lookup)
     sweep_once()
@@ -997,12 +969,10 @@ def test_an_unreachable_catalogue_is_given_up_on_once_for_the_whole_sweep(instal
 
 
 def test_a_release_with_no_isrc_does_not_hide_a_sweep_the_catalogue_refused_throughout(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """It was never asked about, so it is not one of the questions that went unread."""
     swept(
-        monkeypatch, {"r-1": ("2026", isrc(1)), "r-2": ("2025", "")}, Lookup({isrc(1): "blocked"}),
-    )
+        monkeypatch, {"r-1": ("2026", isrc(1)), "r-2": ("2025", "")}, Lookup({isrc(1): "blocked"}))
     _code, envelope = held_verb()
     line = check(envelope, f"label.held.sweep.{SLUG}")
     assert line["status"] == "fail"
@@ -1012,8 +982,7 @@ def test_a_release_with_no_isrc_does_not_hide_a_sweep_the_catalogue_refused_thro
 
 
 def test_a_hold_the_window_no_longer_reaches_is_dropped_when_it_stops_holding(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """Newer releases push a held one past the window."""
     older = {"r-1": ("2025", isrc(1))}
     lookup = Lookup({isrc(1): ("R&B",), isrc(2): ("Dance",)})
@@ -1040,8 +1009,7 @@ def test_a_held_release_deleted_on_purpose_since_is_held_no_longer(installed, mo
     DecisionStore(tombstone.STORE_KEY, installed).record(
         kind=tombstone.KIND_VERSION,
         identity=tombstone.version_identity(artist="Label Act", title="Release r-christian"),
-        actor="test",
-    )
+        actor="test")
     sweep_once()
     assert held_ids(installed) == []
     assert filed(installed) == {}
@@ -1063,8 +1031,7 @@ def listing(cfg, entry, releases, *, gate, offered=None, limit=None, owned=None)
     return sweep.list_for_label(
         cfg, entry, artist=FakePagedArtist(releases),
         verify=lambda claimed, release: {"verdict": "confirmed"}, offered=offered, owned=owned,
-        limit=limit, gate=gate,
-    )
+        limit=limit, gate=gate)
 
 
 def test_a_hold_in_force_on_a_release_already_in_the_queue_is_dropped(installed):
@@ -1092,8 +1059,7 @@ def test_a_released_hold_the_library_came_to_own_is_dropped_and_not_filed(instal
             installed, registry=labels.Registry(labels={SLUG: rnb}),
             artists={SLUG: FakePagedArtist([FakeRelease("r1")])},
             verify=lambda claimed, release: {"verdict": "confirmed"}, store=store, owned={"r1"},
-            gate=gate,
-        )
+            gate=gate)
         assert source.list_recent(10) == []
         assert review.holds(store, queue=Queue.LABEL_RELEASE) == ()
 
@@ -1116,8 +1082,7 @@ def test_a_hold_whose_words_cannot_be_read_back_stays_held(installed):
         gate = standing_gate(store)
         found = listing(
             installed, labels.LabelEntry(label_id=SLUG, name=LABEL, kind="christian"),
-            [FakeRelease("r1")], gate=gate,
-        )
+            [FakeRelease("r1")], gate=gate)
     assert found.candidates == ()
     [one] = found.gated
     assert one.standing is True
@@ -1134,8 +1099,7 @@ def test_a_listing_with_no_gate_files_every_candidate_unstamped(installed):
 def test_a_held_release_and_a_queued_one_both_take_a_place(installed):
     gate = genre_gate.SweepGate(
         TAXONOMY, tracks=lambda rid: ((Track("1", "A", "One", isrc(int(rid[1:]))),), 2026, None),
-        lookup=Lookup({isrc(4): ("Christian",), isrc(2): ("Dance",), isrc(1): ("Dance",)}),
-    )
+        lookup=Lookup({isrc(4): ("Christian",), isrc(2): ("Dance",), isrc(1): ("Dance",)}))
     releases = [FakeRelease(f"r{n}", year=str(2020 + n)) for n in (4, 3, 2, 1)]
     found = listing(installed, ENTRY, releases, gate=gate, offered={"r3"}, limit=3)
     assert [one.candidate.identity for one in found.gated] == ["r4"]
@@ -1250,8 +1214,7 @@ def provider_of(monkeypatch, releases: dict[str, str], lookup=None) -> FakeCatal
 
 
 def test_an_accepted_release_of_another_kind_is_held_at_approval_on_the_recorded_words(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """R18. Judged on the words the sweep recorded, with nobody asked again."""
     register()
     accept(installed, "r-dance", published_genres=["Dance"])
@@ -1273,8 +1236,7 @@ def test_an_accepted_release_of_another_kind_is_held_at_approval_on_the_recorded
 
 
 def test_a_release_filed_before_the_sweep_had_a_gate_is_asked_about_at_approval(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     register()
     accept(installed, "r-old")
     lookup = Lookup({isrc(9): ("Christian",)})
@@ -1290,8 +1252,7 @@ def test_a_release_filed_before_the_sweep_had_a_gate_is_asked_about_at_approval(
 
 
 def test_a_release_neither_rule_could_judge_is_listed_and_says_what_each_lacked(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     register()
     accept(installed, "r-unknown")
     provider_of(monkeypatch, {"r-unknown": isrc(9)}, Lookup({}))
@@ -1307,8 +1268,7 @@ def test_a_release_neither_rule_could_judge_is_listed_and_says_what_each_lacked(
 
 
 def test_a_release_the_kind_rule_passed_is_judged_though_its_rows_report_no_genre(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     register()
     accept(installed, "r-dance")
     provider_of(monkeypatch, {"r-dance": isrc(1)}, Lookup({isrc(1): ("Electro",)}))
@@ -1351,8 +1311,7 @@ def test_approval_judges_by_the_kind_the_label_has_now(installed, monkeypatch):
 
 
 def test_a_release_on_a_label_the_registry_no_longer_holds_is_the_default_kind(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     accept(installed, "r-christian", label_id="gone-label", published_genres=["Christian"])
     provider_of(monkeypatch, {"r-christian": isrc(2)}, never_asked)
     _code, envelope = drive(["label", "approved"])
@@ -1361,8 +1320,7 @@ def test_a_release_on_a_label_the_registry_no_longer_holds_is_the_default_kind(
 
 
 def test_a_release_held_at_approval_is_returned_by_name_and_listed_the_next_time(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     register()
     item_id = accept(installed, "r-old")
     provider_of(monkeypatch, {"r-old": isrc(9)}, Lookup({isrc(9): ("Christian",)}))
@@ -1388,8 +1346,7 @@ def test_a_release_held_at_approval_is_returned_by_name_and_listed_the_next_time
 
 
 def test_the_catalogue_is_not_asked_about_a_release_the_library_already_holds(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """Every accepted release is read on every run, the downloaded ones too."""
     register()
     accept(installed, "r-kept", "r-missing")
@@ -1418,8 +1375,7 @@ def test_an_owned_release_is_still_judged_on_words_the_sweep_recorded(installed,
 
 
 def test_an_unreadable_registry_refuses_approval_before_the_provider_is_resolved(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     """A label's kind decides what is held, so the registry is read first."""
     register()
     accept(installed, "r-1")
@@ -1433,8 +1389,7 @@ def test_an_unreadable_registry_refuses_approval_before_the_provider_is_resolved
 
 
 def test_a_catalogue_that_refuses_at_approval_holds_nothing_and_lists_the_release(
-    installed, monkeypatch
-):
+    installed, monkeypatch):
     register()
     accept(installed, "r-1")
     provider_of(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): "blocked"}))
