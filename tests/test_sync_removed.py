@@ -90,38 +90,22 @@ def isrc_of(title: str) -> str:
     return f"USPRB26{sum(map(ord, title)):05d}"
 
 
-def swept(
-    cfg: config.Config,
-    listed: dict[str, tuple[str, tuple[str, ...]]],
-    *,
-    run_id: str = RUN,
-    codes: bool = False,
-) -> None:
+def swept(cfg: config.Config, listed: dict[str, tuple[str, tuple[str, ...]]], *,
+          run_id: str = RUN, codes: bool = False) -> None:
     """One job per playlist, ``id -> (name, titles)``, queued and run; ``codes`` adds ISRCs."""
+
+    def wanted(title: str) -> dict:
+        found = {"artist": "Probe", "title": title, "origin": match.TIDAL, "ref": f"tid-{title}"}
+        return {**found, **({"isrc": isrc_of(title)} if codes else {})}
+
     queued = []
     with jobs.open_store() as store:
         for playlist_id, (name, titles) in listed.items():
-            queued.append(
-                intake_cli.queue_playlist(
-                    store,
-                    cfg,
-                    handler_key="intake.playlist",
-                    reference=playlist_id,
-                    tracks={
-                        f"tid-{title}": {
-                            "artist": "Probe",
-                            "title": title,
-                            "origin": match.TIDAL,
-                            "ref": f"tid-{title}",
-                            **({"isrc": isrc_of(title)} if codes else {}),
-                        }
-                        for title in titles
-                    },
-                    run_id=run_id,
-                    source_id=playlists.SOURCE_ID,
-                    name=name,
-                )
-            )
+            queued.append(intake_cli.queue_playlist(
+                store, cfg, handler_key="intake.playlist", reference=playlist_id,
+                tracks={f"tid-{title}": wanted(title) for title in titles},
+                run_id=run_id, source_id=playlists.SOURCE_ID, name=name,
+            ))
     for job in queued:
         resumed = exited(drive(cli_jobs.argv_for(job)))
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
@@ -150,15 +134,8 @@ class Account:
         self.fake = FakeCatalogue(hearts=[track("Elsewhere", track_id="tid-heart")])
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.fake))
 
-    def lists(
-        self,
-        playlist_id: str,
-        name: str,
-        tracks: list[Listed],
-        *,
-        declared: int | None = -1,
-        counted: int | None = -1,
-    ) -> None:
+    def lists(self, playlist_id: str, name: str, tracks: list[Listed], *,
+              declared: int | None = -1, counted: int | None = -1) -> None:
         """The playlist listed with ``tracks``; ``declared`` and ``counted`` default to their length."""
         whole = len(tracks)
         self.fake.playlists[playlist_id] = FakePagedPlaylist(
@@ -885,13 +862,8 @@ def _without(tables: dict[str, list[tuple]], cfg: config.Config, gone: set[str])
     return kept
 
 
-def _closed_up(
-    tables: dict[str, list[tuple]],
-    cfg: config.Config,
-    before: dict[str, list[tuple]],
-    gone: set[str],
-    stamp: tuple[int, str],
-) -> dict:
+def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config,
+               before: dict[str, list[tuple]], gone: set[str], stamp: tuple[int, str]) -> dict:
     """``tables`` with each removed membership's playlist renumbered 1 to N (R-1830, A197).
 
     Each row that moves is stamped with ``stamp``, the update count and the time,
@@ -1660,20 +1632,13 @@ def test_a_history_list_holding_others_keeps_its_numbers(one_offered):
     cfg = one_offered
     offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
     for key, content_id, number in (("h-1", held, 1), ("h-2", offered, 2), ("h-3", held, 3)):
-        _sql(
-            cfg,
-            "INSERT INTO djmdSongHistory (ID, HistoryID, ContentID, TrackNo) VALUES (?, 'h', ?, ?)",
-            key,
-            content_id,
-            number,
-        )
+        history = "INSERT INTO djmdSongHistory (ID, HistoryID, ContentID, TrackNo)"
+        _sql(cfg, f"{history} VALUES (?, 'h', ?, ?)", key, content_id, number)
 
     _remove(cfg, "New1")
 
-    assert _query(cfg, "SELECT ID, TrackNo FROM djmdSongHistory WHERE HistoryID = 'h' ORDER BY ID") == [
-        ("h-1", 1),
-        ("h-3", 3),
-    ]
+    numbered = "SELECT ID, TrackNo FROM djmdSongHistory WHERE HistoryID = 'h' ORDER BY ID"
+    assert _query(cfg, numbered) == [("h-1", 1), ("h-3", 3)]
 
 
 def test_a_renumbering_that_moves_any_other_membership_is_refused_with_nothing_written(
@@ -1788,12 +1753,8 @@ def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_wri
     """Other readers take a NULL marker as live, so the renumbering refuses it."""
     cfg = one_offered
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
-    _sql(
-        cfg,
-        "UPDATE djmdSongPlaylist SET rb_local_deleted = NULL WHERE PlaylistID = ? AND ContentID = ?",
-        mine,
-        _row(cfg, "Held2"),
-    )
+    unreadable = "UPDATE djmdSongPlaylist SET rb_local_deleted = NULL"
+    _sql(cfg, f"{unreadable} WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "Held2"))
     before = _every_table(cfg)
     with _opened(cfg) as handle:
         with pytest.raises(CratekitError) as refused:
