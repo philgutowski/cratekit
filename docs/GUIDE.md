@@ -1427,9 +1427,12 @@ its file is missing or unreadable, its file holds several genres, it already
 carries the genre on both, or `--leave CONTENT_ID` holds it. The run that
 applies takes the plan again and refuses `decision-stale` if anything moved.
 It writes the file's genre tag and then the row's genre and nothing else.
-When the library has no genre row for the word yet, it writes nothing on any
-file or row and says so (`set-genre-has-no-row`): give one track that genre in
-rekordbox, which makes the row, then run it again. A file that will not
+When the library has no genre row for the word yet, as for a genre folder you
+have just added to the taxonomy, the gate shows `genre_row` as `mint`, a run whose gate was declined says so
+(`set-genre-row-to-make`), and the apply makes the one genre row on the
+commit that links the first rows to it, and only if a row is written; nothing
+in rekordbox needs doing first, and a restore of the run's session takes the
+row back with the rows. A file that will not
 take the genre keeps its row's old genre and the run ends refused under
 `tag-set-unwritten` after the rest landed. A restore of the run's session puts
 the rows back and each file's old genre. Then run `crate adopt apply`, which
@@ -1468,10 +1471,25 @@ track's cleared R&B: its R&B band is Soul's split place again, which
 and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
-differences), and `route resort` lists it as left behind. Under a folder
-renamed in rekordbox it is listed only once a `rebuild` or `route resort` has
-recorded that folder. A Candy playlist, which a person fills by hand, is
-never compared this way.
+entries, at most five `not-compared` ones first), and `route resort` lists it
+as left behind. Under a folder
+renamed in rekordbox it is listed the same way when a write recorded that
+playlist, or recorded the folder and nothing else is filed into that band:
+`adopt apply`, `rebuild` and `route resort` each record the playlists they
+file into, `adopt apply` only where nothing is recorded yet. Otherwise it
+cannot be tied to one destination: under a renamed folder no write recorded,
+or beside a folder a `rebuild` or `adopt apply` made again under the genre's
+name, a playlist bearing a name a genre files into (a band, Favorites, a
+genre sub) and holding a track the tree files is named
+`not-compared:FOLDER/PLAYLIST`, first in a `differing` line, or `converge`
+says `not-compared` where nothing else differs, never `matching`. A folder of
+your own under the tree's root whose playlists bear such names and hold filed
+tracks reads the same way. Look in it in rekordbox for a track its genre no
+longer files, or give the folder back its genre's name where no other folder
+bears that name (a `rebuild` or `adopt apply` after the rename makes a folder
+of that name again) and it is compared. It is not a difference, so a
+`rebuild` still clears a tree's flag over it. A Candy playlist, which a person
+fills by hand, is never compared this way.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).
 

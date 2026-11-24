@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Collection, Iterable, Sequence
 
 from cratekit.core import config, convergence, locations, routing, taxonomy, tree_registry
 from cratekit.core.cause import Scope, refuse
@@ -367,8 +367,9 @@ class ConvergenceReport:
     ``foreign``, every node under the governed root no declared destination
     resolves to and that :func:`namesakes` does not compare (R-1949): one
     whose names declare nothing, a manual class such as Candy, one rekordbox
-    removed, or one in a dimension this run did not compare. THE ACTIVE-ROW
-    RULE APPLIES TO BOTH DIRECTIONS.
+    removed, or one in a dimension this run did not compare. A playlist
+    :func:`unidentified` names is in ``unidentified`` instead (R-1991). THE
+    ACTIVE-ROW RULE APPLIES TO BOTH DIRECTIONS.
     """
 
     tree_id: str
@@ -387,6 +388,12 @@ class ConvergenceReport:
     #: Destinations the NODE RECORD names that this taxonomy no longer declares,
     #: reported so "not compared" reads apart from "matched".
     undeclared: tuple[str, ...] = ()
+    #: Every playlist :func:`unidentified` names, as ``folder/playlist`` in the
+    #: names a person finds them by (R-1991). NOT COMPARED AND NOT A DIFFERENCE:
+    #: ``converged`` does not wait on it, since no rebuild can answer it and a
+    #: restored tree's flag must stay clearable; ``crate converge`` names it and
+    #: never says matching over it.
+    unidentified: tuple[str, ...] = ()
 
     @property
     def differences(self) -> tuple[Difference, ...]:
@@ -399,7 +406,7 @@ class ConvergenceReport:
 
         No difference in either direction; a derivation that placed something;
         and no playlist holding a track twice, which an additive rebuild cannot
-        repair.
+        repair. ``unidentified`` is not one: see it.
         """
         return not self.differences and self.derived > 0 and not self.doubled
 
@@ -527,6 +534,65 @@ def namesakes(
     return tuple(out)
 
 
+def unidentified(
+    declared: taxonomy.Taxonomy,
+    nodes: Sequence[TreeNode],
+    compared: Collection[tuple[str, str]],
+    not_compared: Sequence[str],
+    record: convergence.TreeConvergence | None,
+    filed: Collection[str],
+) -> tuple[TreeNode, ...]:
+    """The playlists the check could not tie to one destination that may hold a leftover.
+
+    R-1991. Each folder is read as :func:`namesakes` reads it: by its name when
+    that declares a bucket, else by the bucket a write recorded for it. Under a
+    folder read so, a playlist bearing a destination of that bucket's names
+    that nothing compared is a second node of a destination already bound
+    elsewhere (a write that finds its playlists by name made the folder again
+    beside a renamed one, or the renamed one beside it). Under a folder read
+    as no bucket (renamed in rekordbox and never recorded), a playlist bearing
+    any destination's playlist name could be any bucket's. Either way, while
+    it holds a track this run files (``filed``), it may be a genre's playlist
+    holding a cleared second genre's track, so it is named as not compared
+    rather than read as a person's own. Left as they were, in ``foreign``: a
+    node already ``compared``, one rekordbox removed, one whose name its
+    folder's bucket (or, unread, any bucket) does not declare or declares only
+    in a dimension this run did not compare (U119), and one holding no filed
+    track.
+    """
+    names = declared_names(declared)
+    readings: dict[str, set[str]] = {}
+    for (_folder, playlist), (_bucket, sub) in names.items():
+        readings.setdefault(playlist, set()).add(sub)
+    skipped = _uncompared_subs(declared, not_compared)
+    known = set(declared.bucket_ids())
+    bucket_names = {declared.bucket(bucket_id).display for bucket_id in known}
+    recorded_folder = {
+        entry.folder_id: declared.bucket(entry.bucket).display
+        for entry in (() if record is None else record.nodes)
+        if entry.bucket in known
+    }
+    holding = set(filed)
+
+    def subs(node: TreeNode) -> set[str]:
+        folder = node.folder_display
+        if folder not in bucket_names:
+            folder = recorded_folder.get(node.folder_id, "")
+        if not folder:
+            return readings.get(node.playlist_display, set())
+        place = names.get((folder, node.playlist_display))
+        return set() if place is None else {place[1]}
+
+    return tuple(
+        node
+        for node in nodes
+        if not node.removed
+        and (node.folder_id, node.playlist_id) not in compared
+        and subs(node) - skipped
+        and node.content_ids & holding
+    )
+
+
 def check(
     cfg: config.Config,
     db: Any,
@@ -591,13 +657,21 @@ def check(
     # Only active rows count on this side too: a membership on a soft-deleted
     # track is a leftover nobody can act on.
     active = {content_id for ids in index.values() for content_id in ids}
+    unread = {
+        (node.folder_id, node.playlist_id)
+        for node in unidentified(
+            declared, nodes, governed, not_compared, record, set(resolved_id.values()) & active
+        )
+    }
     unexpected: list[Difference] = []
     foreign: list[str] = []
+    not_read: list[str] = []
     doubled: list[str] = []
     for node in nodes:
         destination = governed.get((node.folder_id, node.playlist_id))
         if destination is None:
-            foreign.append(f"{node.folder_display}/{node.playlist_display}")
+            shown = f"{node.folder_display}/{node.playlist_display}"
+            (not_read if (node.folder_id, node.playlist_id) in unread else foreign).append(shown)
             continue
         # A doubled row is damage whether or not the declaration places it here.
         for content_id in sorted(node.doubled & active):
@@ -635,4 +709,5 @@ def check(
         derived=len(placements),
         doubled=tuple(sorted(doubled)),
         undeclared=undeclared_destinations(declared, record),
+        unidentified=tuple(sorted(not_read)),
     )

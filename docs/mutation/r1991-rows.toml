@@ -1,0 +1,230 @@
+name = "r1991"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_removed_node_recorded"
+description = "writer: count a node rekordbox removed among the nodes at a pair, so the removed row the writer found by name is recorded as the destination"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''        if not node.removed:
+            standing.setdefault'''
+new = '''        if True:
+            standing.setdefault'''
+
+[[rows]]
+id = "T2_first_of_two_recorded"
+description = "writer: record the first of two live nodes at one pair, so the record binds a destination to a folder chosen by position"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''        if place is None or len(nodes) != 1:'''
+new = '''        if place is None or not nodes:'''
+
+[[rows]]
+id = "T3_unfiled_pair_recorded"
+description = "writer: record every pair of record_as, not only those it filed into, so a standing playlist it did not fill becomes a destination"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''    for pair in sorted(set(filed)):'''
+new = '''    for pair in sorted(record_as):'''
+
+[[rows]]
+id = "T4_no_record"
+description = "writer: record nothing after the commit, so adoption leaves no node and a renamed folder is read as no genre's (the residual's first half)"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''    if record_as:
+        _record_filed_nodes(cfg, db, tree_id, root_id, record_as, run.filed)
+'''
+new = ''''''
+
+[[rows]]
+id = "T5_moves_bound_destinations"
+description = "writer: record without keep_recorded, so adoption moves a destination a rebuild bound and can raise after the landed write"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''        convergence.record_nodes(cfg, tree_id, found, keep_recorded=True)'''
+new = '''        convergence.record_nodes(cfg, tree_id, found, keep_recorded=False)'''
+
+[[rows]]
+id = "T6_filed_untracked"
+description = "writer: never note a filed pair, so nothing is recorded"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+old = '''        self.filed.add(destination)
+'''
+new = ''''''
+
+[[rows]]
+id = "C1_claimed_node_rebound"
+description = "record_nodes keep_recorded: give a node already bound another destination, so the record is not one to one and raises after the write"
+file = "src/cratekit/core/convergence.py"
+surface = "user"
+old = '''        if destination in taken or node in claimed:'''
+new = '''        if destination in taken:'''
+
+[[rows]]
+id = "C2_bound_destination_moved"
+description = "record_nodes keep_recorded: move a destination the record already binds to the node adoption filed into"
+file = "src/cratekit/core/convergence.py"
+surface = "user"
+old = '''        if destination in taken or node in claimed:'''
+new = '''        if node in claimed:'''
+
+[[rows]]
+id = "C3_keep_recorded_ignored"
+description = "record_nodes: keep_recorded filters nothing, so it merges as a plain record would"
+file = "src/cratekit/core/convergence.py"
+surface = "user"
+old = '''            nodes = _unrecorded(current, nodes)
+'''
+new = '''            nodes = list(nodes)
+'''
+
+[[rows]]
+id = "C4_both_modes_accepted"
+description = "record_nodes: accept replace_all and keep_recorded together"
+file = "src/cratekit/core/convergence.py"
+surface = "maintainer"
+old = '''    if replace_all and keep_recorded:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A1_vocal_unrecorded"
+description = "planned_destinations: leave out the vocal additions, so a with vox playlist adoption filed is never recorded"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''    places += [(entry.bucket, entry.vocal_sub) for entry in plan.vocal_additions()]
+'''
+new = ''''''
+
+[[rows]]
+id = "A2_shared_pair_recorded"
+description = "planned_destinations: record a pair two destinations share as one of them"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''if len(found) == 1}'''
+new = '''if found}'''
+
+[[rows]]
+id = "A3_undeclared_raises"
+description = "planned_destinations: raise on a destination the taxonomy no longer declares, before the write"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''        except KeyError:
+            continue
+        named.setdefault'''
+new = '''        except KeyError:
+            raise
+        named.setdefault'''
+
+[[rows]]
+id = "A4_apply_records_nothing"
+description = "adopt apply: hand the writer no record_as, so adoption records nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''            record_as=planned_destinations(plan, declared),
+'''
+new = ''''''
+
+[[rows]]
+id = "K1_no_unidentified"
+description = "check: put every unread playlist in foreign, so converge says matching over a cleared second genre under an unrecorded renamed folder (the residual itself)"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''            (not_read if (node.folder_id, node.playlist_id) in unread else foreign).append(shown)'''
+new = '''            foreign.append(shown)'''
+
+[[rows]]
+id = "K2_removed_unidentified"
+description = "unidentified: name a playlist rekordbox removed"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''        if not node.removed
+        and (node.folder_id, node.playlist_id) not in compared'''
+new = '''        if True
+        and (node.folder_id, node.playlist_id) not in compared'''
+
+[[rows]]
+id = "K3_uncompared_dimension_named"
+description = "unidentified: name a playlist whose only reading is a dimension this run did not compare (vocal, Favorites)"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''        and subs(node) - skipped
+'''
+new = '''        and subs(node)
+'''
+
+[[rows]]
+id = "K4_unfiled_named"
+description = "unidentified: name a playlist holding no filed track, so a person's own folder reads not compared"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''        and node.content_ids & holding
+'''
+new = '''        and node.content_ids
+'''
+
+[[rows]]
+id = "K5_record_unread"
+description = "unidentified: never read a renamed folder by the bucket a write recorded, so every band name under it reads by any bucket"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''            folder = recorded_folder.get(node.folder_id, "")'''
+new = '''            folder = ""'''
+
+[[rows]]
+id = "K6_genre_folder_unread"
+description = "unidentified: read a genre named folder only by its record, so its own playlists read by any bucket"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''        if folder not in bucket_names:
+            folder = recorded_folder.get(node.folder_id, "")'''
+new = '''        if True:
+            folder = recorded_folder.get(node.folder_id, "")'''
+
+[[rows]]
+id = "K7_other_buckets_name"
+description = "unidentified: read a playlist its folder's genre does not declare by any bucket, so a person's playlist in a genre folder reads not compared"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''        return set() if place is None else {place[1]}'''
+new = '''        return readings.get(node.playlist_display, set()) if place is None else {place[1]}'''
+
+[[rows]]
+id = "V1_matching_over_unread"
+description = "converge: say matching over an unread playlist (the residual at the verb)"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+old = '''    if not report.unidentified:
+        return MATCHING, detail'''
+new = '''    if True:
+        return MATCHING, detail'''
+
+[[rows]]
+id = "V2_unread_last"
+description = "converge: put the unread playlists after the differences, so the cut at twenty drops them"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+old = '''(*unread[:UNREAD_SHOWN], *report.summaries())[:20]'''
+new = '''(*report.summaries(), *unread[:UNREAD_SHOWN])[:20]'''
+
+[[rows]]
+id = "V3_count_dropped"
+description = "converge: never say how many playlists were not compared past the five named"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+old = '''        if len(unread) > UNREAD_SHOWN:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E1_doubled_converged"
+description = "existing guard: a report with a doubled row reads converged"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+old = '''        return not self.differences and self.derived > 0 and not self.doubled'''
+new = '''        return not self.differences and self.derived > 0'''
+
+[[dropped]]
+id = "N_covered_sample"
+description = "namesakes: compare a second node of a covered destination"
+reason = "at the cap; the guard is R-1949's, measured in its own table, and K6 and K7 now read the same shape"
