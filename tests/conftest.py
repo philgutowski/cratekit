@@ -403,8 +403,11 @@ _thresholds_before: list[tuple[int, int, int]] = []
 #: ``pytest_unconfigure`` hands its own back.
 _ARGPARSE_LOOKUPS = ("_", "ngettext")
 
-#: argparse's own lookups, kept while the suite's stand in for them.
-_lookups_before: list[dict[str, object]] = []
+#: One entry per ``pytest_configure`` not yet unconfigured, as the collector's
+#: thresholds are kept: argparse's own lookups where that configure put the
+#: stand in on, None where it found it on already or found a catalogue. So a
+#: run configured inside the run, by a test, leaves the outer run's stand in.
+_lookups_before: list[dict[str, object] | None] = []
 
 
 def _no_message_catalogue() -> bool:
@@ -414,8 +417,12 @@ def _no_message_catalogue() -> bool:
 
 
 def _answer_argparse_untranslated() -> bool:
-    """Hand argparse ``NullTranslations``' lookups where no catalogue exists; say if it did."""
-    if _lookups_before or not _no_message_catalogue():
+    """Hand argparse ``NullTranslations``' lookups where no catalogue exists; say if it did.
+
+    Pairs with :func:`_give_argparse_its_lookups_back`, one entry each.
+    """
+    if any(_lookups_before) or not _no_message_catalogue():
+        _lookups_before.append(None)
         return False
     _lookups_before.append({name: getattr(argparse, name) for name in _ARGPARSE_LOOKUPS})
     untranslated = gettext.NullTranslations()
@@ -425,10 +432,10 @@ def _answer_argparse_untranslated() -> bool:
 
 
 def _give_argparse_its_lookups_back() -> None:
-    """Put back what :func:`_answer_argparse_untranslated` replaced, if it replaced anything."""
-    if _lookups_before:
-        for name, lookup in _lookups_before.pop().items():
-            setattr(argparse, name, lookup)
+    """Close the latest :func:`_answer_argparse_untranslated`, putting back what it replaced."""
+    replaced = _lookups_before.pop() if _lookups_before else None
+    for name, lookup in (replaced or {}).items():
+        setattr(argparse, name, lookup)
 
 
 def pytest_configure(config):
