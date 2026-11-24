@@ -1544,6 +1544,32 @@ def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, t
 # The failure part way through, and the resume that follows it
 
 
+def failed_only(code: int, envelope: dict, job_id: str, items: dict, failed: str, reason: str):
+    """A refused run whose ``failed`` item alone failed, for ``reason``; the rest done."""
+    assert code != int(ExitCode.OK), envelope
+    done = jobs.ItemState.DONE
+    assert item_states(job_id) == {
+        item: jobs.ItemState.FAILED if name == failed else done for name, item in items.items()
+    }
+    assert item_causes(job_id) == {items[failed]: reason}
+
+
+def retried_only_b(cfg: config.Config, folder: Path, monkeypatch, job_id: str) -> None:
+    """Retried, the job drives ``b`` alone, the item that failed, and every item ends done."""
+    second = bound(monkeypatch, deep("abc"))
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert second.asked == [("", "b")], (
+        "the resume re-attempted work whose artifact was already durable"
+    )
+    assert set(item_states(job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert len(artifacts.committed(cfg, job_id)) == 3
+
+
 def test_a_searcher_that_raises_part_way_fails_only_its_own_item(cfg, folder, silence, monkeypatch):
     """R19x: an unread catalogue fails its item and the job carries a cause."""
     places(folder, silence, "abc")
@@ -1551,13 +1577,8 @@ def test_a_searcher_that_raises_part_way_fails_only_its_own_item(cfg, folder, si
 
     job, code, resumed = swept(folder)
 
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job.job_id) == {
-        "a.flac": jobs.ItemState.DONE,
-        "b.flac": jobs.ItemState.FAILED,
-        "c.flac": jobs.ItemState.DONE,
-    }
-    assert item_causes(job.job_id) == {"b.flac": searchers.UNREACHABLE_REASON}
+    items = {name: f"{name}.flac" for name in "abc"}
+    failed_only(code, resumed, job.job_id, items, "b", searchers.UNREACHABLE_REASON)
     with jobs.open_store() as store:
         assert jobs.get(store, job.job_id).state is jobs.JobState.FAILED
         assert jobs.get(store, job.job_id).cause is not None
@@ -1572,18 +1593,7 @@ def test_a_retried_job_drives_only_the_item_that_failed(cfg, folder, silence, mo
     bound(monkeypatch, raising_on(deep("abc"), "b"))
     job, _code, _ = swept(folder)
 
-    second = bound(monkeypatch, deep("abc"))
-    with jobs.open_store() as store:
-        jobs.retry(store, job.job_id)
-    code, resumed = drive(resume_argv(job.job_id))
-
-    assert code == int(ExitCode.OK), resumed
-    assert second.asked == [("", "b")], (
-        "the resume re-attempted work whose artifact was already durable"
-    )
-    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
-    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
-    assert len(artifacts.committed(cfg, job.job_id)) == 3
+    retried_only_b(cfg, folder, monkeypatch, job.job_id)
 
 
 def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
@@ -1598,12 +1608,7 @@ def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
     (folder / "b.flac").unlink()
     code, resumed = drive(resume_argv(job.job_id))
 
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job.job_id) == {
-        "a.flac": jobs.ItemState.DONE,
-        "b.flac": jobs.ItemState.FAILED,
-    }
-    assert item_causes(job.job_id) == {"b.flac": "source-missing"}
+    failed_only(code, resumed, job.job_id, {"a": "a.flac", "b": "b.flac"}, "b", "source-missing")
 
 
 # The resume argv
@@ -1874,12 +1879,8 @@ def test_a_file_gone_at_drive_time_is_refused_rather_than_reported_done(
     (folder / "b.flac").unlink()
     code, resumed = drive(resume_argv(job_id))
 
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job_id) == {
-        str(folder / "a.flac"): jobs.ItemState.DONE,
-        str(folder / "b.flac"): jobs.ItemState.FAILED,
-    }
-    assert item_causes(job_id) == {str(folder / "b.flac"): "source-missing"}
+    items = {name: str(folder / f"{name}.flac") for name in "ab"}
+    failed_only(code, resumed, job_id, items, "b", "source-missing")
 
 
 # The review queue, reached through the worker rather than through the sweep
@@ -1939,13 +1940,8 @@ def test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item
     failing = raising_on(deep("abc"), "b")
     job_id, code, resumed = retagged(folder, silence, monkeypatch, "abc", failing)
 
-    assert code != int(ExitCode.OK), resumed
-    assert item_states(job_id) == {
-        str(folder / "a.flac"): jobs.ItemState.DONE,
-        str(folder / "b.flac"): jobs.ItemState.FAILED,
-        str(folder / "c.flac"): jobs.ItemState.DONE,
-    }
-    assert item_causes(job_id) == {str(folder / "b.flac"): searchers.UNREACHABLE_REASON}
+    items = {name: str(folder / f"{name}.flac") for name in "abc"}
+    failed_only(code, resumed, job_id, items, "b", searchers.UNREACHABLE_REASON)
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
     assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC
     assert tags.read_genre_from_file(folder / "b.flac") == CATCH_ALL
@@ -1956,18 +1952,7 @@ def test_a_retried_retag_drives_only_the_item_that_failed(repair_on, folder, sil
     failing = raising_on(deep("abc"), "b")
     job_id, _code, _ = retagged(folder, silence, monkeypatch, "abc", failing)
 
-    second = bound(monkeypatch, deep("abc"))
-    with jobs.open_store() as store:
-        jobs.retry(store, job_id)
-    code, resumed = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), resumed
-    assert second.asked == [("", "b")], (
-        "the resume re-attempted work whose artifact was already durable"
-    )
-    assert set(item_states(job_id).values()) == {jobs.ItemState.DONE}
-    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
-    assert len(artifacts.committed(repair_on, job_id)) == 3
+    retried_only_b(repair_on, folder, monkeypatch, job_id)
 
 
 def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recovers_it(

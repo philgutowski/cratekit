@@ -1,11 +1,10 @@
 """R-1534, R-1631, R-1636 and R-1646: a title matches only its own recording, in every source.
 
-Two titles match when they name the same words once each has shed what is not
-its title; "Artist - X" with X ending in a version matches only a row writing
-the same split (R-1646). Nothing is compared by characters, and a side with no
-letter or digit matches nothing. A title only inside the other's trailing
-brackets is a known cost, pinned. Section L pins the parse (U280). Pages are
-synthetic text handed to the injected fetch seam.
+Titles match when they name the same words once each has shed what is not its title;
+"Artist - X" with X ending in a version matches only a row writing that split (R-1646).
+Nothing is compared by characters, a side with no letter or digit matches nothing, and a
+title only inside the other's trailing brackets is a pinned cost. Section L pins the parse
+(U280). Pages are synthetic text handed to the injected fetch seam.
 """
 
 from __future__ import annotations

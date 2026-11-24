@@ -1,10 +1,8 @@
 """The container-correct tag writer, proved per container against real audio.
 
-A tag write changes the tags and nothing else, in four layers, since a corrupted
-AIFF keeps its size: the decoded samples hash the same (ffmpeg); the container
-parses with a sane duration; the magic bytes are untouched; and without ffmpeg,
-FLAC's STREAMINFO MD5 and the chunk containers' payload hashed from the file.
-Fixtures are synthesized silence. A missing ffmpeg fails rather than skips.
+A write changes the tags alone, as a corrupted AIFF keeps its size: the decoded samples
+hash the same, the container parses, the magic bytes stand, and FLAC's MD5 and a chunk
+payload hash match. Fixtures are synthesized silence; a missing ffmpeg fails, never skips.
 """
 
 from __future__ import annotations
