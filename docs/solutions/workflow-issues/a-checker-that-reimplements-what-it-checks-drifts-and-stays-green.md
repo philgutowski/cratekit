@@ -182,7 +182,7 @@ building both presets and driving a verb one of them excludes.
 
 **Check what the repository already drives before you build a second model of
 it.** `tests/test_cli_contract.py` has driven every landed registry entry through
-the real dispatcher since long before U28, and `_sample_arguments` at `:1243`
+the real dispatcher since long before U28, and `_sample_arguments` at `:964`
 already carried the answer to four of the five defective command shapes.
 
 **Keep the anti vacuity guard next to the checker, because a checker with nothing
@@ -286,8 +286,8 @@ verdict were never once compared, and a suite cannot compare them by getting
 bigger.
 
 THE CORRECT MODEL ALREADY EXISTED IN THE SAME TEST TREE, WRITTEN DOWN, AND THE
-SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1410` through
-`:1412` give exactly the three verbs an export path:
+SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1078` through
+`:1079` give exactly the three verbs an export path, now through `absent_export` (`:969`), written inline when this was found:
 
 ```python
         "audit.coverage": [str(library / "no-such-export.xml")],
@@ -295,10 +295,10 @@ SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1410` through
         "report.library": [str(library / "no-such-export.xml")],
 ```
 
-`:1364` gives `run.show` a run identifier, and `_sample_arguments`'s own
-docstring at `:1349` opens "Enough POSITIONAL arguments to drive one verb". The
+`:974` gives `run.show` a run identifier, and `_sample_arguments`'s own
+docstring at `:965` opened "Enough POSITIONAL arguments to drive one verb" (it now reads "Enough arguments to drive one verb"). The
 fifth shape is in that file too. `test_conformance_1_structured_output_is_actually_emitted`
-at `:1334` builds its argv as
+at `:945` builds its argv as
 
 ```python
     argv = ["--output", "json", *_sample_decisions(entry), *entry.path, *_sample_arguments(entry)]

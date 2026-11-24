@@ -170,7 +170,7 @@ it. Both assertions are cheap. One line each.
 
 **A sibling in the same file already does this the right way, so the pattern was
 available.** `test_a_soft_deleted_row_is_never_retagged` at
-`tests/test_genre_retag.py:531` asserts the empty change list and then names the
+`tests/test_genre_retag.py:494` asserts the empty change list and then names the
 positive side channel it expects:
 
 ```python
@@ -419,7 +419,7 @@ from 6314 to 6319. Neither number is the point. The point is that the one test
 whose name already claimed this property is now the test that kills the row.
 
 **The contrasting sibling, further down the same file**
-(`tests/test_genre_retag.py:531`). Same planner, same empty change list, and a
+(`tests/test_genre_retag.py:494`). Same planner, same empty change list, and a
 mechanism assertion instead of a second absence:
 
 ```python

@@ -72,9 +72,9 @@ chosen = scope.scoped(listed, owned=owned, limit=limit)
 
 A total listing failure does not return an empty catalogue. `src/cratekit/sync/run.py:111` catches `LookupFailure` and raises `sync-source-lookups-failed`. The registry comment at `src/cratekit/core/cause.py:1097` states why: the source system treated that empty list as "nothing new" and advanced a watermark over a playlist that had never been read.
 
-The landed tests name the mechanism, not the brief's noun. `tests/test_incremental_sync.py:139`, `test_a_rerun_after_a_clean_sync_processes_only_unowned_items`, is the brief scenario. A first increment takes `old` and `mid`. The second increment is given those identities as `owned` and a list that also contains `new`. It processes only `new`. The watermark is read after the first run to prove it advanced. It is not an input to the second run's scope.
+The landed tests name the mechanism, not the brief's noun. `tests/test_incremental_sync.py:213`, `test_a_rerun_after_a_clean_sync_processes_only_unowned_items`, is the brief scenario. A first increment takes `old` and `mid`. The second increment is given those identities as `owned` and a list that also contains `new`. It processes only `new`. The watermark is read after the first run to prove it advanced. It is not an input to the second run's scope.
 
-`tests/test_incremental_sync.py:172`, `test_a_watermark_does_not_empty_the_scope_of_unowned_items`, is the test that would go red if someone later implemented the brief literally. It advances a cursor to `"zzz"`, lists two older unowned items, calls `increment`, and expects both processed. A date floor, a string floor, or any "newer than the cursor" filter would drop them and the run would look empty.
+`tests/test_incremental_sync.py:227`, `test_a_watermark_does_not_empty_the_scope_of_unowned_items`, is the test that would go red if someone later implemented the brief literally. It advances a cursor to `"zzz"`, lists two older unowned items, calls `increment`, and expects both processed. A date floor, a string floor, or any "newer than the cursor" filter would drop them and the run would look empty.
 
 DJ_tools already paid for this shape twice, and KTD11 names both halves. One half is a date floor: a year floor on a favorite-label crawl excluded every track the crawl surfaced, so zero in scope looked like "nothing new". That removal is recorded in the DJ_tools favorite-label recency sweep design note. The other half is a total listing failure that returned empty and then treated the source as taken. Those are different incidents with the same silent empty-run shape.
 
@@ -131,7 +131,7 @@ Concretely, stop and resolve when:
 
 - A test scenario says "newer than", "since", or "after" a watermark, a `last_pulled`, or any cursor. Ask whether the user visible set can be produced by owned dedup without reading that cursor. If it can, the brief is describing the outcome.
 - You are about to add a watermark, cursor, or floor argument to a scope function. Read `src/cratekit/sync/scope.py:21` first. If the function you are editing is sync scope, the argument is the bug.
-- You are writing the test that matches a brief sentence. Name the test after the mechanism. Add a second test that would fail the brief's literal reading. U22's pair at `tests/test_incremental_sync.py:139` and `:172` is the template.
+- You are writing the test that matches a brief sentence. Name the test after the mechanism. Add a second test that would fail the brief's literal reading. U22's pair at `tests/test_incremental_sync.py:213` and `:227` is the template.
 - A later unit describes incremental sync in passing. Read `src/cratekit/sync/run.py`, not the plan's AE7 sentence, and not the rebuild module's opening comment.
 - A listing failure is about to return an empty list. That is the other half of KTD11. Raise. An empty list is a verified empty catalogue, not a dead provider.
 - Two documents share a number across registers. Plan R25 is not residual R-25. Look the identifier up in the register the sentence came from.
@@ -166,11 +166,11 @@ chosen = scope.scoped(listed, owned=owned, limit=limit)
 
 `watermarks` is in `increment`'s signature and is not an argument here. The store is used after process succeeded and after the intake file was appended.
 
-**The outcome test, renamed to the mechanism.** `tests/test_incremental_sync.py:139`. First run takes `old` and `mid` with an empty owned set. Second run is given those identities as owned and a listing of `new`, `old`, `mid`. Asserts only `new` is processed. The watermark is checked only to prove the first run advanced.
+**The outcome test, renamed to the mechanism.** `tests/test_incremental_sync.py:213`. First run takes `old` and `mid` with an empty owned set. Second run is given those identities as owned and a listing of `new`, `old`, `mid`. Asserts only `new` is processed. The watermark is checked only to prove the first run advanced.
 
-**The adversarial test the brief cannot write.** `tests/test_incremental_sync.py:172` advances a cursor to `"zzz"`, lists two older unowned items, and expects both through `increment`. A filter on `"zzz"` would produce the silent empty run.
+**The adversarial test the brief cannot write.** `tests/test_incremental_sync.py:227` advances a cursor to `"zzz"`, lists two older unowned items, and expects both through `increment`. A filter on `"zzz"` would produce the silent empty run.
 
-**The raise, not the empty list.** `src/cratekit/sync/run.py:111` and `tests/test_incremental_sync.py:111`. A `LookupFailure` becomes `sync-source-lookups-failed`. The watermark for that source stays unset.
+**The raise, not the empty list.** `src/cratekit/sync/run.py:111` and `tests/test_incremental_sync.py:167`. A `LookupFailure` becomes `sync-source-lookups-failed`. The watermark for that source stays unset.
 
 **The first time this was removed.** DJ_tools, recorded in that repo's favorite-label recency sweep design note. After the year floor was removed there, `last_pulled` no longer drives scope. Cratekit's KTD11 is that result, written as a seam so U22 cannot put the floor back.
 

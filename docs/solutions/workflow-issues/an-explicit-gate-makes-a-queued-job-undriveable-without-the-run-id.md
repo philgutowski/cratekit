@@ -124,10 +124,10 @@ puts it in front of the verb path, and `:353` freezes it at queue time:
 ```
 
 **The flag goes before the verb path, not after it.** `--run` is a root parser
-flag, for the reason `tests/test_cli_contract.py:1175` gives about decisions
-generally, that they belong to the invocation rather than to the subcommand. The
+flag, for the reason `src/cratekit/skills/assets/library-status/SKILL.md:129` gives about a run
+itself, that it belongs to the invocation rather than to the subcommand. The
 shape is `[*resume, *entry.path, *the verb's own arguments]`, and it is the same
-shape `_conformance_3` builds at `tests/test_cli_contract.py:1448`.
+shape `_conformance_3` builds at `tests/test_cli_contract.py:1621`.
 
 **A payload frozen by an older build has no run, and the builder must still
 return a valid command line.** `(job.payload or {}).get("run_id")` returns
@@ -209,24 +209,24 @@ the person who had already approved it had approved it on a run the child could
 not name.
 
 WHY THE SUITE COULD NOT SEE ANY OF THIS, AND THIS IS THE PART THAT GENERALISES.
-`_conformance_3` at `tests/test_cli_contract.py:1420` is the strongest gate
+`_conformance_3` at `tests/test_cli_contract.py:1612` is the strongest gate
 assertion in the repository. It drives every landed gated verb, asserts the set
 of gates reached equals the set declared minus the exempt ones, asserts an
 inline answer to an explicit gate is refused a second time, asserts the refused
 answer was not recorded anyway, then records the decision through
 `run decide --actor a-person` and asserts the verb reaches OK. The parametrised test over it, at
-`tests/test_cli_contract.py:1508`, carries a docstring explaining that an earlier
+`tests/test_cli_contract.py:1654`, once carried a docstring explaining that an earlier
 version asserted the opposite of R34 and made every explicitly gated verb
 unlandable by construction. It is a test that has already been wrong once and
 been rewritten with the lesson in it.
 
 It still could not see this defect, and the reason is one line of arithmetic. Its
 argv is built from `_sample_arguments(entry)`
-(`tests/test_cli_contract.py:1173`), whose mapping holds `"adopt.apply": []` at
-`:1249`, and the string `--job` does not appear anywhere in
-`tests/test_cli_contract.py`. (That helper's own docstring says it returns
+(`tests/test_cli_contract.py:964`), whose mapping holds `"adopt.apply": []` at
+`:999`, and the string `--job` did not then appear anywhere in
+`tests/test_cli_contract.py`. (That helper's own docstring said it returned
 positional arguments, and two of its entries carry flags, `review.resolve` at
-`:1205` and `rebuild` at `:1266`. The overclaim does not affect this verb, whose
+`:981` and `rebuild` at `:1015`; it now says only arguments. The overclaim does not affect this verb, whose
 sample is empty either way.) The
 conformance drive therefore always takes the enqueue branch of `apply_adoption`
 (`src/cratekit/adopt/apply_cli.py:312`) and never the `if ctx.args.job` branch
@@ -301,7 +301,7 @@ in it and each row will describe a different, plausible, wrong reason.
   but unreachable, and `adopt.apply` alone clean. The three verbs whose only
   explicit gate is `write.cloudsync.unreadable` are correctly excluded, because
   that gate is the sole member of `UNREACHABLE_GATES`
-  (`tests/test_cli_contract.py:1382`).
+  (`tests/test_cli_contract.py:1498`).
 
   The first version of this predicate tested `"--run" in source`, and it reported
   `sync.favorites` CLEAN, because `--run-id` contains `--run` as a substring. A
@@ -448,7 +448,7 @@ and one of the three was a defect in the verb rather than a gap in its suite.
   a subprocess at all.
 - `src/cratekit/cli/__init__.py:266`, `_run_state_for`, the line that mints a new
   run whenever `--run` is absent.
-- `tests/test_cli_contract.py:1420` for `_conformance_3` and `:1508` for the
+- `tests/test_cli_contract.py:1612` for `_conformance_3` and `:1654` for the
   parametrised test over every landed entry, both of which pass without ever
   constructing a `--job` argument.
 - `src/cratekit/export/cli.py:55` for `export_argv` and `:85` for the enqueue,
