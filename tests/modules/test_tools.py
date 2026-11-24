@@ -472,12 +472,23 @@ def test_a_marked_lossy_title_loses_its_marker_along_with_the_head():
 
 
 def test_the_initialkey_tag_wins_over_the_head():
-    """The tag is what analysis wrote; the head is a copy a renamer made from it."""
+    """The tag is what ``analyze adopt`` writes beside the head, and the tag is read first."""
     entry = setbuilder.parse_entry(
         {"title": "08A - 124 - Title", "artist": "A", "initialkey": "3B"},
         template=TEMPLATE,
     )
     assert entry.key == "3B"
+
+
+def test_a_headless_title_takes_the_key_adopt_writes_and_no_tempo():
+    """U343: a run writes no head, so a title stays bare until the visit; the
+    ``initialkey`` ``analyze adopt`` writes places it on the wheel, with no tempo."""
+    entry = setbuilder.parse_entry(
+        {"title": "Bare Title", "artist": "A", "initialkey": "06A", "energylevel": "5"},
+        template=TEMPLATE,
+    )
+    assert (entry.key, entry.bpm, entry.title, entry.energy) == ("6A", None, "Bare Title", 5)
+    assert setbuilder.parse_entry({"title": "Bare Title", "artist": "A"}, template=TEMPLATE) is None
 
 
 def test_a_track_with_no_usable_key_is_left_out_of_the_index():

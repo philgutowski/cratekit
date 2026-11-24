@@ -3,7 +3,8 @@
 The head is a filename and a Name, never a grid, so a disagreement tells a DJ
 a tempo the deck will not show. Read off a disposable copy of the database,
 each row's head against its stored tempo and key, in four tempo buckets and
-two key buckets. Nothing is written.
+two key buckets. Nothing is written. The detector measures a tempo and no key
+(U343), so its reading is compared for tempo alone and counts as unkeyed.
 
 A stored tempo that is not a whole number was computed by rekordbox; a whole
 one may be the imported integer the head carries, which measures nothing.
@@ -178,11 +179,13 @@ def head_from_filename(filename: str, *, template: NameTemplate) -> Head | None:
 
 
 def head_from_detection(found: dict[str, Any] | None) -> Head | None:
-    """The head a detector's answer would be stamped with, or None for a terminal."""
+    """The detector's tempo as a head with no key, or None for a terminal.
+
+    The detector measures no key since U343, so the key half is always None.
+    """
     if not found or found.get("terminal") or found.get("rate") is None:
         return None
-    camelot = found.get("camelot")
-    return (pad_camelot(str(camelot)) if camelot else None, int(found["rate"]))
+    return (None, int(found["rate"]))
 
 
 def compare(

@@ -326,9 +326,10 @@ def parse_entry(
 ) -> Track | None:
     """Build a :class:`Track` from a tag mapping, or None without a Camelot key.
 
-    The key comes from the ``initialkey`` tag, which the analysis wrote, falling
-    back to the name head a renamer wrote from it; tempo and clean title come
-    from the head.
+    The key comes from the ``initialkey`` tag, which ``analyze adopt`` writes from
+    rekordbox's key after the visit (an ``analyze run`` before U343 wrote its
+    own), falling back to the title's head; tempo and clean title come from the
+    head. A title with no head and no key tag is left out until the visit.
     """
     raw_title = (raw.get("title") or "").strip()
     head, remainder = split_head(raw_title, template=template)

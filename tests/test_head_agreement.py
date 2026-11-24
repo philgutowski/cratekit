@@ -81,10 +81,10 @@ def test_either_key_notation_maps_to_one_padded_camelot(name, camelot):
     assert agreement.camelot_from_scale_name(name) == camelot
 
 
-def test_every_classic_name_reaches_a_code_the_detector_can_emit():
-    emitted = {agreement.pad_camelot(code) for code in detect._KEY_TO_CAMELOT.values()}
-    for name in agreement._CLASSIC_TO_CAMELOT:
-        assert agreement.camelot_from_scale_name(name) in emitted
+def test_every_classic_name_reaches_one_of_the_twenty_four_codes():
+    every = {f"{number:02d}{letter}" for number in range(1, 13) for letter in "AB"}
+    reached = {agreement.camelot_from_scale_name(name) for name in agreement._CLASSIC_TO_CAMELOT}
+    assert reached == every
 
 
 def _row_of(identifier, filename, hundredths, scale_name):
@@ -146,9 +146,10 @@ def test_a_fractional_stored_tempo_is_rekordbox_own_analysis_and_a_whole_one_is_
     assert not _row_of("d", "x", None, None).analysed_by_rekordbox
 
 
-def test_the_detector_head_is_the_stamped_head_and_a_terminal_is_none():
-    assert agreement.head_from_detection({"camelot": "8A", "rate": 127}) == ("08A", 127)
-    assert agreement.head_from_detection({"camelot": None, "rate": 127}) == (None, 127)
+def test_the_detector_head_is_its_tempo_with_no_key_and_a_terminal_is_none():
+    """U343: the detector measures no key, and a key a fake hands in is not read."""
+    assert agreement.head_from_detection({"rate": 127}) == (None, 127)
+    assert agreement.head_from_detection({"camelot": "8A", "rate": 127}) == (None, 127)
     assert agreement.head_from_detection({"terminal": "skipped-undecodable"}) is None
     assert agreement.head_from_detection(None) is None
 
@@ -174,13 +175,13 @@ def test_reanalysis_samples_rekordbox_own_rows_with_a_file_and_buckets_the_detec
 
     def detector(path):
         seen.append(path)
-        return {"camelot": "8A", "rate": 127}
+        return {"rate": 127}
 
     found = agreement.reanalyse(rows, cfg, detector=detector, limit=10)
     assert seen == [on_disk]
     assert found.files == 1
     assert dict(found.tempo) == {agreement.EQUAL: 1}
-    assert dict(found.key) == {agreement.KEY_EQUAL: 1}
+    assert dict(found.key) == {} and found.unkeyed == 1, "the detector measures no key"
 
 
 def test_the_sample_stops_resolving_rows_once_it_is_full(tmp_path, monkeypatch):
@@ -430,10 +431,10 @@ def test_the_recorded_shape_is_the_shape_the_measurement_prints():
     """Re-recording copies every key of the measurement at the same level."""
     printed = agreement.compare(ROWS).as_dict()
     recorded = detect.head_agreement()
-    for name in ("files", "tempo", "within_one", "key"):
+    for name in ("files", "tempo", "within_one"):
         assert name in recorded, name
+    assert "key" not in recorded, "the run measures no key since U343"
     assert set(recorded["tempo"]) == set(printed["tempo"]) == set(agreement.TEMPO_BUCKETS)
-    assert set(recorded["key"]) == set(printed["key"])
     assert isinstance(recorded["within_one"], int)
 
 
@@ -442,7 +443,6 @@ def test_the_recorded_buckets_sum_to_the_files_measured():
     tempo = recorded["tempo"]
     assert sum(tempo[bucket] for bucket in agreement.TEMPO_BUCKETS) == recorded["files"]
     assert recorded["within_one"] >= tempo["equal"]
-    assert sum(recorded["key"].values()) == recorded["files"]
 
 
 def test_the_record_says_whether_it_applies_to_the_bound_window():
