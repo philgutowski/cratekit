@@ -248,8 +248,9 @@ ext4 under a parallel run, and fix every one that fails alone. A test under
 made untrue, committed as `docs(uN): ...`; the record carries the `Docs` line.
 Then METHOD's step 5: `docs/restart/uN.md` in the form of a recent file there,
 with an OWED paragraph naming what this container could not run (the macOS
-battery, and the live verification at an attended sitting if the unit has
-one); each residual as `docs/residuals/uN-<slug>.md`, unnumbered, never
+battery, which METHOD-local's standing battery settles with no card, and the
+live verification at an attended sitting if the unit has one); each
+residual as `docs/residuals/uN-<slug>.md`, unnumbered, never
 written into the ledger; a `docs/solutions/` entry only if METHOD's bar is
 met. Commit as `record(uN): ...` and push.
 
@@ -326,10 +327,31 @@ named as meeting the board bar, file its issue (METHOD's board bar):
     gh api -X POST repos/<owner>/<repo>/issues -f title='R-N: ...' -F body=@r.md -f 'labels[]=residual'
 
 For each live check the OWED paragraph names (the live library, the account,
-rekordbox, the macOS battery), file one attended card, `A<N>: <the check>`
-(METHOD's local work), labelled `attended` alone, its body opening
-`**Depends on:** #<the release card or this card>` and saying what to run and
-when it is done.
+rekordbox), file one attended card, `A<N>: <the check>` (METHOD's local
+work), labelled `attended` alone, its body opening `**Depends on:** #<the
+release card or this card>` and saying what to run and when it is done, by
+these rules (decided by Phillip on 2026-11-24, after the attended queue grew
+with every landing):
+
+- **Never a card for the macOS battery**, alone or as a half of a live card.
+  The battery is owed by `main`, not by a unit, and METHOD-local's standing
+  battery settles every merge before the commit it runs on. A test file the
+  Mac must read green is named in the OWED paragraph, never on a card.
+- **Never a card for a measurement only the Mac's test run could change**,
+  such as a mutation row or a replay table the container could not hold.
+  Record it in the table as unmeasured on Linux, with the reason. If the
+  standing battery later shows a test newly failing there, that failure is
+  a card of its own.
+- **Never a card for what the next ordinary sitting does anyway.** A change
+  to a sync pass, a landing, a visit or a tag run that the next pass shows
+  without a step of its own goes in the OWED paragraph, under the words
+  `Read at the next pass:`, and the `crate-sync` skill's closing report
+  reads it there. A card is for a check that needs a step no ordinary
+  sitting takes (a throwaway, a copy, a named verb).
+- **One card per check, never one per landing.** Search the open attended
+  cards first (`board.py local`). When one already runs the same verb on
+  the same library or account, comment on it with what this landing adds,
+  and do not file another.
 
 Then `board.py audit --labels-only`, and post `Landed`, short, linking the
 record rather than restating it (U196): the pull request, the merge commit,

@@ -1892,6 +1892,7 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         "write/genre_favorites.py::apply_refresh",  # U119, the genre Favorites refresh.
         "write/metadata_cli.py::mytags_vocals",
         "write/playlist_pair.py::apply",  # U130, a playlist pair's rekordbox side.
+        "write/numbers.py::apply",  # U958, the product's playlists numbered 1 to N.
         "write/row_defaults.py::apply_rows",  # R-923, rekordbox's defaults on bare rows.
         "write/row_link.py::apply_probes",  # A32, the row probe's values.
         "sync/twins.py::write",  # U149, the custom playlist twins.
@@ -2028,6 +2029,7 @@ def test_each_commit_helper_records_the_commit():
     for relative, helper in (
         ("write/trees.py", "_record_membership_commit"),
         ("write/row_defaults.py", "record_commit"),
+        ("write/numbers.py", "_record_numbers_commit"),
         ("write/metadata_cli.py", "_record_mytags_commit"),
         ("intake/native.py", "_record_landing_commit"),
         ("intake/rotate.py", "_record_rotation_commit"),

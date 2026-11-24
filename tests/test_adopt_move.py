@@ -1176,9 +1176,22 @@ def test_an_approved_move_adds_the_new_sub_and_removes_the_old(moved, monkeypatc
     }
     assert len(_rows(moved)) == len(rows_before) + 4
     # As rekordbox's own removed rows read: the marker set, ``updated_at`` past
-    # ``created_at``, the update sequence stamped, the track number kept.
+    # ``created_at``, the update sequence stamped. The track number goes to 0,
+    # below every live place, and the playlist reads 1 to N (U958).
     (stamp_after,) = [r for r in _sql(moved, stamped) if r[0] == stamp_before[0]]
-    assert stamp_after[:7] == stamp_before[:7]
+    assert stamp_after[:3] == stamp_before[:3] and stamp_after[4:7] == stamp_before[4:7]
+    assert stamp_before[3] != 0 and stamp_after[3] == 0
+    for playlist in {row[1] for row in _sql(moved, "SELECT ID, PlaylistID FROM djmdSongPlaylist")}:
+        numbers = sorted(
+            row[0]
+            for row in _sql(
+                moved,
+                "SELECT TrackNo FROM djmdSongPlaylist WHERE rb_local_deleted = 0 "
+                "AND PlaylistID = ?",
+                playlist,
+            )
+        )
+        assert numbers == list(range(1, len(numbers) + 1)), playlist
     assert (stamp_before[7], stamp_after[7]) == (0, 1)
     assert stamp_after[8] != stamp_before[8] and str(stamp_after[8]) > str(stamp_before[6])
     assert stamp_after[9] is not None and stamp_after[9] != stamp_before[9]

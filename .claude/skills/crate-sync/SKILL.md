@@ -285,7 +285,15 @@ One message, in this order, and nothing before it except a stop:
    warning), every track still with no genre (it waits in INBOX for a hand tag),
    every review item, every playlist left unmarked with its reason, and every
    difference the rehearsal showed.
-5. **The questions no rule answers**, each as a multiple choice with a
+5. **What the pass proved.** Every record under `docs/restart/` that
+   reached `main` since the last sitting in `docs/cutover.md` and carries
+   a `Read at the next pass:` line (`git log --since=DATE --name-only
+   --format= origin/main -- docs/restart/`, then grep each): one line per
+   record, the line read against what this pass showed, met or not. A line
+   not met is a card by the `file-card` skill, carrying what the pass
+   showed. A line this pass could not show (no landing, no visit) waits for
+   the next pass and is named as waiting.
+6. **The questions no rule answers**, each as a multiple choice with a
    recommendation first, batched here: a vocal cut that reads wrong, each genre
    word the `tag-guess-off-taxonomy` warning names, offered two ways as Phillip
    asked on 2026-11-01 (save it as an alias of one of his genres and retag its
@@ -295,7 +303,7 @@ One message, in this order, and nothing before it except a stop:
    `crate taxonomy alias WORD GENRE` for an alias, then `crate tag rows` and
    `crate route resort`; or `crate taxonomy folder WORD` for a folder of its
    own, then `crate route resort`.
-6. **State.** The installed copy against the latest release (`crate doctor`'s
+7. **State.** The installed copy against the latest release (`crate doctor`'s
    `install.release`), whether the checkout that ran it is clean and current,
    and the attended cards now ready on the board.
 

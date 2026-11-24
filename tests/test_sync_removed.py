@@ -1734,10 +1734,14 @@ def test_renumbering_writes_the_three_columns_and_a_held_row_reads_them(one_offe
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
 
 
-def test_only_the_collection_removal_renumbers_memberships():
-    """The one TrackNo write the whitelist does not see has one caller."""
-    callers = [module for module, name, _keywords in _package_calls() if name == "renumber_memberships"]
-    assert callers == ["core/rb_writer.py"], callers
+def test_only_the_collection_removal_and_the_closing_up_renumber_memberships():
+    """The one TrackNo write the whitelist does not see has two callers, each proven from SQL.
+
+    The collection removal (R-1830), and the closing up of a playlist a membership
+    removal touched, at the commit (U958, ``rb_positions.close_gaps``).
+    """
+    callers = sorted(module for module, name, _keywords in _package_calls() if name == "renumber_memberships")
+    assert callers == ["core/rb_positions.py", "core/rb_writer.py"], callers
 
 
 def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_written(one_offered):

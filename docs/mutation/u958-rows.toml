@@ -1,0 +1,258 @@
+name = "u958"
+pass_kind = "light"
+
+[[rows]]
+id = "P01_tie_order_reversed"
+description = "contiguous_positions: ties on one TrackNo ordered by row id descending, so R-1852's pair comes out the other way"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py", "tests/test_adopt_move.py"]
+old = '''            key=lambda one: (int(one[0]), one[1]),
+        )'''
+new = '''            key=lambda one: (int(one[0]), "".join(chr(0x10FFFF - ord(c)) for c in one[1])),
+        )'''
+
+[[rows]]
+id = "P02_places_from_zero"
+description = "contiguous_positions: the live rows numbered from 0, so every playlist is renumbered 0 to N-1"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py", "tests/test_adopt_move.py"]
+old = '''        for place, (number, key) in enumerate(live, start=1):'''
+new = '''        for place, (number, key) in enumerate(live, start=0):'''
+
+[[rows]]
+id = "P03_marked_left_on_its_place"
+description = "contiguous_positions: a marked row is never moved to 0, so it shares a place with a live row once the live rows close up"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py", "tests/test_adopt_move.py"]
+old = '''            if not alive and number is not None and number != MARKED_PLACE:
+                moved[key] = (playlist, number, MARKED_PLACE)'''
+new = '''            if False:
+                moved[key] = (playlist, number, MARKED_PLACE)'''
+
+[[rows]]
+id = "P04_marked_counted_as_live"
+description = "contiguous_positions: a marked row counted as a live place, so the live rows close up around it"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py", "tests/test_adopt_move.py"]
+old = '''            ((number, key) for key, number, alive in held if alive),'''
+new = '''            ((number, key) for key, number, alive in held if number is not None),'''
+
+[[rows]]
+id = "P05_unplaceable_not_held_back"
+description = "contiguous_positions: a playlist with an unreadable marker is renumbered anyway"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py"]
+old = '''        if playlist in held_back:
+            continue
+        live = sorted('''
+new = '''        if False:
+            continue
+        live = sorted('''
+
+[[rows]]
+id = "P06_unplaceable_ignores_unreadable_marker"
+description = "unplaceable: a NULL marker no longer holds a playlist back, so closing up treats it as marked"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py"]
+old = '''        bad = sorted(key for key, number, live in held if live is None or (live and number is None))'''
+new = '''        bad = sorted(key for key, number, live in held if (live and number is None))'''
+
+[[rows]]
+id = "P07_numbering_contiguous_from_zero"
+description = "numbering: contiguous read as 0 to N-1, so the doctor and the plan miss a playlist numbered 1 to N with a gap at the end"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py"]
+old = '''            contiguous=playlist not in held_back and numbers == list(range(1, len(numbers) + 1)),'''
+new = '''            contiguous=playlist not in held_back and len(set(numbers)) == len(numbers),'''
+
+[[rows]]
+id = "P08_removal_records_nothing"
+description = "remove_memberships: the playlist is never recorded, so a removal leaves its gap as before"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_adopt_move.py", "tests/test_inbox_analyzed.py", "tests/test_genre_favorites.py"]
+old = '''    if removed and close_up:
+        _writer().record_touched(db, playlist.ID)'''
+new = '''    if False:
+        _writer().record_touched(db, playlist.ID)'''
+
+[[rows]]
+id = "P10_commit_skips_closing_up"
+description = "commit_guarded: the closing up is never run, so every recorded playlist keeps its gap"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_adopt_move.py", "tests/test_repair_numbers.py"]
+old = '''    # removal touched reads 1 to N, proven from SQL; a refusal rolls back.
+    close_gaps(db)'''
+new = '''    # removal touched reads 1 to N, proven from SQL; a refusal rolls back.
+    pass'''
+
+[[rows]]
+id = "P11_record_survives_rollback"
+description = "record_touched: the rollback listener is never attached, so a refused write's playlist is closed up by a later commit"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py"]
+old = '''        event.listen(session, "after_rollback", _forget)'''
+new = '''        pass'''
+
+[[rows]]
+id = "P12_unreadable_closes_up_anyway"
+description = "close_gaps: a recorded playlist holding an unreadable marker is not refused, its readable rows moved"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py"]
+old = '''    held = unplaceable(rows)
+    if held:
+        db.rollback()'''
+new = '''    held = unplaceable(rows)
+    if False:
+        db.rollback()'''
+
+[[rows]]
+id = "P13_marked_rows_restamped"
+description = "close_gaps: marked rows written through the stamped renumbering, so an older removal's updated_at moves (review B1)"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py"]
+old = '''    live_moves = {key: move for key, move in planned.items() if key not in marked}'''
+new = '''    live_moves = dict(planned)
+    marked = set()'''
+
+[[rows]]
+id = "P14_no_count_bump_when_buffer_empty"
+description = "_stamp: with nothing buffered the count is not moved, so the repair stamps rows with a count the commit never reaches"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_repair_numbers.py"]
+old = '''    if reaching == current:
+        reaching = current + 1'''
+new = '''    if False:
+        reaching = current + 1'''
+
+[[rows]]
+id = "P15_proof_not_run"
+description = "close_gaps: the proof from SQL is skipped, so a write that moved a row it did not plan commits"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py"]
+old = '''    violations = gap_violations(before, gap_reading(db, recorded), planned=planned, stamp=stamp)'''
+new = '''    violations = []'''
+
+[[rows]]
+id = "P16_proof_admits_unplanned_row"
+description = "gap_violations: an unplanned row that changed is not named"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py"]
+old = '''        if key not in planned:
+            if old != new:'''
+new = '''        if key not in planned:
+            if False:'''
+
+[[rows]]
+id = "P17_proof_admits_restamped_marked_row"
+description = "gap_violations: a marked row whose stamps moved is admitted"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py"]
+old = '''            if any(o != n for at, (o, n) in enumerate(zip(old, new)) if at != number_at):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "P18_proof_admits_unstamped_live_row"
+description = "gap_violations: a moved live row with the wrong count or time is admitted"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py"]
+old = '''        for at, value in stamps.items():
+            if new[at] != value:'''
+new = '''        for at, value in stamps.items():
+            if False:'''
+
+[[rows]]
+id = "P19_park_ignores_marker"
+description = "_park_marked: the UPDATE no longer requires the row to be marked"
+file = "src/cratekit/core/rb_positions.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py"]
+old = '''        f'AND "{_writer().SOFT_DELETE_COLUMN}" = 1'
+    )'''
+new = '''    )'''
+
+[[rows]]
+id = "R01_repair_records_first_only"
+description = "numbers.apply: only the first planned playlist is recorded, so the rest keep their gaps"
+file = "src/cratekit/write/numbers.py"
+surface = "user"
+tests = ["tests/test_repair_numbers.py"]
+old = '''            for one in again.items:
+                rb_writer.record_touched(db, one.playlist_id)'''
+new = '''            for one in again.items[:1]:
+                rb_writer.record_touched(db, one.playlist_id)'''
+
+[[rows]]
+id = "R02_repair_digest_unchecked"
+description = "numbers.apply: a plan whose digest moved since approval is written"
+file = "src/cratekit/write/numbers.py"
+surface = "user"
+tests = ["tests/test_repair_numbers.py"]
+old = '''    if again.digest != approved.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A01_add_records_nothing"
+description = "add_memberships: the playlist an add inserted into is never recorded, so an append past a marked row leaves a gap (review round two)"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_positions.py", "tests/test_adopt_move.py", "tests/test_repair_numbers.py"]
+old = '''    if inserted:
+        # CLOSED UP AT THE COMMIT TOO'''
+new = '''    if False:
+        # CLOSED UP AT THE COMMIT TOO'''
+
+[[rows]]
+id = "R04_scope_namesake_source"
+description = "numbers.scope: any live playlist named as the favourites source pulls its folder in, the namesake rule gone"
+file = "src/cratekit/write/numbers.py"
+surface = "user"
+tests = ["tests/test_repair_numbers.py"]
+old = '''    if len(homes) == 1:'''
+new = '''    for one in homes:
+        homes = [one]'''
+
+[[rows]]
+id = "R05_plan_takes_contiguous"
+description = "numbers.plan: a playlist already 1 to N is planned too"
+file = "src/cratekit/write/numbers.py"
+surface = "user"
+tests = ["tests/test_repair_numbers.py"]
+old = '''        if read.contiguous or playlist in unreadable:'''
+new = '''        if playlist in unreadable:'''
+
+[[rows]]
+id = "R06_read_back_ignores_marked_place"
+description = "numbers.read_back: a marked row left on a place is not named"
+file = "src/cratekit/write/numbers.py"
+surface = "user"
+tests = ["tests/test_repair_numbers.py"]
+old = '''        if one is None or not one.contiguous or one.marked_placed:'''
+new = '''        if one is None or not one.contiguous:'''
+
+[[rows]]
+id = "D01_doctor_ok_over_gaps"
+description = "_check_playlist_numbers: gapped playlists read OK"
+file = "src/cratekit/cli/doctor_library.py"
+surface = "user"
+tests = ["tests/test_repair_numbers.py", "tests/test_doctor.py"]
+old = '''    if planned.items:
+        shown = ", ".join(repr(one.path) for one in planned.items[:3])'''
+new = '''    if False:
+        shown = ", ".join(repr(one.path) for one in planned.items[:3])'''

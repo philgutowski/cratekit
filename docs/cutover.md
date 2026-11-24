@@ -2965,6 +2965,95 @@ their units but U243 and U260. Two worker tabs, W1 and W2.
 
 **Open attended cards, as of the end of 2026-11-23.** A183 (#879), tonight's 03:17 night; A202 (#929) step 1, on R-1716 (#1010); A129 (#711) steps 3 and 4, on the next label download; A141 (#744), on Beatport answering this machine; A203 (#934) step 3, at the next release; A5 (#178) lines 8 and 9; and the cards the day's cloud landings filed, A217 to A228 and A230, which the next sitting reads. A208 (#950), A207 (#947) and A211 (#962) closed in this continuation.
 
+## Sitting 105, 2026-11-24, a sync pass by the crate-sync skill on v0.19.0, no rekordbox visit: nothing new on the account, and the account's tail read past the hour's line on Phillip's word
+
+Preflight held: v0.19.0 installed and the latest release, no job running, no
+other session, backups 0 days old, rekordbox closed. Two messages from
+Phillip ("lets sync tidal and rekordbox", then "its ok continue making
+calls"), 14:32Z to 14:44Z, against sitting 47's 25 messages and about three
+hours.
+
+| Step | Ran | Observed |
+|---|---|---|
+| The night's record | `sync night --last` | night of 2026-11-23, `nothing-new` at 08:17Z, 33 calls, 522418193 refused `lossy-refused` |
+| The pass, first | `sync land`, run `14:32:58Z-c73f` | **refused before its first call**: the account had made 1,869 calls in the hour, past the 1,125 read line of 1,500, most of them a morning session's organize runs answered at 13:38Z and 13:41Z. Nothing queued |
+| The pass, again | `crate --calls-per-hour 3000 sync land`, pass run `14:35:21Z-fece`, on Phillip's word to keep calling | **nothing to land**: stopped at its download with 0 staged; the one missing track, Satisfy by Calvin Harris (522418193), refused `lossy-refused` again. 31 calls. `--calls-per-hour` is a global flag and goes before the verb; after it, argparse refuses it |
+| The marks | `organize --only marks`, run `14:36:20Z-eab8`, answered `apply` as `session` | 12 passes, nothing to mark. Held with tracks outstanding: Phil 9-30-26 (2), New York Fever Vol. 1 (19), Alex Kaminski (1), Get Up&Get Down 2026 (4), Turn up the sound (1). 23 calls |
+| The filing | `organize --only file`, run `14:37:07Z-e4ef`, answered `apply` as `session` | nothing to move; 4 left at the root, one a set playlist and three working custom playlists. 172 calls |
+| `sync removed` | four runs: refused at the hour's line with 3,000; 500 calls to the command ceiling with 4,000; 1,000 with `--calls 1000 --calls-per-hour 5000`; then run `14:41:30Z-93a4` finished with `--calls 2000 --calls-per-hour 6000` | **724 playlists read, 401 of 737 from the held reads, nothing offered**, 1 left (Cotonete, Parribean Disco, off Daily 11-5-26, no library file, as sitting 104 left it), 13 retired by a person on 2026-11-22. Hearts 351 declared, 342 listed, 9 withheld. 2,597 calls across the runs, no rate limit |
+
+About 2,800 calls this sitting, and the account near 4,700 in its hour at
+14:44Z, with no rate limit answered. A full `sync removed` read costs about
+2,600 calls when the held reads are cold, which no default ceiling lets one
+run finish.
+
+**Continued, the outbound direction, at Phillip's word "sync in the other
+direction", 15:01Z to 15:06Z**, once a second session's battery in the
+checkout had finished, since a live verb during its pytest risks a state leak.
+Phillip chose the mirror and the hearts only, and left the sync of every pair
+put off, as at sitting 104.
+
+| Step | Ran | Observed |
+|---|---|---|
+| The mirror | `crate --calls 2000 --calls-per-hour 6000 organize --only mirror`, run `15:01:47Z-6acc`, answered `apply` as `session` | **Nothing to write**: 26 folders, every mirrored playlist already equal to its rekordbox playlist's account tracks, most likely from the morning session's organize at 13:41Z. 1,809 earlier misses not asked again. 32 edits made on the account noted for the account to rekordbox steps, which this run did not take. 256 requests to plan, 800 calls in the run |
+| The hearts | `crate export collection` to a scratch file, then `sync favorites --export`, `sync.favorites.confirm` answered `sync` as `session` on run `15:05:05Z-1fdd`, and job `15:05:19Z-f40d` driven with `--run` and `--job` | 330 favourites from `Favorites/All Favorites` and the colour: **309 already hearted, 1 hearted, 20 unmatched**: 9 the provider returned no track for (three Steve Reich movements among them), 2 whose ISRC named no agreeing track, 9 where several agreeing tracks left none chosen. 32 calls, 312 ISRC lookups from the cache. Nothing written in the library |
+
+## Sitting 106, 2026-11-24, the first standing macOS battery and a grooming of the attended cards, no live library and no account
+
+Phillip asked why the attended cards kept growing and to fix it. Every cloud
+landing had filed a card for the macOS battery, 78 of the 124 attended cards
+filed since 2026-11-09, though one Mac run settles every merge before it.
+#1055 (`476696f9`) makes the battery a standing line in this record and stops
+the cloud filing a card for it, for a Mac only measurement, or for what the
+next ordinary pass shows. This sitting ran that battery once and groomed the
+open cards by those rules. Nothing touched the library or the account.
+
+macOS battery green at 500222747962312d7f87b2ec4c3a655919be384b: 23401 passed, 1 skipped, ruff and scan clean
+
+| Card | Decision | Why |
+|---|---|---|
+| A203 (#934) | closed, met | battery and board reads at sitting 104; step 3 met by the v0.19.0 cut |
+| A219 (#1006) | closed, met | battery above; `board.py next` ranked 4 ready units, `audit` read "352 units: 345 done, 4 ready, 3 blocked. The board matches the repository.", `sync` changed nothing |
+| A221 (#1012) | closed, met | battery above; `refactor_measure.py table` reads 0 allowance lines and 0 beyond them |
+| A223 (#1016), A230 (#1033) | closed, met | battery above, their only step |
+| A233 (#1040) | closed, met | scan clean on the Mac under its own name, battery above, v0.19.0 cut |
+| A235 (#1044), A236 (#1046) | closed, met | battery above; `crate --help`, `crate label --help`, `crate analyze check --help` and `crate analyze vocals --help` print and exit 0 |
+| A237 (#1049), A238 (#1051), A239 (#1053) | closed, met | battery above, so no test newly failing and no conditional replay owed; the Mac only mutation rows (A237's 99 replay rows, A239's `H1_pinned_version`) dropped under #1055's rule, since nothing under `src/` changed |
+| A227 (#1027) | closed, folded into A220 (#1009) | battery above; its live read already runs inside A220's `adopt move`, now carried on A220 |
+| A231 (#1037) | closed, folded into A226 (#1023) | battery above; one live `crate converge` reads both R-1949's and R-1991's lines, now carried on A226 |
+| A157 (#782) | closed, folded into A160 (#789) | the same tag run over headed titles; its Beatport half is A160's too |
+| A141 (#744) | closed, not planned | battery met long ago; the live case cannot arise (every streaming download carries art, Beatport refuses this machine), and the one request per album is proven by U260's tests |
+| A217, A218, A224, A225, A232, A234 | battery half met, live half left open | each card says so |
+| A228 (#1029) | step 1 met, left open | sitting 105 ran `sync removed` to its end on held reads, nothing offered; steps 2 and 3 are owed |
+
+Left as they were: A5 (#178), A129 (#711), A183 (#879), A202 (#929), A220
+(#1009), A222 (#1013), A226 (#1023), U29 (#29), and A72 (#446) and A160
+(#789) waiting on U282 (#797).
+
+## Sitting 107, 2026-11-24, driven by the attended-orchestrator skill, on v0.19.0 and the development checkout at `72bac1ae`, after a second session's outbound work
+
+The second session (its Sitting 105 continuation above) finished its mirror and hearts at 15:06Z and handed over the library, rekordbox and desktop control; the account stood at its hour's read line until 16:03Z. Installed v0.19.0 carries every unit these cards prove but R-2020. Both backup ages 0 days; the session minted the acknowledgment at 15:11:59Z. Two workers ran the battery and the reads on copies.
+
+macOS battery green at 72bac1ae30b75ccaa945149d077200ad60d044b6: 23401 passed, 1 skipped, ruff and scan clean
+
+| Step | What ran | What it read | State |
+|---|---|---|---|
+| A183, the night of 2026-11-23 | `crate sync night --last`, `crate schedule show`, `crate doctor` | **The night ran unattended at 03:17 local and ended `nothing-new`** at its download step: 33 calls of the night's 1,200, one track refused lossy (522418193), no gate, rekordbox never opened. A night that reaches its gate is still owed | in part |
+| A228 step 2 | the held reads document in the library's state folder, read only, no call | **684 entries, every `mark.updated` carrying a zone**, spelled like `2026-11-12T14:03:55.850000+00:00`; all re-read 14:38Z to 14:43Z today by the second session's `sync removed` | met |
+| A226 (with A231's half) | `crate converge` live (installed v0.19.0); its list cuts at twenty, so the full list read through the same `rebuild.report_convergence` call; each listed track read on a copy of the live database in the volume copies folder and re-derived from its file's tags at the cut 3.0 | genre_energy **differing**, INBOX not compared by design; **490 lines, 486 unexpected and 4 doubled, 0 unidentified**, so no playlist reads `not-compared`. **Every unexpected membership is a leftover**, its track already filed where its genre or readings now put it: **168** with no genre, filed by the fallback in Electronica / Other; **167** whose genre a later write filed in its own folder (R&B on 2026-10-01, Hip-Hop, Soul and Jazz on 2026-10-13, 99 on 2026-11-21) with the old membership left; **144** in two genre folders since the 2026-07-15 import; **4** Neoclassical tracks in NonElectronic / Classical, which the taxonomy files under Rock; **1** with no energy reading left in its band; **2** in a with vox playlist under the cut, one of them the product's own write (A229's `adopt apply` filed Sworn Virgins, Fifty Dollar Bills by its `vox` My Tag, and the check derives the vocal sub from the file's score), filed as a residual. **No playlist of Phillip's own bears a declared destination's names.** The 4 doubled lines are one track held in two rows of its own declared playlist, both rows from the 2026-07-15 import. No earlier record keeps a converge's full list, so every line was accounted for rather than only the new ones. No rebuild or resort ran | met, residual filed |
+| A220 (with A227's half) | the genre run of 2026-11-24 03:50Z to 03:54Z by the second session, on Phillip's corrected plan of 2026-11-23 (only deep and soulful tracks take Deep and Soulful House, recorded on #988): `tag set` 50 rows in nine sessions, each on an equal rehearsal digest, `adopt move`, `route resort`; this sitting read the result | **0 of the 50 rows in converge's unexpected list**; their 64 memberships under BY GENRE + ENERGY all sit under their genre's folder, none under Favorites. A227's read holds | met |
+| A217 | `crate label registry list --genre "Deep and Soulful House"`; then `crate label sync --genre "Deep and Soulful House"` with `--next`, and again at the terminal capped at 400 calls | The registry lists **32 labels, every one that genre**. The walk refused before any call: "about 3200 calls over 32 labels", the group's own count. Decided by the session under Phillip's instruction of 2026-11-21: not driven past the refusal, since a burst of 3,200 calls only to answer `stop` risks the provider's limit the account met on 2026-11-12, and the next label go serves it | in part |
+| A218, two throwaways landed | two 90 second click AIFFs tagged Cratekit Check, A218 one (Deep House) and A218 two (Soul), `analyze run` (energy 1 each), then `intake land` from download staging under `2026-11-24 A218 check`, rehearsed and live on an equal digest `48ed8df3749fb5af` (run `15:12:22Z-969e`), answered `apply` as `session` | **2 landed and filed**, into Deep House / Low and Soul / Low | done |
+| A218, the second genre | `crate tag second "Tech House"` on A218 one and `"R&B"` on A218 two, each gate answered `apply` (file tags only); `adopt apply` on a disposable copy (digest `91629c7229309a94`) and live on the equal digest (run `15:17:50Z-7ad5`), approved as `session` | **Each track in both folders**, read from the database on the copy and live alike: Deep House / Low and Tech House / Low; Soul / Low and R&B / Low | met |
+| A218, the move | A218 one's energy set from 1 to 8 in its file, `adopt move` on the copy (`3c6d1a5c362beff9`, two moves) and live on the equal digest (run `15:21:49Z-8c46`) | **Both folders moved**: Deep House / High and Tech House / High, nothing left in either Low | met |
+| A218, the clear | `crate tag second --clear` on both, then `adopt move` on the copy (`c4bb4c64baed3df3`) and live on the equal digest (run `15:23:51Z-654f`) | A218 two **taken out of R&B / Low** by the move (the Soul exception); A218 one stays in Tech House / High until taken out by hand, as the verb says | met |
+| The launch | rekordbox opened at 16:02Z with two rows waiting | **The Auto Analysis dialog read Analysis Mode Normal**, every field the standard; answered Cancel, since this launch was not the visit | read |
+| A218, the hand removal, and what it did | Tech House / High in rekordbox: A218 one shown at position 556; Remove from Playlist from its row menu, rekordbox's own confirm | **rekordbox removed What Da Hell (Sapian) instead**, the row at `TrackNo` 556. The playlist's live rows ran 1 to 557 with 548 missing, A218 one at 557. rekordbox then renumbered the live rows 1 to 555. **Put back by hand**: A218 one removed at 555 once the numbers were whole, What Da Hell added back with the row menu's Add To Playlist; the order read **equal** to the copy taken before the sitting, less the throwaway, 555 rows, no gap. Read only across the library: **45 of 737 playlists hold live numbers that are not 1 to N**, 39 under BY GENRE + ENERGY; of 773 missing positions, 589 are held by a row the product marked removed and 184 by none. Filed **U958 (#1058)**, R-1853 promoted | repaired, U958 filed |
+| A218, the account | none | Not reachable: a throwaway is not on the account, so the mirror cannot place it | not reached |
+| The throwaways removed | Remove from Collection on both in rekordbox; quit, both gone in 8 s; `crate delete review --actor session` (run `16:07:51Z-e756`), the offered set read through the verb's own planner first | **2 offered, both throwaway files, 151 ignored as not local files**; answered `trash` as `session`; `crate tombstone list` shows both. The empty batch folder removed | done |
+
+**Met and closed:** A226 (#1023), A220 (#1009), A218 (#1001). **Filed:** U958 (#1058), the residual on the vocal sub. **Progress only, left open:** A228 (#1029), step 3 (the lag on a throwaway synced playlist, which needs account edits by hand and a reading over half an hour); A217 (#992), the live question at the next label go; A183 (#879), a night that reaches its gate; A222 (#1013), a visit with `dyn` rows. **Read, no change:** U29 (#29), no workflow newly proven live since sitting 104. Waiting on new music, a removal or hardware as before: A224, A225, A232, A202, A129, A5, and A234 (a copy rehearsal of `route resort`, not reached this sitting).
+
 ## Next sitting
 
 **Later the same night, on `d6e7597f`, after U320, R-1037 and U324 landed.** **Met and closed:** A201 (#924), A194 (#906), A179 (#842), A197 (#912), A200 (#922). **Filed:** R-1830's card (#925), R-1844's card (#926). **Progress only, left open:** A190 (#897), Auto Analysis on, the visit waiting for a landing; A129 (#711), a removal of a track landed after `f3dc078`, so the next landing's; A183 (#879), the night. **Decided by the session under Phillip's instruction of 2026-11-21**, each on its card: `--retire` answered at its gate rather than waiting a day for the second sighting, since it writes only Cratekit's record; the first offer of two tracks aborted so A197 takes one; the budget's hour waited out rather than raised; `delete review` run from the session and its offered set read through the planner before `trash`; Cotonete, Parribean Disco left in the Trash and off its TIDAL playlist, since trashing it was the card's proof (put back from the volume's Trash and re-added on TIDAL if wanted); Auto Analysis turned on at this visit, last, so the throwaways were not analysed.
