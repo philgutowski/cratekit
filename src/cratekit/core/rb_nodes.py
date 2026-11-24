@@ -79,7 +79,8 @@ def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[
     THE ONE HOME OF "ONLY WHEN ABSENT" (R-10); a second spelling double inserts
     or skips. One presence query per call, each insert joining the set. Race-free
     ONLY under the write-session lock. A MEMBERSHIP MARKED REMOVED IS NOT PRESENT
-    (R-758), or a track moved back would never return.
+    (R-758), or a track moved back would never return. A playlist it inserted
+    into is closed up at the commit, 1 to N, as a removal's is (U958).
     """
     songs = list(db.get_playlist_songs(PlaylistID=str(playlist.ID)))
     present = {str(song.ContentID) for song in songs if not _writer().membership_removed(song)}
@@ -99,6 +100,11 @@ def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[
         highest = max(highest, number)
         present.add(key)
         inserted.append(key)
+    if inserted:
+        # CLOSED UP AT THE COMMIT TOO (U958 review round two): the binding numbers
+        # an append past every row, marked ones included, so an add into a
+        # playlist holding a marked row would leave a gap rekordbox removes by.
+        _writer().record_touched(db, playlist.ID)
     return inserted
 
 

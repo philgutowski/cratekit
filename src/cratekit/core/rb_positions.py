@@ -16,12 +16,13 @@ a number moved to 0, below every place a live row can hold. Only a row whose
 number changes is written.
 
 **WHERE IT RUNS**: :func:`remove_memberships` records each playlist it marked a
-row in on the write handle's session (:func:`record_touched`), and
-:func:`commit_guarded` closes their gaps just before the binding's commit
-(:func:`close_gaps`), from SQL, each moved live row stamped as U955 stamps a
-renumbered row and each marked row moving its number alone, proven from SQL
-before the commit. So every verb that removes a membership inherits it,
-and the repair verb (``write.numbers``) is the same rule over playlists it
+row in, and :func:`add_memberships` each it inserted into (the binding numbers
+an append past every row, marked ones included), on the write handle's session
+(:func:`record_touched`), and :func:`commit_guarded` closes their gaps just
+before the binding's commit (:func:`close_gaps`), from SQL, each moved live row
+stamped as U955 stamps a renumbered row and each marked row moving its number
+alone, proven from SQL before the commit. So every verb that adds or removes a
+membership inherits it, and the repair verb (``write.numbers``) is the same rule over playlists it
 records itself, with nothing removed.
 """
 

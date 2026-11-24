@@ -1385,7 +1385,8 @@ crate inbox rotate
 - `repair numbers` numbers the live rows of a playlist 1 to N in the order
   rekordbox shows them, for every playlist under the folders Cratekit writes
   (BY GENRE + ENERGY, INBOX, INSPIRATION, Record Labels, Sets and Long Tracks,
-  each Custom Playlists year, the Favorites folder) and any you name with
+  each Custom Playlists year, and the Favorites folder when one live playlist
+  carries the favourites' name) and any you name with
   `--playlist`, never another app's folder. rekordbox's Remove from Playlist
   takes out the row whose stored number equals the row's shown position, so a
   playlist numbered with gaps loses the wrong track when you remove one by
@@ -1393,12 +1394,13 @@ crate inbox rotate
   at `repair.numbers.confirm`; no track joins or leaves. A playlist holding a
   row whose removal mark cannot be read is shown and left alone. `crate
   doctor`'s `library.playlist_numbers` line counts the playlists it would
-  number. Every removal from a playlist Cratekit makes (`adopt move`,
-  `inbox analyzed`, `sync pair`, `favorites refresh`, `organize`)
-  now leaves the playlist 1 to N itself, its removed rows at 0. `sync removed`
-  keeps rekordbox's own Remove from Collection rule, which lowers the rows
-  after a removed track but leaves an older gap, so run the repair once for
-  the gaps older versions left.
+  number. Every track Cratekit adds to or removes from a playlist (`adopt
+  move`, `inbox analyzed`, `sync pair`, `favorites refresh`, `organize`, a
+  landing) now leaves that playlist 1 to N, its removed rows at 0. `sync
+  removed` keeps rekordbox's own Remove from Collection rule, which lowers the
+  rows after a removed track but leaves an older gap, and a playlist no
+  write touches keeps the gaps older versions left, so run the repair once,
+  and again whenever the doctor line counts one.
 - `inbox rotate` moves a batch older than `reports.intake_stale_days` (30)
   into `INBOX / Old` and removes one in Old older than
   `reports.intake_expired_days` (90). Never a track. `inbox refill --pass

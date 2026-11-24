@@ -33,10 +33,12 @@ no row.
 
 ## What U958 changed
 
-- Every removal this product makes closes its playlist up at the commit:
+- Every removal and every add this product makes closes its playlist up at
+  the commit (an add too, since the binding numbers an append past every row,
+  marked ones included):
   the live rows 1 to N in the order rekordbox shows them, the removed rows at
   0, proven from SQL (`rb_positions.close_gaps`, run by `commit_guarded`).
-- `crate repair numbers` numbers the playlists older removals left gapped,
+- `crate repair numbers` numbers the playlists older versions left gapped,
   and `crate doctor`'s `library.playlist_numbers` line counts them.
 - Until the repair has run on a library, a hand removal in a playlist the
   doctor line names may still take the wrong row: read the playlist again

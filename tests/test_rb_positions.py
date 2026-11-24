@@ -410,3 +410,43 @@ def test_a_closing_up_with_no_other_change_moves_the_count_by_one_and_stamps_it(
     W.record_touched(db, playlist.ID)
     W.commit_guarded(db)
     assert _members(db, playlist) == held and _count(db) == count + 1
+
+
+def test_an_add_into_a_playlist_holding_a_marked_row_comes_out_one_to_n(db):
+    """Review round two: the binding numbers an append past every row, marked ones included."""
+    playlist = _playlist(db, "1", "2", "3", "4")
+    _set(db, playlist, t4=6)
+    from sqlalchemy import text
+
+    db.session.execute(
+        text("UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = :p AND ContentID = '2'"),
+        {"p": str(playlist.ID)},
+    )
+    db.session.commit()
+    assert W.add_memberships(db, playlist, ["5", "6"]) == ["5", "6"]
+    W.commit_guarded(db)
+    held = _members(db, playlist)
+    assert _live_order(db, playlist) == ["1", "3", "4", "5", "6"]
+    assert [held[key][0] for key in ("1", "3", "4", "5", "6")] == [1, 2, 3, 4, 5]
+    assert held["2"][:2] == (0, 1)
+
+
+def test_a_closing_up_that_moves_only_marked_rows_takes_no_stamp_and_moves_no_count(db):
+    playlist = _playlist(db, "1", "2", "3")
+    from sqlalchemy import text
+
+    db.session.execute(
+        text(
+            "UPDATE djmdSongPlaylist SET rb_local_deleted = 1, rb_local_usn = 7, "
+            "updated_at = '2026-11-01 09:00:00' WHERE PlaylistID = :p AND ContentID = '3'"
+        ),
+        {"p": str(playlist.ID)},
+    )
+    db.session.commit()
+    count, before = _count(db), _members(db, playlist)
+    W.record_touched(db, playlist.ID)
+    W.commit_guarded(db)
+    after = _members(db, playlist)
+    assert after["3"] == (0, 1, 7, "2026-11-01 09:00:00")
+    assert after["1"] == before["1"] and after["2"] == before["2"]
+    assert _count(db) == count
