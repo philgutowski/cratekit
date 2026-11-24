@@ -225,7 +225,6 @@ def _sweep(replies, *, refusals, discogs=None, count: int | None = None):
 
 
 def _stopped() -> searchers.Refusals:
-    """A run's count after three refusals in a row."""
     refusals = searchers.Refusals()
     _sweep([REFUSED] * 3, refusals=refusals)
     return refusals

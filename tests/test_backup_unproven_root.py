@@ -96,7 +96,6 @@ def _backup(cfg, *, at, runner=None, check=False, full=False, emptied=False, **s
 
 
 def _remote_state(tmp_path) -> dict[str, dict[str, bytes]]:
-    """Everything on the remote: the mirror and every dated archive."""
     return {
         "mirror": _held(_remote(tmp_path) / "mirror"),
         "archive": _held(_remote(tmp_path) / "archive"),
@@ -104,7 +103,6 @@ def _remote_state(tmp_path) -> dict[str, dict[str, bytes]]:
 
 
 def _installation_state() -> dict[str, bytes | None]:
-    """The record and the census, byte for byte, or None where absent."""
     out: dict[str, bytes | None] = {}
     for path in (backup_record.manifest_path(), backup_record.census_path()):
         out[path.name] = path.read_bytes() if path.is_file() else None

@@ -113,7 +113,6 @@ def _compare(first: Path, second: Path, *extra: str) -> int:
 
 
 def _compared(capsys, first: Path, second: Path, *extra: str, code: int) -> str:
-    """What the comparison printed, once it exited with ``code``."""
     assert _compare(first, second, *extra) == code
     return capsys.readouterr().out
 
@@ -738,8 +737,6 @@ def test_a_capture_partial_or_taken_with_another_python_says_so(tmp_path, key, v
 
 @pytest.fixture
 def no_run(monkeypatch):
-    """Fail the test if a capture gets as far as starting its scenario run."""
-
     def refused(*args, **kwargs):
         raise AssertionError(f"the capture started a process: {args}")
 
@@ -990,7 +987,6 @@ def _passing_run(out: Path, tmp_path: Path, expected):
 
 
 def _capture_passing(monkeypatch, tmp_path: Path, expected, *files: str, extra=()) -> int:
-    """A capture over a checkout of ``files`` whose faked run records one scenario."""
     out = tmp_path / "out"
     monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, expected))
     argv = ("--out", str(out), "--root", str(tmp_path / "root"), *extra)

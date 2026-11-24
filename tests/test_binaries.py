@@ -28,7 +28,6 @@ def _make_executable(directory: Path, name: str) -> Path:
 
 
 def _resolve_missing(monkeypatch, tmp_path, name: str):
-    """Drive ``resolve`` to its raising path for ``name`` and return the exception."""
     monkeypatch.setenv("PATH", "/nonexistent")
     monkeypatch.delenv(binaries.env_var(name), raising=False)
     monkeypatch.setattr(binaries, "fallback_dirs", lambda: (tmp_path,))
@@ -210,7 +209,6 @@ _BARE_ARGV = re.compile(r"""\[\s*["'](%s)["']""" % "|".join(map(re.escape, _LINT
 
 
 def bare_binary_argv(source: str) -> list[str]:
-    """Return every line that starts an argv list with a bare binary name."""
     return [
         f"{number}: {line.strip()}"
         for number, line in enumerate(source.splitlines(), 1)

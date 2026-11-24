@@ -73,15 +73,12 @@ def _seed(cfg) -> Path:
 
 @pytest.fixture
 def music(cfg, real_rclone) -> Path:
-    """The seeded library's music folder, backed up once at ``MOMENT``."""
     music = _seed(cfg)
     _backup(cfg, at=MOMENT)
     return music
 
 
 class Counting:
-    """The real runner, with every command it was handed kept in order."""
-
     def __init__(self, fail: str | None = None) -> None:
         self.ran: list[backup.Command] = []
         self.fail = fail
@@ -113,7 +110,6 @@ def _backup(cfg, *, at, runner=None, check=False, full=False, dry_run=False, onl
 
 
 def _planned(cfg, at, only=FILES, **seams):
-    """The plan of one portion, as the run at ``at`` would make it."""
     return backup.plan_backup(cfg, now=at, only=only, settings_dirs=(), **seams).portion(only)
 
 

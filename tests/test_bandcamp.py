@@ -103,8 +103,6 @@ def test_an_expired_session_is_rejected_never_an_empty_collection():
 
 
 def _posting(answer: bandcamp.Response) -> FakeAccount:
-    """The four purchases, every page of them answered ``answer``."""
-
     class Posting(FakeAccount):
         def post_json(self, url, payload, *, cookie):
             return answer
@@ -191,8 +189,6 @@ def test_the_file_is_fetched_from_the_link_the_stat_answer_names(tmp_path):
 
 
 def _stat_answering(answer: bandcamp.Response):
-    """An account whose stat request answers ``answer``, and the offers its page lists."""
-
     class Stat(FakeAccount):
         def get(self, url, *, cookie):
             if "/statdownload/" in url:

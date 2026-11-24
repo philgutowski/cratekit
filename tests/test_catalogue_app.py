@@ -49,8 +49,6 @@ class Clock:
 
 
 class Answer:
-    """One HTTP answer: a status, a body the client decodes, and headers."""
-
     def __init__(self, status_code: int = 200, body: Any = None, *, text: bool = False) -> None:
         self.status_code = status_code
         self.headers: dict[str, str] = {}
@@ -227,7 +225,6 @@ def opened(monkeypatch, gate: Gate, transport: AppTransport | None = None,
 
 def recorded(monkeypatch, gate: Gate, transport: AppTransport | None = None,
              account: AccountClient | None = None) -> tuple[AccountClient, Any, AppTransport]:
-    """``opened`` with both app values recorded first."""
     record_app()
     return opened(monkeypatch, gate, transport, account)
 
