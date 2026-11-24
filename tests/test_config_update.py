@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.cli import doctor, gates, output, prompt
+from cratekit.cli import doctor, gates, prompt
 from cratekit.cli import setup as setup_verb
 from cratekit.cli.verbs import profile as profile_verb
 from cratekit.core import config, profiles
@@ -39,7 +39,6 @@ def _trap_standard_input(monkeypatch):
     class Trapped:
         def __getattr__(self, name):
             raise AssertionError(f"a test in this file read standard input (sys.stdin.{name})")
-
     monkeypatch.setattr(sys, "stdin", Trapped())
 
 
@@ -70,17 +69,14 @@ def configured(library, monkeypatch):
     config.save(config.from_dict(document_for(library)))
     config.reset_cache()
     cfg = config.load()
-    config.atomic_write_bytes(
-        setup_verb.template_text("default").encode("utf-8"),
-        config.state_path("taxonomy_active", cfg),
-    )
+    template = setup_verb.template_text("default").encode("utf-8")
+    config.atomic_write_bytes(template, config.state_path("taxonomy_active", cfg))
     monkeypatch.setattr(doctor, "Probes", lambda: doctor_machines.green())
     return cfg
 
 
 def drive(argv: list[str]) -> tuple[int, str, str]:
     import io
-
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)
     return code, out.getvalue(), err.getvalue()
@@ -94,18 +90,16 @@ def on_disk() -> dict:
 def lock_is_free() -> bool:
     """Whether the write lock is free, asked through a second open file description."""
     import fcntl  # noqa: PLC0415
-
     path = config.config_path()
     lock = path.with_name(path.name + ".migrate.lock")
     lock.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return False
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(fd, fcntl.LOCK_UN)
         return True
+    except BlockingIOError:
+        return False
     finally:
         os.close(fd)
 
@@ -118,7 +112,6 @@ def once(act):
         if not fired:
             fired.append(True)
             act()
-
     return fire
 
 
@@ -129,35 +122,31 @@ def _another_writer(table: str, key: str, value):
         def revise(document):
             document.setdefault(table, {})[key] = value
             return document
-
         config.update(revise)
-
     return write
 
 
-def _between_setup_read_and_write(monkeypatch, act) -> None:
+def _between_the_read_and_the_write(monkeypatch, owner, name: str, act) -> None:
+    """``owner.name`` patched so ``act`` runs, once, before the real one answers."""
     second_writer = once(act)
-    original = setup_verb._propose_pin
+    original = getattr(owner, name)
 
     def between_the_read_and_the_write(*args, **kwargs):
         second_writer()
         return original(*args, **kwargs)
+    monkeypatch.setattr(owner, name, between_the_read_and_the_write)
 
-    monkeypatch.setattr(setup_verb, "_propose_pin", between_the_read_and_the_write)
 
-
-# 1. Neither set of answers is lost.
+def _between_setup_read_and_write(monkeypatch, act) -> None:
+    _between_the_read_and_the_write(monkeypatch, setup_verb, "_propose_pin", act)
 
 
 def test_a_profile_change_made_while_the_wizard_was_deciding_survives_the_wizard(
-    configured, monkeypatch, tmp_path
-):
+    configured, monkeypatch, tmp_path):
     """R-116's cost: the wizard never asked about the profile, so it may not write one."""
     elsewhere = str(tmp_path / "elsewhere")
     _between_setup_read_and_write(
-        monkeypatch, lambda: config.update(lambda document: profiles.apply(document, "slim"))
-    )
-
+        monkeypatch, lambda: config.update(lambda document: profiles.apply(document, "slim")))
     code, out, err = drive(["--output", "json", "setup", "--staging", elsewhere])
     assert code == int(ExitCode.OK), (out, err)
     written = on_disk()
@@ -166,19 +155,11 @@ def test_a_profile_change_made_while_the_wizard_was_deciding_survives_the_wizard
 
 
 def test_a_wizard_that_finished_while_a_profile_change_was_deciding_survives_it(
-    configured, monkeypatch, tmp_path
-):
+    configured, monkeypatch, tmp_path):
     """The same cycle from the other verb, which is why the lock is not setup's."""
     elsewhere = str(tmp_path / "elsewhere")
-    second_writer = once(_another_writer("paths", "download_staging", elsewhere))
-    original = output.digest_of
-
-    def between_the_read_and_the_write(payload):
-        second_writer()
-        return original(payload)
-
-    monkeypatch.setattr(profile_verb.output, "digest_of", between_the_read_and_the_write)
-
+    act = _another_writer("paths", "download_staging", elsewhere)
+    _between_the_read_and_the_write(monkeypatch, profile_verb.output, "digest_of", act)
     code, out, err = drive(PROFILE_SET_SLIM)
     assert code == int(ExitCode.OK), (out, err)
     written = on_disk()
@@ -186,15 +167,10 @@ def test_a_wizard_that_finished_while_a_profile_change_was_deciding_survives_it(
     assert written["profile"]["name"] == "slim"
 
 
-# 2. A value both changed is a refusal, never a pick.
-
-
 def test_two_wizards_answering_one_key_differently_refuse_and_write_nothing(
-    configured, monkeypatch, tmp_path
-):
+    configured, monkeypatch, tmp_path):
     ours, theirs = str(tmp_path / "ours"), str(tmp_path / "theirs")
     _between_setup_read_and_write(monkeypatch, _another_writer("paths", "download_staging", theirs))
-
     code, out, _err = drive(["--output", "json", "setup", "--staging", ours])
     envelope = json.loads(out)
     assert code == int(ExitCode.PRECONDITION)
@@ -206,12 +182,10 @@ def test_two_wizards_answering_one_key_differently_refuse_and_write_nothing(
 
 
 def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
-    configured, monkeypatch
-):
+    configured, monkeypatch):
     """A module toggled between the answer and the write makes the decision stale."""
     full, slim = profiles.resolve("full", {}), profiles.resolve("slim", {})
     toggled = sorted(full.modules - slim.modules)[0]
-
     second_writer = once(_another_writer("modules", toggled, False))
     original_require = gates.Gates.require
 
@@ -219,9 +193,7 @@ def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
         chosen = original_require(self, spec, **kwargs)
         second_writer()
         return chosen
-
     monkeypatch.setattr(gates.Gates, "require", answered_and_then_the_document_moves)
-
     code, out, _err = drive(PROFILE_SET_SLIM)
     envelope = json.loads(out)
     assert envelope["cause"]["reason"] == "decision-stale", envelope
@@ -229,9 +201,6 @@ def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
     written = on_disk()
     assert written["profile"]["name"] == "full", "a stale decision was applied"
     assert written["modules"] == {toggled: False}
-
-
-# 3. The lock is not held while a person is being asked.
 
 
 def test_the_wizard_does_not_hold_the_write_lock_while_it_asks(library, monkeypatch, tmp_path):
@@ -242,11 +211,9 @@ def test_the_wizard_does_not_hold_the_write_lock_while_it_asks(library, monkeypa
     def answer():
         observed.append(lock_is_free())
         return "slim\n"
-
     real_prompter = prompt.Prompter
     monkeypatch.setattr(setup_verb.prompt, "Prompter", lambda: real_prompter(
         read_line=answer, read_secret=lambda _q: "", write=lambda _text: None))
-
     drive([
         "--output", "json", "setup", "--library-root", str(library),
         "--db-path", str(library / "db" / "master.db"), "--volume-id", doctor_machines.VOLUME,
@@ -255,9 +222,6 @@ def test_the_wizard_does_not_hold_the_write_lock_while_it_asks(library, monkeypa
     assert observed, "the profile was never asked, so this test observed nothing"
     assert all(observed), "the write lock was held while a person was being asked"
     assert on_disk()["profile"]["name"] == "slim"
-
-
-# 4. The cycle itself.
 
 
 def test_update_reads_the_document_after_it_holds_the_lock(configured, monkeypatch, tmp_path):
@@ -271,14 +235,12 @@ def test_update_reads_the_document_after_it_holds_the_lock(configured, monkeypat
         acquired = original_enter(self)
         config.atomic_write_bytes(config.from_dict(moved).to_toml_bytes(), config.config_path())
         return acquired
-
     monkeypatch.setattr(config.exclusive_lock, "__enter__", another_process_finished_while_we_waited)
     seen: list[str] = []
 
     def revise(document):
         seen.append(document["paths"]["download_staging"])
         return profiles.apply(document, "slim")
-
     config.update(revise)
     assert seen == [elsewhere]
     written = on_disk()
@@ -292,15 +254,13 @@ def test_update_holds_the_lock_for_the_whole_cycle_and_releases_it(configured):
     def revise(document):
         held.append(not lock_is_free())
         return document
-
     config.update(revise)
     assert held == [True]
     assert lock_is_free()
 
 
 def test_save_takes_the_same_lock_so_it_cannot_land_inside_another_cycle(
-    configured, monkeypatch
-):
+    configured, monkeypatch):
     held: list[bool] = []
     original = config.atomic_write_bytes
 
@@ -308,7 +268,6 @@ def test_save_takes_the_same_lock_so_it_cannot_land_inside_another_cycle(
         if path == config.config_path():
             held.append(not lock_is_free())
         return original(payload, path, **kwargs)
-
     monkeypatch.setattr(config, "atomic_write_bytes", observed)
     config.save(configured)
     assert held == [True]
@@ -319,7 +278,6 @@ def test_a_refusal_inside_the_cycle_writes_nothing_and_releases_the_lock(configu
 
     def revise(_document):
         raise config.ConfigConflict(["library.root"])
-
     with pytest.raises(config.ConfigConflict):
         config.update(revise)
     assert config.config_path().read_bytes() == before
@@ -332,7 +290,6 @@ def test_an_invalid_revision_is_refused_before_a_byte_is_written(configured):
     def revise(document):
         del document["library"]["volume_id"]
         return document
-
     with pytest.raises(config.ConfigInvalid):
         config.update(revise)
     assert config.config_path().read_bytes() == before
@@ -344,7 +301,6 @@ def test_update_on_a_machine_with_no_configuration_starts_from_an_empty_document
     def revise(document):
         seen.append(dict(document))
         return document_for(library)
-
     cfg, path = config.update(revise)
     assert seen == [{}]
     assert path == config.config_path()
@@ -370,7 +326,6 @@ def test_an_incomplete_document_reaches_the_revision_as_it_is_spelled(library):
     def revise(document):
         seen.append(document)
         return {**document_for(library), "profile": document["profile"]}
-
     config.update(revise)
     assert seen == [incomplete]
     assert on_disk()["profile"]["name"] == "slim"
@@ -396,14 +351,12 @@ _WORKER = textwrap.dedent(
         return document
 
     config.update(revise)
-    """
-)
+    """)
 
 
 def test_three_real_processes_writing_at_once_all_keep_their_answers(configured, tmp_path):
     """Three processes each read, wait for the others, and write one toggle; all survive."""
     import time  # noqa: PLC0415
-
     modules = list(profiles.MODULES[:3])
     go = tmp_path / "go"
     workers = []
@@ -412,9 +365,7 @@ def test_three_real_processes_writing_at_once_all_keep_their_answers(configured,
             ready = tmp_path / f"ready-{module}"
             worker = subprocess.Popen(
                 [sys.executable, "-c", _WORKER, module, str(ready), str(go)],
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-                stderr=subprocess.PIPE,
-            )
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, stderr=subprocess.PIPE)
             workers.append((ready, worker))
         deadline = time.monotonic() + 60
         while not all(ready.exists() for ready, _ in workers):
@@ -429,11 +380,7 @@ def test_three_real_processes_writing_at_once_all_keep_their_answers(configured,
             if worker.poll() is None:
                 worker.kill()
                 worker.wait()
-
     assert on_disk()["modules"] == {module: False for module in sorted(modules)}
-
-
-# 5. merge_changes(base, desired, current).
 
 
 BASE = {"a": {"x": 1, "y": 2}, "b": {"z": [1, 2]}, "top": "t"}
@@ -452,8 +399,7 @@ def _doc(**changes) -> dict:
 
 
 @pytest.mark.parametrize(
-    "desired,current,merged",
-    [
+    "desired,current,merged", [
         (_doc(a__x=9), _doc(), _doc(a__x=9)),
         (_doc(a__x=9), _doc(a__y=7, top="moved"),
          {"a": {"x": 9, "y": 7}, "b": {"z": [1, 2]}, "top": "moved"}),
@@ -465,23 +411,19 @@ def _doc(**changes) -> dict:
     ],
     ids=["unmoved-document-is-simply-replaced", "only-the-callers-leaves-are-applied",
          "carried-value-never-overwrites-the-other-writer", "one-value-from-both-is-agreement",
-         "removed-key-removed-and-added-key-added"],
-)
+         "removed-key-removed-and-added-key-added"])
 def test_merge_changes(desired, current, merged):
     assert config.merge_changes(BASE, desired, current) == merged
 
 
 @pytest.mark.parametrize(
-    "desired,current,keys",
-    [
+    "desired,current,keys", [
         # Every conflicting key is named, not only the first.
         (_doc(a__x=9, top="ours"), _doc(a__x=8, top="theirs"), ("a.x", "top")),
         (_doc(a__x=9), _doc(a__x=None), ("a.x",)),
         # A list is one answer and is never merged element by element.
         (_doc(b__z=[1, 2, 3]), _doc(b__z=[0, 1, 2]), ("b.z",)),
-    ],
-    ids=["every-conflicting-key-named", "changed-here-removed-there", "a-list-is-one-answer"],
-)
+    ], ids=["every-conflicting-key-named", "changed-here-removed-there", "a-list-is-one-answer"])
 def test_a_value_both_writers_changed_is_a_conflict(desired, current, keys):
     with pytest.raises(config.ConfigConflict) as refused:
         config.merge_changes(BASE, desired, current)
@@ -502,9 +444,6 @@ def test_a_conflict_carries_the_setup_remedy_as_a_token():
     assert config.ConfigConflict.remedy is config.Remedy.RUN_SETUP
 
 
-# 6. Nothing writes the document any other way.
-
-
 def _calls_config_save(tree: ast.AST) -> list[int]:
     """Lines calling ``cratekit.core.config.save``, through the module's imports and aliases."""
     module_names: set[str] = set()
@@ -520,17 +459,10 @@ def _calls_config_save(tree: ast.AST) -> list[int]:
             }
     found = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Name) and func.id in function_names:
-            found.append(node.lineno)
-        elif (
-            isinstance(func, ast.Attribute)
-            and func.attr == "save"
-            and isinstance(func.value, ast.Name)
-            and func.value.id in module_names
-        ):
+        func = node.func if isinstance(node, ast.Call) else None
+        named = isinstance(func, ast.Name) and func.id in function_names
+        held = isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+        if named or (held and func.attr == "save" and func.value.id in module_names):
             found.append(node.lineno)
     return found
 
@@ -548,17 +480,14 @@ def test_the_guard_below_can_see_every_spelling_of_the_call():
 
 
 def test_nothing_under_src_writes_the_whole_document_after_reading_it():
-    """Every shipped writer goes through ``config.update``, never ``config.save``
-    (R-116).
-
-    A file that never spells ``save`` as Python reads identifiers (NFKC) is not parsed.
-    """
+    """Every shipped writer goes through ``config.update``, never ``config.save`` (R-116)."""
     offenders = {}
     for path in sorted(SRC.rglob("*.py")):
         relative = path.relative_to(SRC).as_posix()
         if relative == "core/config.py" or relative.startswith("_vendor/"):
             continue
         text = path.read_text(encoding="utf-8")
+        # A file that never spells ``save`` as Python reads identifiers (NFKC) is not parsed.
         if "save" not in unicodedata.normalize("NFKC", text):
             continue
         found = _calls_config_save(parsed(text))

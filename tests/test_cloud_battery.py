@@ -1,8 +1,7 @@
 """Tests for ``scripts/cloud_battery.py``, the Linux battery read against the base.
 
-The clones are real and shallow over ``file://`` (U200), the scratch suites fail chosen
-whole ids (U268), and places are read off a mount table the test writes (U273).
-"""
+The clones are real and shallow over ``file://`` (U200), the scratch suites fail chosen whole ids
+(U268), and places are read off a mount table the test writes (U273)."""
 
 from __future__ import annotations
 
@@ -26,9 +25,8 @@ HOST = socket.gethostname()
 
 def _load_battery():
     """Load ``scripts/cloud_battery.py`` by path, as the driver's tests load it."""
-    spec = importlib.util.spec_from_file_location(
-        "cratekit_cloud_battery", REPO_ROOT / "scripts" / "cloud_battery.py"
-    )
+    path = REPO_ROOT / "scripts" / "cloud_battery.py"
+    spec = importlib.util.spec_from_file_location("cratekit_cloud_battery", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -79,8 +77,7 @@ def _baseline_file(
         f"# commit abc123 host {HOST}{fields}\n# 1 failed\n"
         + "".join(f"# on disk test {one}\n" for one in on_disk)
         + "".join(f"{i}\n" for i in ids),
-        encoding="utf-8",
-    )
+        encoding="utf-8")
     monkeypatch.setattr(battery, "BASELINE", baseline)
     return baseline
 
@@ -101,10 +98,8 @@ def places(tmp_path, monkeypatch) -> tuple[Path, Path]:
     for one in (memory, disk):
         one.mkdir(parents=True)
     table = root / "mounts"
-    table.write_text(
-        f"/dev/vda / ext4 rw 0 0\ntmpfs {os.path.realpath(memory)} tmpfs rw 0 0\n",
-        encoding="utf-8",
-    )
+    mounts = f"/dev/vda / ext4 rw 0 0\ntmpfs {os.path.realpath(memory)} tmpfs rw 0 0\n"
+    table.write_text(mounts, encoding="utf-8")
     monkeypatch.setattr(battery, "MOUNTS", table)
     monkeypatch.setattr(battery, "MEMORY_ROOT", memory)
     monkeypatch.setattr(battery, "MEMORY_FLOOR", 0)
@@ -113,8 +108,6 @@ def places(tmp_path, monkeypatch) -> tuple[Path, Path]:
 
 
 # Full history before anything is measured, U200
-
-
 @pytest.fixture
 def origin(tmp_path) -> tuple[Path, str]:
     """A repository on `main` with three commits; returns it and its first commit."""
@@ -126,6 +119,12 @@ def origin(tmp_path) -> tuple[Path, str]:
         assert _git(repo, "add", "f.txt").returncode == 0
         assert _git(repo, "commit", "-m", f"c{n}").returncode == 0
     return repo, _git(repo, "rev-list", "--max-parents=0", "HEAD").stdout.strip()
+
+
+def _one_failure(place=None, **counts) -> object:
+    """A measured run of one test that failed, ``tests/a.py::t``, in ``place``."""
+    return battery.SuiteRun(
+        frozenset({"tests/a.py::t"}), "1 failed", 1, frozenset(), 1, **counts, place=place)
 
 
 def _clone(origin_repo: Path, dest: Path, *, shallow: bool) -> Path:
@@ -150,31 +149,22 @@ def _shallow_clone(origin, tmp_path, monkeypatch) -> tuple[Path, Path]:
 
 
 def test_a_shallow_clone_is_unshallowed_and_the_baseline_header_says_so(
-    origin, tmp_path, monkeypatch, places
-):
+        origin, tmp_path, monkeypatch, places):
     clone, state = _shallow_clone(origin, tmp_path, monkeypatch)
     first = origin[1]
     assert _git(clone, "cat-file", "-e", first).returncode != 0, "the old commit is absent"
-    monkeypatch.setattr(
-        battery,
-        "measure_suite",
-        lambda place=None: battery.SuiteRun(
-            frozenset({"tests/a.py::t"}), "1 failed", 1, frozenset(), 1, place=place
-        ),
-    )
+    monkeypatch.setattr(battery, "measure_suite", _one_failure)
     assert battery.cmd_baseline(None) == 0
     assert _is_shallow(clone) == "false"
     assert _git(clone, "cat-file", "-e", first).returncode == 0
     header = (state / "baseline.txt").read_text(encoding="utf-8").splitlines()[0]
     assert header.endswith(" temp disk history full ids whole")
-    assert battery.read_baseline() == battery.Baseline(
-        {"tests/a.py::t"}, header.split()[2], "disk", ()
-    )
+    expected = battery.Baseline({"tests/a.py::t"}, header.split()[2], "disk", ())
+    assert battery.read_baseline() == expected
 
 
 def test_a_remote_that_cannot_serve_the_history_refuses_baseline_and_compare(
-    origin, tmp_path, monkeypatch, capsys, places
-):
+        origin, tmp_path, monkeypatch, capsys, places):
     clone, state = _shallow_clone(origin, tmp_path, monkeypatch)
     origin[0].rename(tmp_path / "gone")
     _refuse_runs(monkeypatch, "static_checks", "measure_suite")
@@ -187,8 +177,7 @@ def test_a_remote_that_cannot_serve_the_history_refuses_baseline_and_compare(
 
 
 def test_a_red_ruff_or_scan_refuses_baseline_and_compare_before_the_suite(
-    tmp_path, monkeypatch, places
-):
+        tmp_path, monkeypatch, places):
     state = _point(monkeypatch, tmp_path)
     monkeypatch.setattr(battery, "static_checks", lambda: False)
     _refuse_runs(monkeypatch, "measure_suite")
@@ -208,7 +197,6 @@ def test_a_complete_clone_runs_no_fetch(origin, tmp_path, monkeypatch):
     def recording_run(cmd, *args, **kwargs):
         calls.append(list(cmd))
         return real_run(cmd, *args, **kwargs)
-
     monkeypatch.setattr(battery.subprocess, "run", recording_run)
     assert battery.ensure_full_history(clone) is None
     assert calls, "ensure_full_history read nothing"
@@ -232,11 +220,9 @@ def test_a_directory_git_cannot_read_is_never_read_as_complete_or_clean(tmp_path
         (" temp tmpfs history full ids whole", ["U273"]),
         (" temp elsewhere history full ids whole", ["U273"]),
     ],
-    ids=["before-u200", "shallow", "before-u268", "before-u273", "a-filesystem", "unknown"],
-)
+    ids=["before-u200", "shallow", "before-u268", "before-u273", "a-filesystem", "unknown"])
 def test_a_baseline_without_a_field_compare_needs_is_refused_saying_why(
-    fields, said, tmp_path, monkeypatch, capsys
-):
+        fields, said, tmp_path, monkeypatch, capsys):
     """A baseline from before U268 kept ids cut at a space, so it is never read beside whole ids."""
     _baseline_file(tmp_path, monkeypatch, fields=fields, ids=("tests/a.py::t[one",))
     _refuse_runs(monkeypatch)
@@ -247,8 +233,6 @@ def test_a_baseline_without_a_field_compare_needs_is_refused_saying_why(
 
 
 # The suite run reads a work stealing run exactly, U251
-
-
 def test_the_suite_command_leaves_the_distribution_to_addopts(monkeypatch, places):
     """The battery passes nothing that would override ``pyproject.toml``."""
     seen = []
@@ -256,13 +240,9 @@ def test_the_suite_command_leaves_the_distribution_to_addopts(monkeypatch, place
     def recording_run(cmd, env=None):
         seen.append((cmd, Path(env["TMPDIR"])))
         assert seen[-1][1].is_dir()
-        Path(env[battery.REPORT_VARIABLE]).write_text(
-            '{"failed": {"ids": ["tests/a.py::t"], "counted": 1},'
-            ' "error": {"ids": [], "counted": 0}}',
-            encoding="utf-8",
-        )
+        report = json.dumps(_report(failed=["tests/a.py::t"]))
+        Path(env[battery.REPORT_VARIABLE]).write_text(report, encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 1, stdout="1 failed, 2 passed\n", stderr="")
-
     monkeypatch.setattr(battery, "run", recording_run)
     measured = battery.measure_suite("disk")
     assert (measured.ids, measured.summary, measured.place) == (
@@ -294,10 +274,8 @@ def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkey
 
 
 # Every failing id is read and compared whole, U268
-
 #: Ids differing only after a space or a summary's ` - `; which fail is read from the environment.
 SPACED_SUITE = '''import os
-
 import pytest
 FAILING = set(filter(None, os.environ.get("BATTERY_FIXTURE_FAILING", "").split("|")))
 @pytest.mark.parametrize("case", ["one two", "one three", "x - y", "x - z"])
@@ -341,11 +319,9 @@ def _listed_under(out: str, heading: str) -> list[str]:
         ("setup a", "setup b", [f"{RESOURCE}[setup b]"], [f"{RESOURCE}[setup a]"], 0),
         ("one two|x - y|setup a", "one two|x - y|setup a", [], [], 3),
     ],
-    ids=["after-a-space", "the-summary-separator", "an-error", "the-same-failures"],
-)
+    ids=["after-a-space", "the-summary-separator", "an-error", "the-same-failures"])
 def test_compare_reads_each_failure_by_its_whole_id(
-    spaced, monkeypatch, capsys, base, branch, new, gone, still
-):
+        spaced, monkeypatch, capsys, base, branch, new, gone, still):
     monkeypatch.setenv(FAILING_VARIABLE, base)
     assert battery.cmd_baseline(None) == 0
     capsys.readouterr()
@@ -393,8 +369,7 @@ def _report(failed=(), errors=(), failed_counted=None, errors_counted=None) -> d
         (["tests/a.py::t[a b]", "tests/a.py::t[a c]"], ["tests/b.py::u[x - y]", "tests/c.py"],
          "2 failed, 9 passed, 2 errors in 0.10s"),
     ],
-    ids=["singular", "plural"],
-)
+    ids=["singular", "plural"])
 def test_a_report_that_agrees_with_the_summary_line_is_read(failed, errors, summary):
     """pytest writes `1 error` and `2 errors`; both are counts, never a refusal."""
     assert battery.read_report(_report(failed, errors), summary) == {*failed, *errors}
@@ -421,8 +396,7 @@ def test_a_report_that_agrees_with_the_summary_line_is_read(failed, errors, summ
         *("an-error-the-summary-never-counted", "counted-but-not-listed", "no-error-entry"),
         *("an-empty-id", "a-line-break", "a-carriage-return", "a-vertical-tab"),
         *("a-line-separator", "padded", "a-comment", "not-a-string"),
-    ],
-)
+    ])
 def test_a_report_that_cannot_be_read_whole_is_refused(report, summary):
     with pytest.raises(SystemExit, match="cannot be read"):
         battery.read_report(report, summary)
@@ -433,15 +407,12 @@ def test_a_run_that_wrote_no_report_is_refused(spaced, monkeypatch):
 
     def summary_only(cmd, env=None):
         return subprocess.CompletedProcess(cmd, 1, stdout="1 failed, 2 passed\n", stderr="")
-
     monkeypatch.setattr(battery, "run", summary_only)
     with pytest.raises(SystemExit, match="wrote no report"):
         battery.measure_suite("disk")
 
 
 # The run record the mutation driver reads (U271, ``tests/test_mutation_driver.py``).
-
-
 @pytest.fixture
 def judged_repo(tmp_path, monkeypatch, places) -> Path:
     """A git repository holding the spaced suite, the battery pointed at it."""
@@ -479,7 +450,6 @@ def test_each_run_records_every_key_the_driver_reads(judged_repo, monkeypatch):
     assert record["known_failures_sha256"] == _digest(judged_repo)
     # The release reads compare's verdict only, never a baseline's.
     assert not (judged_repo / ".cloud-battery" / "last-compare.txt").exists()
-
     assert battery.cmd_compare(None) == 0
     record = _record(judged_repo)
     expected = dict(
@@ -487,11 +457,9 @@ def test_each_run_records_every_key_the_driver_reads(judged_repo, monkeypatch):
         host=HOST, root=str(judged_repo.resolve()), python=sys.executable,
         known_failures_sha256=_digest(judged_repo), verdict="clean", collected=6, ran=6,
         exit_code=1, pytest_addopts="-p no:cacheprovider", failing=[f"{SPACED}[one two]"],
-        collect_errors=[],
-    )
+        collect_errors=[])
     assert {key: record[key] for key in expected} == expected
     assert _last(judged_repo) == f"{head} clean\n"
-
     monkeypatch.setenv(FAILING_VARIABLE, "one two|one three")
     assert battery.cmd_compare(None) == 1
     record = _record(judged_repo)
@@ -507,7 +475,6 @@ def _during_the_run(monkeypatch, act) -> None:
         measured = real(place)
         act()
         return measured
-
     monkeypatch.setattr(battery, "measure_suite", measure)
 
 
@@ -526,7 +493,6 @@ def test_a_commit_made_during_the_run_is_never_recorded_as_measured(judged_repo,
     header = (judged_repo / ".cloud-battery" / "baseline.txt").read_text().splitlines()[0]
     assert measured_head.startswith(header.split()[2])
     assert _record(judged_repo)["clean_tree"] is False
-
     compared_head = _head(judged_repo)
     assert compared_head != measured_head
     assert battery.cmd_compare(None) == 0
@@ -562,7 +528,6 @@ def test_collection_errors_the_report_does_not_list_as_errors_are_unknown():
 
 
 SKIPPING_SUITE = '''import pytest
-
 @pytest.fixture
 def broken():
     raise RuntimeError("cannot be set up")
@@ -591,12 +556,9 @@ def test_a_skip_an_unrun_xfail_and_a_setup_error_each_count_as_run(tmp_path, mon
 
 
 # Temporary files in one named place, memory or disk, U273
-
-
 @pytest.mark.parametrize(("measured", "asked"), [("memory", "disk"), ("disk", "memory")])
 def test_a_compare_in_the_other_place_from_its_baseline_is_refused(
-    measured, asked, places, tmp_path, monkeypatch, capsys
-):
+        measured, asked, places, tmp_path, monkeypatch, capsys):
     _baseline_file(tmp_path, monkeypatch, measured)
     _refuse_runs(monkeypatch)
     assert battery.main(["compare", "--temp", asked]) == 2
@@ -613,10 +575,7 @@ def test_a_compare_naming_no_place_runs_in_the_baselines(place, places, tmp_path
 
     def measured(where=None):
         seen.append(where)
-        return battery.SuiteRun(
-            frozenset({"tests/a.py::t"}), "1 failed", 1, frozenset(), 1, ran=1, place=where
-        )
-
+        return _one_failure(where, ran=1)
     monkeypatch.setattr(battery, "measure_suite", measured)
     assert battery.main(["compare"]) == 0
     assert battery.main(["compare", "--temp", place]) == 0
@@ -624,8 +583,7 @@ def test_a_compare_naming_no_place_runs_in_the_baselines(place, places, tmp_path
 
 
 def test_a_place_the_machine_cannot_give_refuses_baseline_and_compare(
-    places, tmp_path, monkeypatch, capsys
-):
+        places, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(battery, "MEMORY_FLOOR", 2**80)
     _refuse_runs(monkeypatch)
     assert battery.main(["baseline", "--temp", "memory"]) == 1
@@ -638,15 +596,12 @@ def test_a_place_the_machine_cannot_give_refuses_baseline_and_compare(
 
 def test_a_mount_table_is_read_by_its_longest_mount_point(tmp_path, monkeypatch):
     table = tmp_path / "mounts"
-    table.write_text(
-        "/dev/vda / ext4 rw 0 0\n"
-        "tmpfs /dev/shm tmpfs rw 0 0\n"
-        "tmpfs /srv/with\\040space tmpfs rw 0 0\n"
-        "/dev/vdb /srv ext4 rw 0 0\n"
-        "overlay /data ext4 rw 0 0\n"
-        "tmpfs /data tmpfs rw 0 0\n",
-        encoding="utf-8",
+    mounts = (
+        "/dev/vda / ext4 rw 0 0\n", "tmpfs /dev/shm tmpfs rw 0 0\n",
+        "tmpfs /srv/with\\040space tmpfs rw 0 0\n", "/dev/vdb /srv ext4 rw 0 0\n",
+        "overlay /data ext4 rw 0 0\n", "tmpfs /data tmpfs rw 0 0\n",
     )
+    table.write_text("".join(mounts), encoding="utf-8")
     monkeypatch.setattr(battery, "MOUNTS", table)
     # The later of two mounts at `/data` covers the earlier.
     for path, kind in (
@@ -676,8 +631,7 @@ def test_each_place_is_given_only_where_it_is_what_it_names(places, monkeypatch)
 
 
 def test_a_memory_run_whose_disk_rerun_cannot_be_given_is_refused_before_it_runs(
-    places, tmp_path, monkeypatch, capsys
-):
+        places, tmp_path, monkeypatch, capsys):
     """The disk the rerun needs is checked first, never after a whole run in memory."""
     monkeypatch.setattr(battery, "disk_root", lambda: places[0])
     _refuse_runs(monkeypatch)
@@ -694,7 +648,6 @@ def test_a_memory_run_whose_disk_rerun_cannot_be_given_is_refused_before_it_runs
 PLACED_SUITE = '''import os
 import tempfile
 from pathlib import Path
-
 import pytest
 def _note(name):
     with open(os.environ["PLACED_LOG"], "a", encoding="utf-8") as log:
@@ -773,8 +726,7 @@ def test_on_disk_the_suite_runs_once_and_never_in_memory(placed):
 @pytest.mark.parametrize(
     ("listed", "failing", "summary"),
     [((NEEDS_A_DISK, FAILS_ON_DISK), {FAILS_ON_DISK}, "1 failed"), ((), {NEEDS_A_DISK}, "")],
-    ids=["a-listed-test-failing-on-disk", "an-unlisted-test-failing-in-memory"],
-)
+    ids=["a-listed-test-failing-on-disk", "an-unlisted-test-failing-in-memory"])
 def test_the_disk_run_stands_only_for_the_tests_listed(placed, monkeypatch, listed, failing, summary):
     monkeypatch.setattr(battery, "ON_DISK", listed)
     if listed:
@@ -788,8 +740,7 @@ def test_the_disk_run_stands_only_for_the_tests_listed(placed, monkeypatch, list
 @pytest.mark.parametrize(
     "listed",
     ["tests/test_placed.py::test_skipped_on_disk", "tests/test_placed.py::test_not_there"],
-    ids=["skipped-on-disk", "not-collected"],
-)
+    ids=["skipped-on-disk", "not-collected"])
 def test_an_on_disk_run_that_did_not_run_a_listed_test_is_refused(listed, placed, monkeypatch):
     monkeypatch.setattr(battery, "ON_DISK", (NEEDS_A_DISK, listed))
     with pytest.raises(SystemExit, match="cannot"):
@@ -806,15 +757,13 @@ def test_a_baseline_header_names_its_place_and_lists_its_tests_on_disk(placed, c
     assert any(line.startswith("# on disk summary 1 passed") for line in lines)
     assert "temporary files: memory, then 1 test(s) again on disk" in capsys.readouterr().out
     # The record: the listed test's outcome on disk, and the memory run's counts.
-    record = json.loads((suite / ".cloud-battery" / "verdict.json").read_text(encoding="utf-8"))
+    record = _record(suite)
     assert NEEDS_A_DISK not in record["failing"]
     assert record["collected"] == record["ran"] == 4
     assert record["exit_code"] == 1, "the memory run failed the listed test"
     assert record["known_failures_sha256"] == hashlib.sha256(baseline.read_bytes()).hexdigest()
-
     assert battery.main(["compare"]) == 0
     assert "NEWLY FAILING, yours: 0" in capsys.readouterr().out
-
     # Naming no place is disk, the default (U273).
     assert battery.main(["baseline"]) == 0
     lines = baseline.read_text(encoding="utf-8").splitlines()

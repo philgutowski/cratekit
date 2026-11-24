@@ -1,10 +1,9 @@
 """U344: ``analyze run`` scores a file's energy with the very measure ``analyze restamp`` uses.
 
-Over real decoding, where the analysis extra is installed: on a track longer
-than the slice, the head's old reading (the whole track resampled, then
-sliced) differs from the restamp's (the slice decoded alone) in its features,
-and the head now gives the restamp's level and features exactly, so a restamp
-of a file the run just scored would write nothing.
+Over real decoding, where the analysis extra is installed: on a track longer than the slice, the
+head's old reading (the whole track resampled, then sliced) differs from the restamp's (the slice
+decoded alone), and the head now gives the restamp's level and features exactly, so a restamp of a
+file the run just scored would write nothing.
 """
 
 from __future__ import annotations
@@ -56,9 +55,7 @@ def track(tmp_path_factory) -> Path:
 def calibration() -> energy.Calibration:
     """A calibration whose cuts sit around the track, so a level is a real reading."""
     rng = np.random.default_rng(7)
-    rows = []
-    for _ in range(40):
-        rows.append({name: float(rng.normal(1.0, 0.5)) for name in energy.FEATURE_ORDER})
+    rows = [{name: float(rng.normal(1.0, 0.5)) for name in energy.FEATURE_ORDER} for _ in range(40)]
     return energy.calibrate(rows)
 
 
@@ -85,7 +82,6 @@ def test_the_heads_old_reading_differed_from_the_restamps_on_this_track(track):
     def spying(path):
         measured.append(Path(path))
         return real(path)
-
     energy.bind_extractor(spying)
     try:
         detect.analyse_file(track, calibration=calibration())

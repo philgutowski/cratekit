@@ -117,9 +117,8 @@ def _seed(cfg, silence: Path, *titles: str, batch: str = BATCH) -> None:
 
 def _landed_hearts(cfg, silence, titles: dict[str, str | None], *, batch: str = BATCH, land=False):
     """A hearts job run by hand (None a row frozen with no date), then its tracks in the library."""
-    job = hearts_swept(
-        cfg, {title: (UNKNOWN if when is None else when) for title, when in titles.items()}, run_id=""
-    )
+    frozen = {title: (UNKNOWN if when is None else when) for title, when in titles.items()}
+    job = hearts_swept(cfg, frozen, run_id="")
     if land:
         for title in titles:
             _stage(cfg, silence, title)
@@ -131,12 +130,10 @@ def _landed_hearts(cfg, silence, titles: dict[str, str | None], *, batch: str = 
 
 def _account(monkeypatch, dates: dict[str, datetime | None], *, declared: int | None | str = "whole"):
     """The account's hearts by the jobs' identifiers; ``declared`` None publishes no count."""
-    rows = []
-    for title, when in dates.items():
-        row = Track(f"tid-{title}", "Probe", title)
+    rows = [Track(f"tid-{title}", "Probe", title) for title in dates]
+    for row, when in zip(rows, dates.values(), strict=True):
         if when is not None:
             row.user_date_added = when
-        rows.append(row)
     fake = bind_hearts(monkeypatch, rows)
     fake.hearts_declared = len(rows) if declared == "whole" else declared
     return fake
@@ -173,7 +170,8 @@ def given(home, silence, monkeypatch) -> _World:
     return _World(home, silence, monkeypatch)
 
 
-def _acts(verb: list[str] = VERB, gate: str = GATE) -> tuple[int, dict, dict]:
+def _decided(verb: list[str] = VERB, gate: str = GATE) -> tuple[str, dict]:
+    """The first act refused at the explicit gate, then approved: the run and the refusal."""
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
@@ -181,6 +179,11 @@ def _acts(verb: list[str] = VERB, gate: str = GATE) -> tuple[int, dict, dict]:
     run_id = refused["run_id"]
     decided, envelope = drive(["run", "decide", run_id, gate, "approve", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
+    return run_id, refused
+
+
+def _acts(verb: list[str] = VERB, gate: str = GATE) -> tuple[int, dict, dict]:
+    run_id, refused = _decided(verb, gate)
     code, acted = drive(["--run", run_id, *verb])
     return code, acted, refused
 
@@ -203,12 +206,8 @@ def _titles(shown: dict) -> list[str]:
 
 def _live(cfg, playlist_id: str) -> list[str]:
     """The members a person sees: the removed rows left out, which ``_members`` keeps."""
-    return [str(row[0]) for row in _query(
-        cfg,
-        "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0 "
-        "ORDER BY TrackNo",
-        playlist_id,
-    )]
+    live = "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0"
+    return [str(row[0]) for row in _query(cfg, f"{live} ORDER BY TrackNo", playlist_id)]
 
 
 def _rows(cfg) -> dict[str, str]:
@@ -219,17 +218,14 @@ def _deep_row(cfg, silence: Path, title: str) -> str:
     """A track the library holds two folders deep, with its row, as the source system filed it."""
     deep = _file(_processed(cfg) / "2025" / f"{title}.flac", silence, title)
     with _db(cfg) as handle:
-        row = str(handle.add_content(deep, Title=title).ID)
-    return row
+        return str(handle.add_content(deep, Title=title).ID)
 
 
 def _take_out(cfg, playlist_id: str, row: str) -> None:
     """The membership of ``row`` taken out by hand: it stays, marked removed."""
     with _db(cfg) as handle:
-        (entry,) = [
-            one for one in handle.get_playlist_songs(PlaylistID=playlist_id)
-            if str(one.ContentID) == row
-        ]
+        held = handle.get_playlist_songs(PlaylistID=playlist_id)
+        (entry,) = [one for one in held if str(one.ContentID) == row]
         entry.rb_local_deleted = 1
 
 
@@ -321,8 +317,7 @@ def test_a_date_the_job_froze_wins_over_the_accounts(given):
 
 
 def test_a_heart_the_account_dates_nowhere_goes_to_undated_and_one_it_no_longer_carries_is_taken_back(
-    given,
-):
+    given):
     # The account, listed whole, no longer carries the first and dates the second nowhere.
     cfg, folder_id, _source_id, _fake = given({"Gone": None, "Kept": None}, {"Kept": None})
     acted, shown = _approved()
@@ -340,9 +335,8 @@ def test_a_heart_the_account_dates_nowhere_goes_to_undated_and_one_it_no_longer_
 def test_a_heart_two_jobs_carried_is_one_heart_with_the_dated_jobs_date(home, given):
     hearts_swept(home[0], {"Twice": UNKNOWN}, run_id="")
     later = {"batch": "2026-09-30-favorites"}
-    cfg, folder_id, _source_id, fake = given(
-        {"Twice": "2026-09-29T22:00:00+00:00"}, {"Twice": NOV}, hearted=later
-    )
+    twice = {"Twice": "2026-09-29T22:00:00+00:00"}
+    cfg, folder_id, _source_id, fake = given(twice, {"Twice": NOV}, hearted=later)
     _acted, shown = _approved()
     (item,) = shown["items"]
     assert (item["month"], item["dated_by"]) == ("2026-09", "job")
@@ -369,8 +363,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(given):
 
 
 def test_with_no_source_playlist_the_verb_refuses_by_name_before_the_gate(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     cfg, _root_id = native_library
     _landed_hearts(cfg, silence, {"Same Girl": None})
     fake = _account(monkeypatch, {"Same Girl": SEP})
@@ -398,11 +391,7 @@ def test_an_unreadable_account_refuses_only_when_a_heart_needs_placing(given, mo
 
 def test_a_home_that_moved_between_the_two_acts_is_refused_by_the_write(given):
     cfg, _folder_id, source_id, _fake = given({"Same Girl": None})
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
+    run_id, _refused = _decided()
     # Somebody drags the heart into All Favorites by hand before the write.
     _put(cfg, source_id, _rows(cfg)["Same Girl"])
     code, acted = drive(["--run", run_id, *VERB])
@@ -427,8 +416,7 @@ def test_no_content_row_tempo_or_rating_is_written(given):
     _approved()
     assert _query(cfg, "SELECT COUNT(*) FROM djmdContent") == before
     ((bpm, rating, analysis),) = _query(
-        cfg, "SELECT BPM, Rating, AnalysisDataPath FROM djmdContent WHERE Title = 'Same Girl'"
-    )
+        cfg, "SELECT BPM, Rating, AnalysisDataPath FROM djmdContent WHERE Title = 'Same Girl'")
     assert bpm in (None, 0) and rating in (None, 0) and not analysis
 
 
@@ -454,9 +442,8 @@ def test_a_heart_a_short_listing_did_not_date_is_held_back_not_filed_undated(giv
 def test_a_hearts_job_whose_reports_cannot_be_read_is_skipped_and_named(home, given):
     payload = {"source": "favorites", "source_id": intake_cli.FAVORITES_SOURCE_ID}
     with jobs.open_store() as store:
-        old = jobs.enqueue(
-            store, handler_key="intake.playlist", payload=payload, cfg=home[0], item_ids=()
-        )
+        key = "intake.playlist"
+        old = jobs.enqueue(store, handler_key=key, payload=payload, cfg=home[0], item_ids=())
         jobs.transition(store, old.job_id, jobs.JobState.SUCCEEDED)
     cfg, folder_id, _source_id, _fake = given({"Same Girl": None})
     acted, shown = _approved()
@@ -466,8 +453,7 @@ def test_a_hearts_job_whose_reports_cannot_be_read_is_skipped_and_named(home, gi
 
 
 def test_a_heart_the_landing_placed_without_a_month_takes_it_from_the_backfill(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     """A landing of an older job puts the heart in All Favorites alone; the backfill adds its month."""
     from tests.test_intake_land_account_playlists_native import PASS
     cfg, _root_id = native_library
@@ -547,8 +533,7 @@ def test_a_listing_with_no_published_count_holds_back_a_heart_it_lacks(given):
     acted, shown = _approved()
     assert _titles(shown) == ["Probe - Served"]
     assert shown["held back"].startswith(
-        "1 heart(s) the account's listing did not carry, the listing published no count"
-    )
+        "1 heart(s) the account's listing did not carry, the listing published no count")
     assert "no published count" in _note(acted, backfill_cli.HELD_BACK)
     assert "taken back" not in shown
     assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-09": ["Served"]}
@@ -571,16 +556,13 @@ def test_a_month_playlist_deleted_between_the_plan_and_the_write_is_another_plan
 
 
 def test_owned_hearts_not_in_all_favorites_are_planned_by_month_and_those_taken_back_are_named(
-    given,
-):
+    given):
     """Five owned hearts All Favorites lacks, one off the account and one taken out: three placed."""
     cfg, folder_id, source_id = given.home
     rows = {title: given.deep(title) for title in ("Aug", "Sep A", "Sep B", "Gone", "Out")}
     at = "2026-{}T10:00:00+00:00".format
-    hearts_swept(cfg, {
-        "Aug": at("08-02"), "Sep A": at("09-01"), "Sep B": UNKNOWN, "Gone": at("09-03"),
-        "Out": at("09-04"),
-    }, run_id="")
+    frozen = {"Aug": at("08-02"), "Sep A": at("09-01"), "Sep B": UNKNOWN, "Gone": at("09-03")}
+    hearts_swept(cfg, {**frozen, "Out": at("09-04")}, run_id="")
     _put(cfg, source_id, rows["Out"])
     _take_out(cfg, source_id, rows["Out"])
     given.account({"Aug": SEP, "Sep A": SEP, "Sep B": SEP, "Out": SEP})
@@ -617,8 +599,7 @@ def test_a_heart_all_favorites_holds_and_undated_holds_is_not_given_a_month(give
 
 
 def test_a_heart_all_favorites_holds_at_the_root_beside_another_playlist_still_takes_its_month(
-    native_library, silence, monkeypatch
-):
+    native_library, silence, monkeypatch):
     """At the playlist root every root playlist sits beside the source, and only a dated one files."""
     cfg, _root_id = native_library
     _folder_id, source_id = _home(cfg, folder=False)
@@ -717,11 +698,7 @@ def test_with_no_pink_row_the_backfill_places_the_hearts_and_warns(native_librar
 
 def test_a_member_coloured_by_hand_between_the_two_acts_is_refused_by_the_write(given):
     cfg, _folder_id, _source_id, _fake = given({"Same Girl": None})
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, _envelope = drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK)
+    run_id, _refused = _decided()
     _paint(cfg, "Same Girl", RED_ID)
     code, acted = drive(["--run", run_id, *VERB])
     assert code != int(ExitCode.OK), acted

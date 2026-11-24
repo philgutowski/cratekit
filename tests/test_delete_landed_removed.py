@@ -40,9 +40,6 @@ from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 GATE = "delete.review.confirm"
 
 
-# ═══ The library, landed, and a removal as rekordbox makes one ══════════════
-
-
 def _land(cfg: config.Config, silence: Path, *titles: str, name: str = "landed batch") -> None:
     for title in titles:
         _stage(cfg, silence, f"{title}.flac")
@@ -52,10 +49,8 @@ def _land(cfg: config.Config, silence: Path, *titles: str, name: str = "landed b
 
 def _row(cfg: config.Config, title: str) -> tuple[str, Path]:
     ((content_id, folder),) = _query(
-        cfg,
-        "SELECT ID, FolderPath FROM djmdContent WHERE Title LIKE ? AND rb_local_deleted = 0",
-        f"% - {title}",
-    )
+        cfg, "SELECT ID, FolderPath FROM djmdContent WHERE Title LIKE ? AND rb_local_deleted = 0",
+        f"% - {title}")
     return str(content_id), Path(folder)
 
 
@@ -67,50 +62,47 @@ def _sql(cfg: config.Config, *statements: tuple[str, tuple]) -> None:
     conn.close()
 
 
+#: The row holding the database's update count, which rekordbox moves on every change.
+COUNT = "registry_id = 'localUpdateCount'"
+
+
 def _counter(cfg: config.Config) -> int:
-    ((value,),) = _query(
-        cfg, "SELECT int_1 FROM agentRegistry WHERE registry_id = 'localUpdateCount'"
-    )
+    ((value,),) = _query(cfg, f"SELECT int_1 FROM agentRegistry WHERE {COUNT}")
     return int(value)
+
+
+def _moved_on(by: int) -> tuple[str, tuple]:
+    """The statement that moves the update count on by ``by``."""
+    return (f"UPDATE agentRegistry SET int_1 = int_1 + ? WHERE {COUNT}", (by,))
+
+
+def _count_at(cfg: config.Config, value: int) -> None:
+    _sql(cfg, (f"UPDATE agentRegistry SET int_1 = ? WHERE {COUNT}", (value,)))
 
 
 def _remove_outright(cfg: config.Config, content_id: str) -> None:
     """rekordbox's Remove from Collection: the row and its memberships, gone, the count past them."""
     _sql(
-        cfg,
-        ("DELETE FROM djmdSongPlaylist WHERE ContentID = ?", (content_id,)),
-        ("DELETE FROM djmdContent WHERE ID = ?", (content_id,)),
-        (
-            "UPDATE agentRegistry SET int_1 = int_1 + 12 WHERE registry_id = 'localUpdateCount'",
-            (),
-        ),
-    )
+        cfg, ("DELETE FROM djmdSongPlaylist WHERE ContentID = ?", (content_id,)),
+        ("DELETE FROM djmdContent WHERE ID = ?", (content_id,)), _moved_on(12))
 
 
 def _mark_removed(cfg: config.Config, content_id: str) -> None:
     """The soft delete an earlier rekordbox wrote, the row kept with its marker set."""
-    _sql(
-        cfg,
-        (
-            "UPDATE agentRegistry SET int_1 = int_1 + 1 WHERE registry_id = 'localUpdateCount'",
-            (),
-        ),
-        (
-            "UPDATE djmdContent SET rb_local_deleted = 1, rb_local_usn = "
-            "(SELECT int_1 FROM agentRegistry WHERE registry_id = 'localUpdateCount') "
-            "WHERE ID = ?",
-            (content_id,),
-        ),
+    marked = (
+        "UPDATE djmdContent SET rb_local_deleted = 1, rb_local_usn = "
+        f"(SELECT int_1 FROM agentRegistry WHERE {COUNT}) WHERE ID = ?"
     )
+    _sql(cfg, _moved_on(1), (marked, (content_id,)))
 
 
-def _deletion_on(cfg: config.Config, monkeypatch, tmp_path: Path) -> Path:
-    """The full profile, rekordbox closed, a Trash of the test's own. Returns the home."""
+def _deletion_on(cfg: config.Config, monkeypatch) -> Path:
+    """The full profile, rekordbox closed, a Trash beside the library's own. Returns the home."""
     config.save(dataclasses.replace(cfg, profile=config.ProfileConfig(name="full")))
     config.reset_cache()
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    home = tmp_path / "home"
+    home = Path(cfg.library.root).parent / "home"
     (home / ".Trash").mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr("cratekit.deletion.trash.Path.home", lambda: home)
     monkeypatch.setenv("XDG_DATA_HOME", str(home / "share"))
@@ -121,14 +113,20 @@ def _review() -> tuple[int, dict]:
     return drive(["delete", "review"])
 
 
+def _gated() -> dict:
+    """A review driven to the gate it always reaches; the refusal."""
+    code, refused = _review()
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    return refused
+
+
 def _shown(refused: dict) -> dict:
     return refused["cause"]["detail"]["shown"]
 
 
 def _trash(refused: dict) -> dict:
     decided, envelope = drive(
-        ["run", "decide", refused["run_id"], GATE, "trash", "--actor", "a-person"]
-    )
+        ["run", "decide", refused["run_id"], GATE, "trash", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     code, out = drive(["--run", refused["run_id"], "delete", "review"])
     assert code == int(ExitCode.OK), out
@@ -137,26 +135,32 @@ def _trash(refused: dict) -> dict:
 
 def _baseline(cfg: config.Config) -> None:
     """The pass's first position, taken before anything was removed (R35)."""
-    code, refused = _review()
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _gated()
     assert _shown(refused)["baselined"] is True, _shown(refused)
     assert watermark.WatermarkStore(cfg).read() is not None
 
 
-def _ready(native_library, silence, monkeypatch, tmp_path, *titles, name="landed batch"):
+def _ready(native_library, silence, monkeypatch, *titles, name="landed batch"):
     """Land ``titles``, switch deletion on and take the pass's first position."""
     cfg, _root = native_library
     _land(cfg, silence, *titles, name=name)
-    _deletion_on(cfg, monkeypatch, tmp_path)
+    _deletion_on(cfg, monkeypatch)
     _baseline(cfg)
     return cfg
 
 
+@pytest.fixture
+def ready(native_library, silence, monkeypatch):
+    """``_ready`` over this test's own library, given the titles and the batch's name."""
+
+    def land(*titles, name="landed batch"):
+        return _ready(native_library, silence, monkeypatch, *titles, name=name)
+    return land
+
+
 def _offered() -> int:
     """How many files a review offers, read off the gate it always reaches."""
-    code, refused = _review()
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    return int(_shown(refused)["offered"])
+    return int(_shown(_gated())["offered"])
 
 
 def _plan(cfg: config.Config) -> deletion_run.Plan:
@@ -175,6 +179,14 @@ def _record_path(cfg: config.Config, session_id: str) -> Path:
     return session.log_path(session_id, cfg)
 
 
+def _edit_record(cfg: config.Config, session_id: str, change) -> None:
+    """Rewrite one session record's ``detail`` through ``change``, as a hand edit would."""
+    path = _record_path(cfg, session_id)
+    raw = json.loads(path.read_text())
+    change(raw["detail"])
+    path.write_text(json.dumps(raw))
+
+
 def _landing_record(cfg: config.Config, content_id: str) -> session.SessionRecord:
     """The one landing record naming ``content_id``, chosen by the row, never by list order."""
     (landing,) = [
@@ -190,18 +202,15 @@ def _landing_record(cfg: config.Config, content_id: str) -> session.SessionRecor
 
 
 def test_the_landing_record_names_every_row_it_made_as_the_database_holds_it(
-    native_library, silence
-):
+    native_library, silence):
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two")
-
     landed = _landing_record(cfg, _row(cfg, "One")[0]).detail[native.LANDED_ROWS_KEY]
-
     ((dbid,),) = _query(cfg, "SELECT DBID FROM djmdProperty")
     assert landed["database_identity"] == str(dbid)
     assert landed["sequence"] == _counter(cfg)
     held = {
-        str(values[0]): {"ID": values[0], "FolderPath": values[1], "FileSize": values[2], "Title": values[3]}
+        str(values[0]): dict(zip(("ID", "FolderPath", "FileSize", "Title"), values))
         for values in _query(cfg, "SELECT ID, FolderPath, FileSize, Title FROM djmdContent")
     }
     named = {one["content_id"]: one["columns"] for one in landed["rows"]}
@@ -227,18 +236,13 @@ def test_the_key_and_its_columns_are_spelled_the_same_where_they_are_read():
 # ═══ A landed row removed outright is offered once, and trashed ════════════
 
 
-def test_a_landed_row_removed_outright_is_offered_trashed_and_tombstoned_once(
-    native_library, silence, monkeypatch, tmp_path
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two")
+def test_a_landed_row_removed_outright_is_offered_trashed_and_tombstoned_once(ready, tmp_path):
+    cfg = ready("One", "Two")
     gone, music = _row(cfg, "One")
     _kept, other = _row(cfg, "Two")
     before = music.read_bytes()
     _remove_outright(cfg, gone)
-
-    code, refused = _review()
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _gated()
     assert _shown(refused)["offered"] == 1, _shown(refused)
     out = _trash(refused)
     assert not music.exists()
@@ -249,153 +253,94 @@ def test_a_landed_row_removed_outright_is_offered_trashed_and_tombstoned_once(
     (stone,) = stores.list_tombstones(cfg)
     assert stone.payload["artist"] == "Probe", stone.payload
     assert stone.payload["title"].endswith(" - One"), stone.payload
-    assert stone.identity == tombstone.version_identity(
-        artist="Probe", title=stone.payload["title"]
-    ), stone.identity
+    identity = tombstone.version_identity(artist="Probe", title=stone.payload["title"])
+    assert stone.identity == identity, stone.identity
     assert out["outcome"] == "ok"
     # ONCE: the next run offers nothing, the row still absent.
     assert _offered() == 0
     assert gone not in _candidates(cfg)
 
 
-def test_a_removal_seen_once_keeps_its_number_across_runs_and_is_not_hidden(
-    native_library, silence, monkeypatch, tmp_path
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+def test_a_removal_seen_once_keeps_its_number_across_runs_and_is_not_hidden(ready):
+    cfg = ready("One")
     gone, _music = _row(cfg, "One")
     _remove_outright(cfg, gone)
-
     first = _plan(cfg)
     sighted = watermark.WatermarkStore(cfg).read().absent[gone]
     # Another change to the library between two reviews moves the count on.
-    _sql(cfg, ("UPDATE agentRegistry SET int_1 = int_1 + 5 WHERE registry_id = 'localUpdateCount'", ()))
+    _sql(cfg, _moved_on(5))
     second = _plan(cfg)
-
     assert [one.row.sequence for one in first.candidates] == [sighted]
     assert [one.row.sequence for one in second.candidates] == [sighted]
     assert sighted > first.watermark.sequence
     assert [str(one.category) for one in second.candidates] == ["deletable"]
 
 
-def test_a_declined_landed_removal_is_not_offered_again_and_a_trashed_one_is_retired(
-    native_library, silence, monkeypatch, tmp_path
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two")
+def test_a_declined_landed_removal_is_not_offered_again_and_a_trashed_one_is_retired(ready):
+    cfg = ready("One", "Two")
     one, one_file = _row(cfg, "One")
     _remove_outright(cfg, one)
-    code, refused = _review()
+    refused = _gated()
     assert _shown(refused)["offered"] == 1
     _trash(refused)
     # The watermark passed the trashed row, so only the second removal is offered.
     two, two_file = _row(cfg, "Two")
     _remove_outright(cfg, two)
-
-    code, refused = _review()
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert _shown(refused)["offered"] == 1
+    assert _shown(_gated())["offered"] == 1
     assert {item.row.content_id for item in _plan(cfg).deletable} == {two}
     assert two_file.exists() and not one_file.exists()
 
 
-# ═══ Never offered ═════════════════════════════════════════════════════════
-
-
-def test_a_landed_file_a_new_row_now_references_is_never_offered(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_landed_file_a_new_row_now_references_is_never_offered(ready):
     """Sitting 102 put Anabaz back by import: its old row is absent, its file a new row's."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+    cfg = ready("One")
     gone, music = _row(cfg, "One")
-    (columns,) = [
-        values
-        for values in _query(cfg, "SELECT * FROM djmdContent WHERE ID = ?", gone)
-    ]
-    names = [row[1] for row in _query(cfg, "PRAGMA table_info(djmdContent)")]
+    again = {**_columns(cfg, gone), "ID": str(int(gone) + 1), "UUID": "re-imported"}
     _remove_outright(cfg, gone)
     # A re-import: a new row of another id naming the same file.
-    again = dict(zip(names, columns))
-    again["ID"] = str(int(gone) + 1)
-    again["UUID"] = "re-imported"
-    _sql(
-        cfg,
-        (
-            f"INSERT INTO djmdContent ({', '.join(names)}) VALUES ({', '.join('?' for _ in names)})",
-            tuple(again[name] for name in names),
-        ),
-    )
-
+    _insert(cfg, again)
     assert _offered() == 0
     categories = _candidates(cfg)
     assert categories[gone] != "deletable", categories
     assert music.exists()
 
 
-def test_a_landing_of_another_database_offers_nothing(
-    native_library, silence, monkeypatch, tmp_path
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
-    gone, music = _row(cfg, "One")
-    landing = _landing_record(cfg, gone)
-    path = _record_path(cfg, landing.session_id)
-    raw = json.loads(path.read_text())
-    raw["detail"][native.LANDED_ROWS_KEY]["database_identity"] = "another-library"
-    path.write_text(json.dumps(raw))
-    _remove_outright(cfg, gone)
-
-    assert gone not in _candidates(cfg)
-    assert music.exists()
-
-
-def test_an_unreadable_landing_record_offers_nothing_and_says_so(
-    native_library, silence, monkeypatch, tmp_path, caplog
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+def test_an_unreadable_landing_record_offers_nothing_and_says_so(ready, caplog):
+    cfg = ready("One")
     gone, music = _row(cfg, "One")
     _record_path(cfg, _landing_record(cfg, gone).session_id).write_text("{ not json")
     _remove_outright(cfg, gone)
-
     with caplog.at_level(logging.WARNING, logger="cratekit.deletion.run"):
         assert gone not in _candidates(cfg)
     assert any("could not be read" in one.getMessage() for one in caplog.records), caplog.text
     assert music.exists()
 
 
-def test_rows_no_record_names_removed_outright_offer_nothing(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_rows_no_record_names_removed_outright_offer_nothing(native_library, silence, monkeypatch):
     """A landing from before this card names no row, and neither does a hand import."""
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two")
     for landing in session.records(cfg):
-        path = _record_path(cfg, landing.session_id)
-        raw = json.loads(path.read_text())
-        raw["detail"].pop(native.LANDED_ROWS_KEY, None)
-        path.write_text(json.dumps(raw))
-    _deletion_on(cfg, monkeypatch, tmp_path)
+        _edit_record(cfg, landing.session_id, lambda raw: raw.pop(native.LANDED_ROWS_KEY, None))
+    _deletion_on(cfg, monkeypatch)
     _baseline(cfg)
     for title in ("One", "Two"):
         _remove_outright(cfg, _row(cfg, title)[0])
-
     assert _offered() == 0
     assert _plan(cfg).candidates == ()
 
 
 def test_a_first_run_takes_absent_landed_rows_as_history_and_offers_the_next_removal(
-    native_library, silence, monkeypatch, tmp_path
-):
+    native_library, silence, monkeypatch):
     """R35: a library's first review baselines, the outright removals before it included."""
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two", "Three")
-    _deletion_on(cfg, monkeypatch, tmp_path)
+    _deletion_on(cfg, monkeypatch)
     old_one, _ = _row(cfg, "One")
     old_two, _ = _row(cfg, "Two")
     _remove_outright(cfg, old_one)
     _remove_outright(cfg, old_two)
-
-    code, refused = _review()
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _gated()
     assert _shown(refused)["baselined"] is True
     assert _shown(refused)["accepted_as_history"] == 2, _shown(refused)
     found = _plan(cfg)
@@ -405,56 +350,40 @@ def test_a_first_run_takes_absent_landed_rows_as_history_and_offers_the_next_rem
     assert set(_candidates(cfg)) == {later}
 
 
-def test_a_landing_a_restore_rolled_back_offers_nothing(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_landing_a_restore_rolled_back_offers_nothing(ready, silence):
     """The rows are absent and nobody removed them: the database is from before the landing."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero")
+    cfg = ready("Zero")
     shutil_copy = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", name="rolled back batch")
     one, music = _row(cfg, "One")
     # The database put back before the second landing; its session record kept.
     Path(cfg.library.db_path).write_bytes(shutil_copy)
-
     assert one not in _candidates(cfg)
     assert music.exists()
 
 
-def test_a_landing_into_a_playlist_already_there_put_back_by_hand_is_never_offered(
-    native_library, silence, monkeypatch, tmp_path
-):
-    """Round two's B1: a hand restore writes no record, and a landing that made no
-    playlist cannot be told from its rollback, so nothing is offered.
-    """
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero", name="same batch")
+def test_a_landing_into_a_playlist_already_there_put_back_by_hand_is_never_offered(ready, silence):
+    """Round two's B1: a hand restore writes no record, so a landing that made no playlist
+    cannot be told from its rollback and nothing is offered."""
+    cfg = ready("Zero", name="same batch")
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", name="same batch")
     one, music = _row(cfg, "One")
     landed = _landing_record(cfg, one).detail[native.LANDED_ROWS_KEY]
     assert landed["playlists"] == [], landed
     Path(cfg.library.db_path).write_bytes(before)
-    _sql(
-        cfg,
-        (
-            "UPDATE agentRegistry SET int_1 = ? WHERE registry_id = 'localUpdateCount'",
-            (landed["sequence"] + 40,),
-        ),
-    )
-
+    _count_at(cfg, landed["sequence"] + 40)
     assert _offered() == 0
     assert one not in _candidates(cfg)
     assert music.exists() and stores.list_tombstones(cfg) == ()
 
 
-def test_a_landing_into_a_playlist_already_there_names_none_and_its_removal_is_kept(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_landing_into_a_playlist_already_there_names_none_and_its_removal_is_kept(ready, silence):
     """The price of that rule, said: a real removal of such a landing's track is not offered."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero", name="same batch")
+    cfg = ready("Zero", name="same batch")
     _land(cfg, silence, "One", name="same batch")
     one, music = _row(cfg, "One")
     _remove_outright(cfg, one)
-
     assert one not in _candidates(cfg)
     assert music.exists()
 
@@ -462,23 +391,17 @@ def test_a_landing_into_a_playlist_already_there_names_none_and_its_removal_is_k
 # ═══ One row, one candidate ════════════════════════════════════════════════
 
 
-def test_a_landed_row_marked_soft_deleted_is_one_candidate(
-    native_library, silence, monkeypatch, tmp_path
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+def test_a_landed_row_marked_soft_deleted_is_one_candidate(ready):
+    cfg = ready("One")
     gone, _music = _row(cfg, "One")
     _mark_removed(cfg, gone)
-
     found = _plan(cfg)
-
     assert [one.row.content_id for one in found.candidates] == [gone]
     assert gone not in watermark.WatermarkStore(cfg).read().absent
 
 
-def test_a_landed_row_sync_removed_recorded_is_one_candidate_at_its_recorded_number(
-    native_library, silence, monkeypatch, tmp_path
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+def test_a_landed_row_sync_removed_recorded_is_one_candidate_at_its_recorded_number(ready):
+    cfg = ready("One")
     gone, _music = _row(cfg, "One")
     landing = _landing_record(cfg, gone)
     (named,) = [
@@ -487,40 +410,27 @@ def test_a_landed_row_sync_removed_recorded_is_one_candidate_at_its_recorded_num
     _remove_outright(cfg, gone)
     recorded_at = _counter(cfg)
     # The record ``sync removed`` writes for the same row (U288).
-    path = _record_path(cfg, landing.session_id)
-    raw = json.loads(path.read_text())
-    raw["detail"][deletion_library.RECORDED_REMOVALS_KEY] = {
+    removals = {
         "database_identity": landing.detail[native.LANDED_ROWS_KEY]["database_identity"],
         "sequence": recorded_at,
         "rows": [{"content_id": gone, "columns": named["columns"]}],
     }
-    path.write_text(json.dumps(raw))
-
+    key = deletion_library.RECORDED_REMOVALS_KEY
+    _edit_record(cfg, landing.session_id, lambda detail: detail.update({key: removals}))
     found = _plan(cfg)
-
-    assert [(one.row.content_id, one.row.sequence) for one in found.candidates] == [
-        (gone, recorded_at)
-    ]
+    numbered = [(one.row.content_id, one.row.sequence) for one in found.candidates]
+    assert numbered == [(gone, recorded_at)]
 
 
-def test_a_row_restored_live_is_forgotten_and_its_second_removal_is_offered(
-    native_library, silence, monkeypatch, tmp_path
-):
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+def test_a_row_restored_live_is_forgotten_and_its_second_removal_is_offered(ready):
+    cfg = ready("One")
     gone, _music = _row(cfg, "One")
-    names = [row[1] for row in _query(cfg, "PRAGMA table_info(djmdContent)")]
-    (values,) = _query(cfg, "SELECT * FROM djmdContent WHERE ID = ?", gone)
+    held = _columns(cfg, gone)
     _remove_outright(cfg, gone)
     first = _plan(cfg)
     assert [one.row.content_id for one in first.candidates] == [gone]
     # A restore puts it back live: forgotten.
-    _sql(
-        cfg,
-        (
-            f"INSERT INTO djmdContent ({', '.join(names)}) VALUES ({', '.join('?' for _ in names)})",
-            tuple(values),
-        ),
-    )
+    _insert(cfg, held)
     assert _plan(cfg).candidates == ()
     assert gone not in watermark.WatermarkStore(cfg).read().absent
     # Removed again, at a later count.
@@ -534,9 +444,8 @@ def test_the_watermark_reads_version_one_as_no_sightings_and_refuses_a_bad_one(n
     cfg, _root = native_library
     store = watermark.WatermarkStore(cfg)
     store.path.parent.mkdir(parents=True, exist_ok=True)
-    store.path.write_text(
-        json.dumps({"version": 1, "database_identity": "db", "sequence": 7, "recorded": "", "actor": ""})
-    )
+    old = {"version": 1, "database_identity": "db", "sequence": 7, "recorded": "", "actor": ""}
+    store.path.write_text(json.dumps(old))
     assert store.read().absent == {}
     mark = store.advance(database_identity="db", sequence=9, actor="a-person")
     assert json.loads(store.path.read_text())["version"] == watermark.WATERMARK_VERSION == 2
@@ -551,8 +460,7 @@ def test_the_watermark_reads_version_one_as_no_sightings_and_refuses_a_bad_one(n
 
 
 def test_an_advance_and_a_rebaseline_keep_and_drop_the_sightings_as_their_database_says(
-    native_library,
-):
+    native_library):
     cfg, _root = native_library
     store = watermark.WatermarkStore(cfg)
     store.baseline(database_identity="db", sequence=5, actor="a-person")
@@ -573,25 +481,27 @@ def test_an_advance_and_a_rebaseline_keep_and_drop_the_sightings_as_their_databa
 # ═══ What the merge bar names: still in the collection, referenced, a copy ══
 
 
-def _insert_like(cfg: config.Config, content_id: str, **changed) -> None:
-    """A new collection row copied from ``content_id``'s, with ``changed`` columns."""
+def _columns(cfg: config.Config, content_id: str) -> dict:
+    """``content_id``'s collection row, column by column."""
     names = [row[1] for row in _query(cfg, "PRAGMA table_info(djmdContent)")]
     (values,) = _query(cfg, "SELECT * FROM djmdContent WHERE ID = ?", content_id)
-    row = {**dict(zip(names, values)), **changed}
-    _sql(
-        cfg,
-        (
-            f"INSERT INTO djmdContent ({', '.join(names)}) VALUES ({', '.join('?' for _ in names)})",
-            tuple(row[name] for name in names),
-        ),
-    )
+    return dict(zip(names, values))
 
 
-def test_only_the_unreferenced_file_is_trashed_and_only_it_is_tombstoned(
-    native_library, silence, monkeypatch, tmp_path
-):
+def _insert(cfg: config.Config, row: dict) -> None:
+    """A collection row written as ``row`` spells it."""
+    marks = ", ".join("?" for _ in row)
+    _sql(cfg, (f"INSERT INTO djmdContent ({', '.join(row)}) VALUES ({marks})", tuple(row.values())))
+
+
+def _insert_like(cfg: config.Config, content_id: str, **changed) -> None:
+    """A new collection row copied from ``content_id``'s, with ``changed`` columns."""
+    _insert(cfg, {**_columns(cfg, content_id), **changed})
+
+
+def test_only_the_unreferenced_file_is_trashed_and_only_it_is_tombstoned(ready):
     """One removal re-imported, one left in a playlist, one copy a live row names, one free."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two", "Three", "Four")
+    cfg = ready("One", "Two", "Three", "Four")
     files = {title: _row(cfg, title) for title in ("One", "Two", "Three", "Four")}
     # One: re-imported, a new row of another id naming the same file.
     one, _ = files["One"]
@@ -599,11 +509,7 @@ def test_only_the_unreferenced_file_is_trashed_and_only_it_is_tombstoned(
     _remove_outright(cfg, one)
     # Two: its row deleted and a membership left naming it.
     two, _ = files["Two"]
-    _sql(
-        cfg,
-        ("DELETE FROM djmdContent WHERE ID = ?", (two,)),
-        ("UPDATE agentRegistry SET int_1 = int_1 + 3 WHERE registry_id = 'localUpdateCount'", ()),
-    )
+    _sql(cfg, ("DELETE FROM djmdContent WHERE ID = ?", (two,)), _moved_on(3))
     # Three: a hard link of its file, at another path, is a live row's file.
     three, three_file = files["Three"]
     copy = three_file.with_name("Three copy.flac")
@@ -614,17 +520,13 @@ def test_only_the_unreferenced_file_is_trashed_and_only_it_is_tombstoned(
     four, four_file = files["Four"]
     _remove_outright(cfg, four)
     kept = {title: path.read_bytes() for title, (_id, path) in files.items() if title != "Four"}
-
     categories = _candidates(cfg)
-    code, refused = _review()
-
+    refused = _gated()
     assert categories == {
-        one: "collides-with-active-row",
-        two: "still-referenced",
-        three: "collides-with-active-row",
-        four: "deletable",
+        one: "collides-with-active-row", two: "still-referenced",
+        three: "collides-with-active-row", four: "deletable",
     }, categories
-    assert code == int(ExitCode.DECISION_REQUIRED) and _shown(refused)["offered"] == 1
+    assert _shown(refused)["offered"] == 1
     _trash(refused)
     assert not four_file.exists()
     for title, held in kept.items():
@@ -633,24 +535,15 @@ def test_only_the_unreferenced_file_is_trashed_and_only_it_is_tombstoned(
     assert stone.payload["title"].endswith(" - Four"), stone.payload
 
 
-def test_a_rolled_back_landing_is_kept_by_its_playlist_whatever_the_count(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_rolled_back_landing_is_kept_by_its_playlist_whatever_the_count(ready, silence):
     """The playlist guard alone: the count is already past the landing at the first sighting."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero")
+    cfg = ready("Zero")
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", name="rolled back batch")
     one, music = _row(cfg, "One")
     landed_at = _landing_record(cfg, one).detail[native.LANDED_ROWS_KEY]["sequence"]
     Path(cfg.library.db_path).write_bytes(before)
-    _sql(
-        cfg,
-        (
-            "UPDATE agentRegistry SET int_1 = ? WHERE registry_id = 'localUpdateCount'",
-            (landed_at + 500,),
-        ),
-    )
-
+    _count_at(cfg, landed_at + 500)
     assert one not in _candidates(cfg)
     assert one not in watermark.WatermarkStore(cfg).read().absent
     assert music.exists()
@@ -665,18 +558,15 @@ def _restore(session_id: str) -> None:
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
     decided, envelope = drive(
-        ["run", "decide", run_id, "restore.run.confirm", "restore", "--actor", "a-person"]
-    )
+        ["run", "decide", run_id, "restore.run.confirm", "restore", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     code, envelope = drive(["--run", run_id, "restore", "run", session_id])
     assert code == int(ExitCode.OK), envelope
 
 
-def test_a_restored_landing_into_a_playlist_already_there_is_never_offered(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_restored_landing_into_a_playlist_already_there_is_never_offered(ready, silence):
     """Round one's B1: the playlist was there, so the landing names none and offers nothing."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero", name="same batch")
+    cfg = ready("Zero", name="same batch")
     _land(cfg, silence, "One", name="same batch")
     one, music = _row(cfg, "One")
     landing = _landing_record(cfg, one)
@@ -688,24 +578,20 @@ def test_a_restored_landing_into_a_playlist_already_there_is_never_offered(
     assert landed["playlists"] == []
     _land(cfg, silence, "Two", "Three", name="next batch")
     assert _counter(cfg) > landed["sequence"]
-
     assert _offered() == 0
     assert one not in _candidates(cfg)
     assert music.read_bytes() == before
     assert stores.list_tombstones(cfg) == ()
 
 
-def test_a_landing_after_a_restore_is_still_offered_when_removed(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_landing_after_a_restore_is_still_offered_when_removed(ready, silence):
     """A landing after a restore makes its own playlist, and its removal is offered."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero", name="same batch")
+    cfg = ready("Zero", name="same batch")
     _land(cfg, silence, "One", name="same batch")
     _restore(_landing_record(cfg, _row(cfg, "One")[0]).session_id)
     _land(cfg, silence, "Two", name="next batch")
     two, _music = _row(cfg, "Two")
     _remove_outright(cfg, two)
-
     assert _candidates(cfg) == {two: "deletable"}
 
 
@@ -721,48 +607,40 @@ def test_one_row_two_landings_name_keeps_the_later_landings_count():
                 "rows": [{"content_id": "7", "columns": columns}],
             }
         }
-
     for order in ((landed(5), landed(9)), (landed(9), landed(5))):
         found = deletion_library.landed_absences(
-            order, database_identity="db", present=(), uuids={}, playlist_held=lambda _one: True
-        )
+            order, database_identity="db", present=(), uuids={}, playlist_held=lambda _one: True)
         assert {key: one.landed for key, one in found.absent.items()} == {"7": 9}
-
-
-# ═══ The mutation table's two zeros, each given its test ═══════════════════
 
 
 def _edit_landing(cfg: config.Config, content_id: str, change) -> None:
     landing = _landing_record(cfg, content_id)
-    path = _record_path(cfg, landing.session_id)
-    raw = json.loads(path.read_text())
-    change(raw["detail"][native.LANDED_ROWS_KEY])
-    path.write_text(json.dumps(raw))
+    _edit_record(cfg, landing.session_id, lambda detail: change(detail[native.LANDED_ROWS_KEY]))
 
 
-@pytest.mark.parametrize("sequence", [None, "12", True])
-def test_a_landing_record_with_no_update_count_offers_nothing(
-    sequence, native_library, silence, monkeypatch, tmp_path
-):
-    """Row M2: a record that cannot say what its commit left is not guessed at."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+def _without_uuids(landed: dict) -> None:
+    """A record as written before rows named their UUID."""
+    for entry in landed["rows"]:
+        entry.pop(native.LANDED_UUID_KEY)
+
+
+@pytest.mark.parametrize(
+    "change", [
+        pytest.param(lambda landed: landed.update(database_identity="another-library"),
+                     id="a-landing-of-another-database"),
+        # Row M2: a record that cannot say what its commit left is not guessed at.
+        pytest.param(lambda landed: landed.update(sequence=None), id="no-update-count-None"),
+        pytest.param(lambda landed: landed.update(sequence="12"), id="no-update-count-12"),
+        pytest.param(lambda landed: landed.update(sequence=True), id="no-update-count-True"),
+        # Row M5: every playlist the landing made must remain, not any one of them.
+        pytest.param(lambda landed: landed["playlists"].append("999999999"),
+                     id="one-of-its-playlists-gone"),
+    ])
+def test_a_landing_record_that_cannot_prove_its_landing_offers_nothing(ready, change):
+    cfg = ready("One")
     gone, music = _row(cfg, "One")
-    _edit_landing(cfg, gone, lambda landed: landed.update(sequence=sequence))
+    _edit_landing(cfg, gone, change)
     _remove_outright(cfg, gone)
-
-    assert gone not in _candidates(cfg)
-    assert music.exists()
-
-
-def test_a_landing_one_of_whose_playlists_is_gone_offers_nothing(
-    native_library, silence, monkeypatch, tmp_path
-):
-    """Row M5: every playlist the landing made must remain, not any one of them."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
-    gone, music = _row(cfg, "One")
-    _edit_landing(cfg, gone, lambda landed: landed["playlists"].append("999999999"))
-    _remove_outright(cfg, gone)
-
     assert gone not in _candidates(cfg)
     assert music.exists()
 
@@ -773,30 +651,19 @@ def test_a_landing_one_of_whose_playlists_is_gone_offers_nothing(
 def _delete_playlist_outright(cfg: config.Config, playlist_id: str) -> None:
     """rekordbox's sidebar delete (A200): the playlist row and its members, gone, no marker."""
     _sql(
-        cfg,
-        ("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,)),
-        ("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,)),
-        (
-            "UPDATE agentRegistry SET int_1 = int_1 + 3 WHERE registry_id = 'localUpdateCount'",
-            (),
-        ),
-    )
+        cfg, ("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,)),
+        ("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,)), _moved_on(3))
 
 
-def test_a_landed_row_removed_after_its_playlist_was_deleted_by_hand_is_offered_once(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_landed_row_removed_after_its_playlist_was_deleted_by_hand_is_offered_once(ready):
     """The defect: the playlist gone outright read as a rollback, so the removal was never offered."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two")
+    cfg = ready("One", "Two")
     gone, music = _row(cfg, "One")
     _kept, other = _row(cfg, "Two")
     (batch,) = _landing_record(cfg, gone).detail[native.LANDED_ROWS_KEY]["playlists"]
     _delete_playlist_outright(cfg, batch)
     _remove_outright(cfg, gone)
-
-    code, refused = _review()
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _gated()
     assert _shown(refused)["offered"] == 1, _shown(refused)
     assert "landings read as rolled back" not in _shown(refused)
     _trash(refused)
@@ -810,19 +677,13 @@ def _batch(cfg: config.Config, content_id: str) -> str:
 
 
 def _rolled_back() -> int:
-    code, refused = _review()
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    return int(_shown(refused).get("landings read as rolled back", 0))
+    return int(_shown(_gated()).get("landings read as rolled back", 0))
 
 
-def test_the_landing_record_names_each_row_by_the_uuid_the_database_holds(
-    native_library, silence
-):
+def test_the_landing_record_names_each_row_by_the_uuid_the_database_holds(native_library, silence):
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two")
-
     landed = _landing_record(cfg, _row(cfg, "One")[0]).detail[native.LANDED_ROWS_KEY]
-
     held = {str(key): uuid for key, uuid in _query(cfg, "SELECT ID, UUID FROM djmdContent")}
     for entry in landed["rows"]:
         uuid = entry[native.LANDED_UUID_KEY]
@@ -830,28 +691,17 @@ def test_the_landing_record_names_each_row_by_the_uuid_the_database_holds(
     assert native.LANDED_UUID_KEY == deletion_library.LANDED_UUID_KEY
 
 
-def test_a_restore_to_before_the_landing_offers_nothing_and_the_screen_counts_it(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_restore_to_before_the_landing_offers_nothing_and_the_screen_counts_it(ready, silence):
     """Every row and every playlist of the landing gone, the count past it: a rollback."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero")
+    cfg = ready("Zero")
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", "Two", name="rolled back batch")
     one, music = _row(cfg, "One")
     two, other = _row(cfg, "Two")
     landed_at = _landing_record(cfg, one).detail[native.LANDED_ROWS_KEY]["sequence"]
     Path(cfg.library.db_path).write_bytes(before)
-    _sql(
-        cfg,
-        (
-            "UPDATE agentRegistry SET int_1 = ? WHERE registry_id = 'localUpdateCount'",
-            (landed_at + 50,),
-        ),
-    )
-
-    code, refused = _review()
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _count_at(cfg, landed_at + 50)
+    refused = _gated()
     assert _shown(refused)["offered"] == 0, _shown(refused)
     assert _shown(refused)["landings read as rolled back"] == 1, _shown(refused)
     assert not ({one, two} & set(_candidates(cfg)))
@@ -859,101 +709,75 @@ def test_a_restore_to_before_the_landing_offers_nothing_and_the_screen_counts_it
     assert stores.list_tombstones(cfg) == ()
 
 
-def test_a_row_held_under_the_landed_id_but_another_uuid_proves_nothing(
-    native_library, silence, monkeypatch, tmp_path
-):
-    """A later import can draw a rolled back row's random id; only the id and UUID together prove it."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two")
-    gone, music = _row(cfg, "One")
-    two, _other = _row(cfg, "Two")
-    _sql(cfg, ("UPDATE djmdContent SET UUID = ? WHERE ID = ?", ("another-row", two)))
-    _delete_playlist_outright(cfg, _batch(cfg, gone))
-    _remove_outright(cfg, gone)
-
-    assert gone not in _candidates(cfg)
-    assert _rolled_back() == 1
-    assert music.exists()
-
-
-def test_a_landed_row_marked_soft_deleted_still_proves_its_landing(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_landed_row_marked_soft_deleted_still_proves_its_landing(ready):
     """Held means live or marked: a marked row of the landing is still the landing's own row."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two")
+    cfg = ready("One", "Two")
     gone, _music = _row(cfg, "One")
     marked, _other = _row(cfg, "Two")
     _delete_playlist_outright(cfg, _batch(cfg, gone))
     _mark_removed(cfg, marked)
     _remove_outright(cfg, gone)
-
     # The marked row is its own candidate; the removal beside it rides its proof.
     found = _candidates(cfg)
     assert found[gone] == "deletable" and marked in found, found
 
 
-def test_a_playlist_the_rotation_soft_deleted_still_proves_a_landing_of_one_row(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_playlist_the_rotation_soft_deleted_still_proves_a_landing_of_one_row(ready):
     """As before this card: a marked playlist is held, so the lone landed row's removal is offered."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+    cfg = ready("One")
     gone, _music = _row(cfg, "One")
-    _sql(
-        cfg,
-        ("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (_batch(cfg, gone),)),
-    )
+    _sql(cfg, ("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (_batch(cfg, gone),)))
     _remove_outright(cfg, gone)
-
     assert _candidates(cfg) == {gone: "deletable"}
     assert _rolled_back() == 0
 
 
-def test_every_row_gone_and_the_playlist_deleted_by_hand_is_kept_and_counted(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_every_row_gone_and_the_playlist_deleted_by_hand_is_kept_and_counted(ready):
     """The price, said: nothing left tells this from a rollback, so the files stay and the screen counts it."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two")
+    cfg = ready("One", "Two")
     one, music = _row(cfg, "One")
     two, other = _row(cfg, "Two")
     _delete_playlist_outright(cfg, _batch(cfg, one))
     _remove_outright(cfg, one)
     _remove_outright(cfg, two)
-
     assert not ({one, two} & set(_candidates(cfg)))
     assert _rolled_back() == 1
     assert music.exists() and other.exists()
 
 
-def test_a_record_written_before_rows_named_their_uuid_keeps_the_playlist_proof_alone(
-    native_library, silence, monkeypatch, tmp_path
-):
-    """A record R-1037 wrote names no UUID: its playlist gone, it offers nothing, counted."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two")
+def _another_uuid_on_two(cfg: config.Config, gone: str) -> None:
+    _sql(cfg, ("UPDATE djmdContent SET UUID = ? WHERE ID = ?", ("another-row", _row(cfg, "Two")[0])))
+
+
+@pytest.mark.parametrize(
+    "unproved", [
+        # A later import can draw a rolled back row's random id; only the id and UUID prove it.
+        pytest.param(_another_uuid_on_two, id="a-row-held-under-the-landed-id-but-another-uuid"),
+        # A record R-1037 wrote names no UUID: its playlist gone, it offers nothing, counted.
+        pytest.param(lambda cfg, gone: _edit_landing(cfg, gone, _without_uuids),
+                     id="a-record-written-before-rows-named-their-uuid"),
+    ])
+def test_a_landing_its_other_rows_cannot_prove_is_kept_and_counted_once_its_playlist_goes(
+        ready, unproved):
+    cfg = ready("One", "Two")
     gone, music = _row(cfg, "One")
     batch = _batch(cfg, gone)
-
-    def older(landed: dict) -> None:
-        for entry in landed["rows"]:
-            entry.pop(native.LANDED_UUID_KEY)
-
-    _edit_landing(cfg, gone, older)
+    unproved(cfg, gone)
     _delete_playlist_outright(cfg, batch)
     _remove_outright(cfg, gone)
-
     assert gone not in _candidates(cfg)
     assert _rolled_back() == 1
     assert music.exists()
 
 
 def test_a_landing_into_a_playlist_already_there_is_offered_while_another_row_remains(
-    native_library, silence, monkeypatch, tmp_path
-):
+    ready, silence):
     """R-1843's case with a second row: the row left under its UUID proves the landing."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "Zero", name="same batch")
+    cfg = ready("Zero", name="same batch")
     _land(cfg, silence, "One", "Two", name="same batch")
     one, _music = _row(cfg, "One")
     assert _landing_record(cfg, one).detail[native.LANDED_ROWS_KEY]["playlists"] == []
     _remove_outright(cfg, one)
-
     assert _candidates(cfg) == {one: "deletable"}
 
 
@@ -972,7 +796,6 @@ def test_only_a_landing_that_names_an_absent_row_and_shows_no_proof_is_counted()
                 ],
             }
         }
-
     found = deletion_library.landed_absences(
         [
             landed(("1", "u1")),  # every row held: no question to ask
@@ -986,9 +809,7 @@ def test_only_a_landing_that_names_an_absent_row_and_shows_no_proof_is_counted()
         database_identity="db",
         present={"1", "3", "5", "10", "11"},
         uuids={"1": "u1", "3": "u3", "5": "another", "10": "", "11": ""},
-        playlist_held=lambda one: one == "here",
-    )
-
+        playlist_held=lambda one: one == "here")
     assert sorted(found.absent) == ["2", "8"]
     assert found.rolled_back == (frozenset({"4"}), frozenset({"6"}), frozenset({"9"}))
     assert found.unasked(()) == 3
@@ -1002,36 +823,29 @@ def test_read_collection_keeps_each_rows_uuid_read_only():
             self.ID, self.UUID, self.rb_local_deleted = content_id, uuid, deleted
             self.FolderPath, self.rb_local_usn, self.FileSize = f"/x/{content_id}.flac", 1, 1
             self.ArtistName = self.Title = "A"
-
     read = deletion_library.read_collection([Row("1", "u1"), Row("2", "u2", 1), Row("3", None)])
-
     assert dict(read.uuids) == {"1": "u1", "2": "u2", "3": ""}
     with pytest.raises(TypeError):
         read.uuids["4"] = "u4"  # type: ignore[index]
 
 
-def test_a_handled_landing_whose_playlist_went_later_is_not_counted(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_handled_landing_whose_playlist_went_later_is_not_counted(ready):
     """Its one removal was offered and trashed; deleting its playlist afterwards asks nothing new."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+    cfg = ready("One")
     gone, music = _row(cfg, "One")
     batch = _batch(cfg, gone)
     _remove_outright(cfg, gone)
-    code, refused = _review()
+    refused = _gated()
     assert _shown(refused)["offered"] == 1, _shown(refused)
     _trash(refused)
     assert not music.exists()
     _delete_playlist_outright(cfg, batch)
-
     assert _rolled_back() == 0
 
 
-def test_an_offer_withdrawn_when_the_landings_last_rows_go_is_counted(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_an_offer_withdrawn_when_the_landings_last_rows_go_is_counted(ready):
     """The first removal is offered on its siblings' proof; once they go, the landing is counted."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One", "Two", "Three")
+    cfg = ready("One", "Two", "Three")
     one, music = _row(cfg, "One")
     two, _ = _row(cfg, "Two")
     three, _ = _row(cfg, "Three")
@@ -1040,41 +854,28 @@ def test_an_offer_withdrawn_when_the_landings_last_rows_go_is_counted(
     assert _offered() == 1
     _remove_outright(cfg, two)
     _remove_outright(cfg, three)
-
     assert not ({one, two, three} & set(_candidates(cfg)))
     assert _rolled_back() == 1
     assert music.exists()
 
 
-def test_a_landing_whose_rows_are_all_held_is_not_counted_whatever_its_playlist(
-    native_library, silence, monkeypatch, tmp_path
-):
+def test_a_landing_whose_rows_are_all_held_is_not_counted_whatever_its_playlist(ready):
     """No row absent, no question: an older record with its playlist gone is not a rollback to count."""
-    cfg = _ready(native_library, silence, monkeypatch, tmp_path, "One")
+    cfg = ready("One")
     held, _music = _row(cfg, "One")
-
-    def older(landed: dict) -> None:
-        for entry in landed["rows"]:
-            entry.pop(native.LANDED_UUID_KEY)
-
-    _edit_landing(cfg, held, older)
+    _edit_landing(cfg, held, _without_uuids)
     _delete_playlist_outright(cfg, _batch(cfg, held))
-
     assert _rolled_back() == 0
 
 
 def test_the_first_review_counts_a_landing_already_rolled_back(
-    native_library, silence, monkeypatch, tmp_path
-):
+    native_library, silence, monkeypatch):
     """The run that baselines says it too: a landing rolled back before any review is counted."""
     cfg, _root = native_library
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", "Two")
     Path(cfg.library.db_path).write_bytes(before)
-    _deletion_on(cfg, monkeypatch, tmp_path)
-
-    code, refused = _review()
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _deletion_on(cfg, monkeypatch)
+    refused = _gated()
     assert _shown(refused)["baselined"] is True, _shown(refused)
     assert _shown(refused)["landings read as rolled back"] == 1, _shown(refused)

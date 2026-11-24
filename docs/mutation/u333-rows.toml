@@ -1,0 +1,77 @@
+name = "u333"
+pass_kind = "light"
+
+[[rows]]
+id = "H1_pinned_version"
+description = "test_deletion _pinned: record another application version, so the configuration every deletion test builds is pinned to a rekordbox the tool refuses"
+file = "tests/test_deletion.py"
+surface = "maintainer"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py"]
+old = '''    pins = {"pinned_app_version": RECORDED_APP_VERSION, "pin_validated_on": "2026-08-02"}'''
+new = '''    pins = {"pinned_app_version": "6.0.0", "pin_validated_on": "2026-08-02"}'''
+
+[[rows]]
+id = "H2_raising_returns"
+description = "test_deletion _raising: the stand in returns None instead of refusing, so every seam it replaces answers quietly"
+file = "tests/test_deletion.py"
+surface = "maintainer"
+tests = ["tests/test_deletion.py"]
+old = '''    def refuse_every_call(*_given, **_named):
+        raise error'''
+new = '''    def refuse_every_call(*_given, **_named):
+        return None'''
+
+[[rows]]
+id = "H3_beside_is_the_root"
+description = "test_deletion _beside: the directory beside the library root becomes the root itself, so a home or trash built there lands inside the library"
+file = "tests/test_deletion.py"
+surface = "maintainer"
+tests = ["tests/test_deletion.py"]
+old = '''    return Path(cfg.library.root).parent'''
+new = '''    return Path(cfg.library.root)'''
+
+[[rows]]
+id = "H4_planted_empty"
+description = "test_doctor planted: write an empty file whatever data is given, so every planted config, record or marker reads as blank"
+file = "tests/test_doctor.py"
+surface = "maintainer"
+tests = ["tests/test_doctor.py"]
+old = '''    (path.write_bytes if isinstance(data, bytes) else path.write_text)(data)'''
+new = '''    (path.write_bytes if isinstance(data, bytes) else path.write_text)(data[:0])'''
+
+[[rows]]
+id = "H5_green_probes_ignores_overrides"
+description = "test_doctor green_probes: build every probe green and drop the overrides a test names, so a red probe a test plants is never seen"
+file = "tests/test_doctor.py"
+surface = "maintainer"
+tests = ["tests/test_doctor.py"]
+old = '''    monkeypatch.setattr(doctor, "Probes", lambda: probes(**overrides))'''
+new = '''    monkeypatch.setattr(doctor, "Probes", lambda: probes())'''
+
+[[rows]]
+id = "H6_lands_drops_extra"
+description = "test_intake_land_native _lands: drop the extra arguments a test hands the landing, so a flag or folder a test names is never passed"
+file = "tests/test_intake_land_native.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_labels_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_land_dyn_native.py", "tests/test_intake_land_filing.py", "tests/test_intake_land_twins.py", "tests/test_intake_land_owned_hearts_native.py"]
+old = '''    code, acted, refused = _two_acts(_land(*extra) if verb is None else verb)'''
+new = '''    code, acted, refused = _two_acts(_land() if verb is None else verb)'''
+
+[[rows]]
+id = "H7_drove_holds_any_exit"
+description = "test_intake_land _drove: hold the exit to OK whatever the test expects, so a refusal the test drives for reads as a failure"
+file = "tests/test_intake_land.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land.py"]
+old = '''    assert code == int(expected), document'''
+new = '''    assert code == int(ExitCode.OK), document'''
+
+[[rows]]
+id = "H8_built_skips_the_build"
+description = "test_export_set built: hand back the account without building and approving the five row set, so every test taking it starts from nothing"
+file = "tests/test_export_set.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py"]
+old = '''    _built(_tracklist(account[0]))
+    return account'''
+new = '''    return account'''

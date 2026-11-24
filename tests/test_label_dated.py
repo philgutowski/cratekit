@@ -47,9 +47,8 @@ def _record(cfg, answers, heard=None) -> None:
     labels = {LABEL_ID: {"asked": []}}
     if heard is not None:
         labels[LABEL_ID][dated.HEARD] = list(heard)
-    sync_cli.write_record(
-        cfg, {"version": sync_cli.RECORD_VERSION, "labels": labels, "answers": list(answers)}
-    )
+    record = {"version": sync_cli.RECORD_VERSION, "labels": labels, "answers": list(answers)}
+    sync_cli.write_record(cfg, record)
 
 
 def _built(cfg, fake, account) -> folders.Plan:
@@ -61,15 +60,17 @@ def _built(cfg, fake, account) -> folders.Plan:
 
 def _plan(cfg, fake, account, *, today=TODAY) -> dated.DatedPlan:
     year_plan = playlists_cli.plan_label(cfg, _entry(), fake, account)
-    return dated.plan(
-        cfg, year_plan.catalogue, year_plan.folder_id, account, sync_cli.load_record(cfg),
-        today=today,
-    )
+    record = sync_cli.load_record(cfg)
+    return dated.plan(cfg, year_plan.catalogue, year_plan.folder_id, account, record, today=today)
+
+
+@pytest.fixture
+def built(kompakt):
+    _built(*kompakt)
+    return kompakt
 
 
 # 1. The record read
-
-
 def test_the_go_day_is_the_local_day_of_the_settling():
     document = {"answers": [_answer(["r3"], "2026-10-08")], "labels": {}}
     assert dated.taken_by_goes(document, LABEL_ID) == {"r3": "2026-10-08"}
@@ -87,13 +88,11 @@ def test_an_evening_go_west_of_utc_keeps_its_local_day():
 
 
 def test_an_unsettled_or_not_now_answer_took_nothing():
-    document = {
-        "labels": {},
-        "answers": [
-            _answer(["r3"], "2026-10-08", settled=False),
-            _answer(["r4"], "2026-10-08", answer=sync_cli.NOT_NOW),
-        ],
-    }
+    answers = [
+        _answer(["r3"], "2026-10-08", settled=False),
+        _answer(["r4"], "2026-10-08", answer=sync_cli.NOT_NOW),
+    ]
+    document = {"labels": {}, "answers": answers}
     assert dated.taken_by_goes(document, LABEL_ID) == {}
 
 
@@ -108,8 +107,6 @@ def test_the_name_is_the_year_name_then_new_then_the_day():
 
 
 # 2. A go into a year that exists
-
-
 def test_a_go_into_an_existing_year_makes_a_dated_playlist_and_leaves_the_year(kompakt):
     cfg, fake, account = kompakt
     year_plan = _built(cfg, fake, account)
@@ -127,9 +124,8 @@ def test_a_go_into_an_existing_year_makes_a_dated_playlist_and_leaves_the_year(k
     assert not year_plan.writes
 
 
-def test_a_second_go_the_same_day_appends_to_the_same_dated_playlist(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_a_second_go_the_same_day_appends_to_the_same_dated_playlist(built):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     dated.apply(cfg, account, _plan(cfg, fake, account))
     _record(cfg, [_answer(["r3"], "2026-10-09"), _answer(["r4"], "2026-10-09")])
@@ -142,17 +138,15 @@ def test_a_second_go_the_same_day_appends_to_the_same_dated_playlist(kompakt):
     assert not _plan(cfg, fake, account).writes
 
 
-def test_a_go_on_another_day_makes_its_own_dated_playlist(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_a_go_on_another_day_makes_its_own_dated_playlist(built):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r3"], "2026-10-08"), _answer(["r4"], "2026-10-09")])
     names = [step.name for step in _plan(cfg, fake, account).steps]
     assert names == ["Kompakt 2023 new 2026-10-08", "Kompakt 2023 new 2026-10-09"]
 
 
-def test_a_heard_release_is_left_out_and_the_record_is_not_written(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_a_heard_release_is_left_out_and_the_record_is_not_written(built):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r3", "r4"], "2026-10-09")], heard=["r3"])
     path = config.state_path("label_sync", cfg)
     before = path.read_bytes()
@@ -163,18 +157,16 @@ def test_a_heard_release_is_left_out_and_the_record_is_not_written(kompakt):
     assert path.read_bytes() == before
 
 
-def test_a_release_the_catalogue_does_not_confirm_is_left_out(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_a_release_the_catalogue_does_not_confirm_is_left_out(built):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r6", "r5"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
     assert planned.steps == ()
     assert planned.left_out == {"not in the catalogue": 1, "undated": 1}
 
 
-def test_two_playlists_with_the_dated_name_are_left_alone(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_two_playlists_with_the_dated_name_are_left_alone(built):
+    cfg, fake, account = built
     (folder_id,) = account.folder_names
     for _ in range(2):
         account.move_to_folder(account.create_playlist("Kompakt 2023 new 2026-10-09"), folder_id)
@@ -197,11 +189,8 @@ def test_a_track_the_provider_will_not_play_is_never_planned_on_the_dated_path(k
 
 
 # 3. The age report
-
-
-def test_organize_reports_a_dated_playlist_past_the_age_and_moves_nothing(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_organize_reports_a_dated_playlist_past_the_age_and_moves_nothing(built):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r3"], "2026-09-01"), _answer(["r4"], "2026-10-01")])
     dated.apply(cfg, account, _plan(cfg, fake, account, today=date(2026, 9, 2)))
     writes = len(account.chunks), len(account.moves), len(account.created)
@@ -214,9 +203,8 @@ def test_organize_reports_a_dated_playlist_past_the_age_and_moves_nothing(kompak
     assert "never merged" in item["why"] and "30" in item["why"]
 
 
-def test_the_age_is_the_configured_one(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_the_age_is_the_configured_one(built):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r3"], "2026-10-01")])
     dated.apply(cfg, account, _plan(cfg, fake, account))
     assert _plan(cfg, fake, account).aged == ()
@@ -233,11 +221,8 @@ def test_the_age_key_defaults_to_thirty_and_refuses_zero():
 
 
 # 4. The account refusing part way
-
-
-def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finishes(kompakt):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finishes(built):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r1"], "2026-10-08"), _answer(["r3"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
     assert [s.name for s in planned.steps] == [
@@ -260,9 +245,8 @@ def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finish
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
 
 
-def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(kompakt, monkeypatch):
-    cfg, fake, account = kompakt
-    _built(cfg, fake, account)
+def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(built, monkeypatch):
+    cfg, fake, account = built
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
     def refuse_move(playlist_id, folder_id):
@@ -293,8 +277,6 @@ def test_a_label_with_no_folder_yet_refuses_the_apply_before_any_write(kompakt):
 
 
 # 5. The organize step
-
-
 def _organize(cfg) -> Area:
     return organize_account.plan_area(cfg, available=frozenset({"labels"}), followed=[_entry()])
 
@@ -337,19 +319,15 @@ def test_an_unreadable_record_refuses_the_dated_step_alone(kompakt):
 
 
 # 6. Add only
-
-
 def test_no_removal_shape_appears_in_the_dated_module():
     shapes = ("remove", "delete", "unheart", "unlike", "clear", "rename")
     source = Path(dated.__file__).read_text(encoding="utf-8")
-    named = sorted(
-        {
-            node.attr if isinstance(node, ast.Attribute) else node.name
-            for node in ast.walk(ast.parse(source))
-            if (isinstance(node, ast.Attribute) and any(s in node.attr.lower() for s in shapes))
-            or (isinstance(node, ast.FunctionDef) and any(s in node.name.lower() for s in shapes))
-        }
-    )
+    named = sorted({
+        node.attr if isinstance(node, ast.Attribute) else node.name
+        for node in ast.walk(ast.parse(source))
+        if (isinstance(node, ast.Attribute) and any(s in node.attr.lower() for s in shapes))
+        or (isinstance(node, ast.FunctionDef) and any(s in node.name.lower() for s in shapes))
+    })
     assert named == [], named
 
 
@@ -361,15 +339,12 @@ def test_the_year_plans_actions_are_the_outbound_folders_own_values():
 
 def test_a_write_that_failed_part_way_keeps_a_refusals_reason_and_adds_its_step_again():
     inner = refuse("label-new-playlists-no-folder", "no folder", steps=("make it",))
-    said = dated.refused_part_way(
-        inner, "one playlist was made", "run it again", {"made": 1},
-        failed="the build", origin=("label", "dated"),
-    )
+    where = {"failed": "the build", "origin": ("label", "dated")}
+    said = dated.refused_part_way(inner, "one playlist was made", "run it again", {"made": 1},
+                                  **where)
     assert said.cause.reason == "label-new-playlists-no-folder"
     assert said.cause.remediation.steps == ("make it", "run it again")
-    other = dated.refused_part_way(
-        OSError("disk"), "nothing was written", "run it again", {},
-        failed="the build", origin=("label", "dated"),
-    )
+    other = dated.refused_part_way(OSError("disk"), "nothing was written", "run it again", {},
+                                   **where)
     assert other.cause.reason == "internal-error"
     assert other.cause.remediation.steps == ("run it again",)

@@ -7,7 +7,7 @@ import json
 import pytest
 
 from cratekit.cli import gates
-from tests.test_gate_not_reached import _state, digest_spec
+from tests.test_gate_not_reached import _reached, _state, digest_spec
 
 LIVE = "/library/db/master.db"
 COPY = "/library/rehearsal/master.db"
@@ -24,10 +24,16 @@ def _plan() -> dict:
 def _offered(pinned: dict[str, str] | None) -> gates.RunState:
     """The first act: the gate refuses open, and the person answers apply."""
     state = _state()
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(_spec(), plan=_plan(), pinned=pinned)
+    _reached(state, _spec(), plan=_plan(), pinned=pinned)
     gates.record(state, _spec(), "apply", actor="a-person")
     return gates.RunState.from_json(json.loads(json.dumps(state.to_json())))
+
+
+def _stale(state: gates.RunState, plan: dict | None = None, **kwargs):
+    """The cause the continuation refuses with as stale, over ``plan`` or the same plan."""
+    with pytest.raises(gates.DecisionStale) as raised:
+        gates.Gates(state=state).require(_spec(), plan=plan or _plan(), **kwargs)
+    return raised.value.cause
 
 
 def test_the_open_gate_records_the_pin_and_the_record_carries_it_through_json():
@@ -50,9 +56,7 @@ def test_the_same_pin_on_the_continuation_takes_the_recorded_answer():
 
 def test_another_pin_with_the_same_digest_is_stale_and_names_both_values():
     state = _offered({"database": LIVE})
-    with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(_spec(), plan=_plan(), pinned={"database": COPY})
-    cause = raised.value.cause
+    cause = _stale(state, pinned={"database": COPY})
     assert cause.reason == "decision-stale"
     assert cause.detail["pinned"] == "database"
     assert cause.detail["expected"] == LIVE and cause.detail["actual"] == COPY
@@ -62,24 +66,17 @@ def test_another_pin_with_the_same_digest_is_stale_and_names_both_values():
 
 def test_an_answer_whose_run_pinned_nothing_is_stale_to_a_gate_that_now_pins():
     """Absence is not agreement: a run recorded with no pin answered over no file."""
-    state = _offered(None)
-    with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(_spec(), plan=_plan(), pinned={"database": LIVE})
-    assert raised.value.cause.detail["expected"] == ""
-    assert raised.value.cause.detail["actual"] == LIVE
+    detail = _stale(_offered(None), pinned={"database": LIVE}).detail
+    assert detail["expected"] == ""
+    assert detail["actual"] == LIVE
 
 
 def test_a_pinned_run_asked_with_no_pin_is_stale_too():
-    state = _offered({"database": LIVE})
-    with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(_spec(), plan=_plan())
-    assert raised.value.cause.detail["pinned"] == "database"
+    assert _stale(_offered({"database": LIVE})).detail["pinned"] == "database"
 
 
 def test_a_moved_digest_is_still_refused_before_the_pin_is_read():
-    state = _offered({"database": LIVE})
     moved = {**_plan(), "digest": "sha256:other"}
-    with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(_spec(), plan=moved, pinned={"database": LIVE})
-    assert "pinned" not in raised.value.cause.detail
-    assert raised.value.cause.detail["actual"] == "sha256:other"
+    detail = _stale(_offered({"database": LIVE}), moved, pinned={"database": LIVE}).detail
+    assert "pinned" not in detail
+    assert detail["actual"] == "sha256:other"

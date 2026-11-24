@@ -1,9 +1,8 @@
-"""U157: a native landing marks the rows whose tempo moves with the dyn My Tag.
+"""U157: a native landing marks the rows whose tempo moves with the dyn My Tag, D1 applying.
 
-A file at or above the configured cut joins carrying ``dyn`` in the gated commit
-and the warning counts both kinds; too little pulse lands steady, an older file
-is counted unscored, and neither is tagged on a guess. D1 applies.
-"""
+A file at or above the configured cut joins carrying ``dyn`` in the gated commit and the
+warning counts both kinds; too little pulse lands steady, an older file is counted unscored,
+and neither is tagged on a guess."""
 
 from __future__ import annotations
 
@@ -13,26 +12,18 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config, rb_writer, session, tags
-from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import drift, land_cli, native, rekordbox_check
-from tests.test_intake_land_native import _asked, _execute, _land, _query, _stage, _two_acts
+from tests import test_intake_land_vox_native as vox_suite
+from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
+from tests.test_intake_land_native import _asked, _execute, _land, _lands, _query, _stage
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
-from tests.test_intake_land_vox_native import (
-    _add_rows,
-    _added,
-    _content_id,
-    _my_tag,
-    _plan,
-    _refused_at_the_commit,
-)
+from tests.test_intake_land_vox_native import _added, _my_tag, _plan
 
 #: A category of the person's own, which the writer copies the Analysis category's shape from.
 MOOD_ID = "8000"
@@ -62,14 +53,13 @@ def _marked(cfg: config.Config) -> frozenset[str]:
 @pytest.fixture
 def writable(native_library):
     """The landing library, holding one category of the person's and no dyn tag."""
-    cfg, _root = native_library
-    _add_rows(cfg, _my_tag(MOOD_ID, "Mood", "root", "mood"))
+    cfg = native_library[0]
+    vox_suite._add_rows(cfg, _my_tag(MOOD_ID, "Mood", "root", "mood"))
     return cfg
 
 
 def _codes(acted: dict) -> list[str]:
-    """The warnings this unit owns or shares, without the vox tag's, which an
-    uncalibrated library raises on every landing and U127 tests."""
+    """The warnings this unit owns or shares, but the vox tag's, which U127 tests."""
     vox = {land_cli.VOX_NOT_WRITTEN, land_cli.VOX_UNSCORED}
     return [w["code"] for w in acted["warnings"] if w["code"] not in vox]
 
@@ -95,23 +85,17 @@ def _added_item(shown: dict, name: str) -> dict:
         ("4.4", drift.VARIABLE, drift.VARIABLE, True),
         ("1.5", drift.VARIABLE, drift.VARIABLE, True), ("1.4", drift.STEADY, drift.STEADY, False),
         ("0.0", drift.STEADY, drift.STEADY, False), (None, drift.UNKNOWN, drift.UNKNOWN, False),
-    ],
-    ids=["moving", "exactly-at-the-cut", "below", "still", "too-little-pulse"],
-)
+    ], ids=["moving", "exactly-at-the-cut", "below", "still", "too-little-pulse"])
 def test_a_landed_row_is_tagged_dyn_exactly_when_its_drift_reads_variable(
-    writable, silence, level, verdict, planned, tagged
-):
+        writable, silence, level, verdict, planned, tagged):
     cfg = writable
     assert cfg.analysis.drift_cut == config.DEFAULT_DRIFT_CUT == 1.5
     _read(cfg, silence, "One.flac", level, verdict)
-
-    code, acted, refused = _two_acts(_land())
-
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _lands()
     item = _added_item(_shown(refused), "One.flac")
     assert item["drift_verdict"] == planned and item["dyn"] is tagged
     assert item["drift"] == (None if level is None else float(level))
-    content_id = _content_id(cfg, "One.flac")
+    content_id = vox_suite._content_id(cfg, "One.flac")
     assert (content_id in _marked(cfg)) is tagged, "the check reads another answer"
     (landed,) = [i for i in acted["data"]["items"] if i.get("content_id") == content_id]
     assert landed["dyn"] is tagged, "the report's read back disagrees with the table"
@@ -125,19 +109,15 @@ def test_a_landed_row_is_tagged_dyn_exactly_when_its_drift_reads_variable(
 
 
 def test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_each_selection(
-    writable, silence
-):
+        writable, silence):
     cfg = writable
     _read(cfg, silence, "Live.flac", "6.2", drift.VARIABLE)
     _read(cfg, silence, "Two.flac", "9.9", drift.VARIABLE)
     _read(cfg, silence, "Straight.flac", "0.1", drift.STEADY)
     _read(cfg, silence, "Ambient.flac", None, drift.UNKNOWN)
     _read(cfg, silence, "Older.flac", None, None)
-
-    code, acted, refused = _two_acts(_land())
-
-    assert code == int(ExitCode.OK), acted
-    tagged = {_content_id(cfg, name) for name in ("Live.flac", "Two.flac")}
+    acted, refused = _lands()
+    tagged = {vox_suite._content_id(cfg, name) for name in ("Live.flac", "Two.flac")}
     assert _marked(cfg) == tagged
     categories = _query(cfg, "SELECT ID FROM djmdMyTag WHERE Name = ?", native.DYN_CATEGORY)
     values = _query(cfg, "SELECT ID, ParentID FROM djmdMyTag WHERE Name = ?", native.DYN_VALUE)
@@ -149,20 +129,16 @@ def test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_eac
     assert {change.tree: change.created for change in record.change.trees}[native.DYN_CHANGE_KEY] == 2
     assert _codes(acted) == [land_cli.AWAITING_ANALYSIS]
     message = _warning(acted, land_cli.AWAITING_ANALYSIS)
-    dynamic = (
-        f"first on the 2 row(s) carrying the dyn My Tag with {drift.DYNAMIC_SETTINGS} "
-        "as the Normal run's"
-    )
+    dynamic = (f"first on the 2 row(s) carrying the dyn My Tag with {drift.DYNAMIC_SETTINGS} "
+               "as the Normal run's")
     normal = f"then last on the 3 row(s) without it with {drift.NORMAL_SETTINGS}"
     assert dynamic in message and normal in message, message
-    # U954: the Dynamic run first and the Normal run last, so the mode the
-    # next launch's Auto Analysis dialog reads is Normal.
+    # U954: Dynamic first and Normal last, so the next launch's Auto Analysis reads Normal.
     assert message.index(dynamic) < message.index(normal), message
     assert f"{normal}, so the mode the next launch reads is Normal" in message, message
     assert "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on" in message
     assert "Analysis Mode Dynamic" in message
-    # U319: both paths, the selections with Auto Analysis off and then the
-    # one dialog with it on, before the clear that follows either.
+    # U319: the selections with Auto Analysis off, then its dialog on, before either's clear.
     off = "rekordbox analyses nothing on its own with Auto Analysis off; open rekordbox, select the"
     assert off in message, message
     selections = message.index(normal)
@@ -173,6 +149,8 @@ def test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_eac
         "1 file(s) carry no drift reading and get no tag"
     )
     assert acted["data"]["totals"]["dyn tagged"] == 2
+
+
 def test_the_check_reads_the_value_the_landing_writes():
     """One constant and one reader, so the check and the landing cannot drift apart."""
     assert rekordbox_check.DYN_VALUE == native.DYN_VALUE == "dyn"
@@ -184,10 +162,7 @@ def test_a_landing_whose_every_row_is_dyn_says_the_visit_ends_on_dynamic(writabl
     cfg = writable
     _read(cfg, silence, "Live.flac", "6.2", drift.VARIABLE)
     _read(cfg, silence, "Two.flac", "9.9", drift.VARIABLE)
-
-    code, acted, _refused = _two_acts(_land())
-
-    assert code == int(ExitCode.OK), acted
+    acted = _lands()[0]
     assert len(_marked(cfg)) == 2
     message = _warning(acted, land_cli.AWAITING_ANALYSIS)
     assert (
@@ -202,15 +177,11 @@ def test_a_landing_whose_every_row_is_dyn_says_the_visit_ends_on_dynamic(writabl
 # Never a guess
 @pytest.mark.parametrize(("level", "verdict"), [(None, None), ("lots", drift.VARIABLE)])
 def test_a_file_with_no_drift_reading_or_no_number_is_counted_unscored_and_untagged(
-    writable, silence, level, verdict
-):
+        writable, silence, level, verdict):
     """A score that is not a number is unscored whatever its verdict says."""
     cfg = writable
     _read(cfg, silence, "Older.flac", level, verdict)
-
-    code, acted, refused = _two_acts(_land())
-
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _lands()
     shown = _shown(refused)
     assert "1 file(s) carry no drift reading and get no tag" in shown["dyn My Tag"]
     item = _added_item(shown, "Older.flac")
@@ -226,18 +197,11 @@ def test_a_file_with_no_drift_reading_or_no_number_is_counted_unscored_and_untag
     assert "first on the" not in message and "then last on" not in message, message
 
 
-def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(
-    native_library, silence
-):
-    """The writer will not invent a category, so the batch lands untagged and the
-    warning names each row to run with Dynamic."""
-    cfg, _root = native_library
+def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(cfg, silence):
+    """The writer invents no category, so the batch lands untagged naming each row for Dynamic."""
     _read(cfg, silence, "Live.flac", "5.0", drift.VARIABLE)
     _read(cfg, silence, "Straight.flac", "0.1", drift.STEADY)
-
-    code, acted, refused = _two_acts(_land())
-
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _lands()
     assert native.DYN_NO_CATEGORY in _shown(refused)["dyn My Tag"]
     assert _added_item(_shown(refused), "Live.flac")["dyn"] is False
     assert acted["data"]["totals"]["added"] == 2
@@ -252,35 +216,24 @@ def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(
         "other row to run Normal the visit ends on Dynamic: Live.flac" in message
     ), message
     assert native.DYN_NO_CATEGORY.endswith(
-        "with Analysis Mode Dynamic by hand, before any Normal run and left out of it"
-    )
+        "with Analysis Mode Dynamic by hand, before any Normal run and left out of it")
 
 
-def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(native_library, silence):
-    """The writer is asked only when a row needs it, so a steady batch on a library
-    with no My Tag at all lands with no dyn warning and no block."""
-    cfg, _root = native_library
+def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(cfg, silence):
+    """The writer is asked only for a row that needs it: a steady batch says nothing of dyn."""
     _read(cfg, silence, "Straight.flac", "0.1", drift.STEADY)
-
-    code, acted, refused = _two_acts(_land())
-
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _lands()
     assert _shown(refused)["dyn My Tag"].startswith("0 of 1 added row(s)")
     assert _codes(acted) == [land_cli.AWAITING_ANALYSIS]
 
 
-def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(native_library, silence):
+def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(cfg, silence):
     """Over a removed dyn value the check's own read back counts no tag and names the row."""
-    cfg, _root = native_library
-    _add_rows(
+    vox_suite._add_rows(
         cfg, _my_tag(ANALYSIS_ID, native.DYN_CATEGORY, "root", "analysis-category", seq=1),
-        _my_tag(DYN_ID, native.DYN_VALUE, ANALYSIS_ID, "dyn-value", removed=1),
-    )
+        _my_tag(DYN_ID, native.DYN_VALUE, ANALYSIS_ID, "dyn-value", removed=1))
     _read(cfg, silence, "One.flac", "5.0", drift.VARIABLE)
-
-    code, acted, _refused = _two_acts(_land())
-
-    assert code == int(ExitCode.OK), acted
+    acted = _lands()[0]
     assert "dyn tagged" not in acted["data"]["totals"]
     (item,) = [i for i in acted["data"]["items"] if i.get("content_id")]
     assert item["dyn"] is False
@@ -291,13 +244,12 @@ def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(native_li
 
 def test_a_refused_commit_leaves_no_tag(writable, silence, monkeypatch):
     _read(writable, silence, "One.flac", "5.0", drift.VARIABLE)
-    _refused_at_the_commit(writable, monkeypatch)
+    vox_suite._refused_at_the_commit(writable, monkeypatch)
 
 
 # What is approved
 def test_the_digest_and_the_answer_move_with_a_rescore_and_with_the_cut(writable, silence):
-    """The score is read against the cut configured now, and a rescore or a change
-    of cut is another plan."""
+    """The score is read against the cut configured now: a rescore or a new cut is another plan."""
     cfg = writable
     path = _read(cfg, silence, "One.flac", "0.4", drift.STEADY)
     first = _shown(_asked(_land()))
@@ -307,7 +259,6 @@ def test_the_digest_and_the_answer_move_with_a_rescore_and_with_the_cut(writable
     config.save(changed)
     config.reset_cache()
     third = _shown(_asked(_land()))
-
     items = [_added_item(one, "One.flac") for one in (first, second, third)]
     assert [item["dyn"] for item in items] == [False, True, False]
     assert items[2]["drift_verdict"] == drift.STEADY

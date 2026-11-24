@@ -23,20 +23,19 @@ def test_add_with_an_account_round_trips_through_list():
 
 
 @pytest.mark.parametrize(
-    "given",
-    ["PulsRomania", "pulsromania.bandcamp.com", "https://pulsromania.bandcamp.com",
-     "https://PulsRomania.bandcamp.com/music", "pulsromania.bandcamp.com/album/sun-path",
-     "  pulsromania  "],
-)
-def test_an_address_or_any_case_is_stored_as_the_account_a_purchase_is_read_as(given):
+    ("given", "stored"),
+    [pytest.param(one, "pulsromania", id=one) for one in (
+        "PulsRomania", "pulsromania.bandcamp.com", "https://pulsromania.bandcamp.com",
+        "https://PulsRomania.bandcamp.com/music", "pulsromania.bandcamp.com/album/sun-path",
+        "  pulsromania  ",
+    )] + [
+        # ``acquire.bandcamp.seller_of`` keeps the host of a seller off bandcamp.com.
+        pytest.param("https://music.example.org/album/x", "music.example.org", id="own-domain"),
+        pytest.param("default.bandcamp.com", "default", id="an-account-named-default"),
+    ])
+def test_an_address_or_any_case_is_stored_as_the_account_a_purchase_is_read_as(given, stored):
     ok(["add", "PULS", "--bandcamp", given])
-    assert listed()["puls"]["bandcamp"] == "pulsromania"
-
-
-def test_a_seller_on_its_own_domain_keeps_the_whole_host():
-    """``acquire.bandcamp.seller_of`` keeps the host of a seller off bandcamp.com."""
-    ok(["add", "PULS", "--bandcamp", "https://music.example.org/album/x"])
-    assert listed()["puls"]["bandcamp"] == "music.example.org"
+    assert listed()["puls"]["bandcamp"] == stored
 
 
 @pytest.mark.parametrize("given", ["", "   ", "puls romania", "https://", "puls_romania", "-puls"])
@@ -81,11 +80,6 @@ def test_default_clears_the_account_and_frees_it_for_another_label():
     assert listed()["kompakt"]["bandcamp"] == "pulsromania"
 
 
-def test_an_account_named_default_is_set_by_its_address():
-    ok(["add", "PULS", "--bandcamp", "default.bandcamp.com"])
-    assert listed()["puls"]["bandcamp"] == "default"
-
-
 def test_set_of_another_field_keeps_the_account():
     ok(["add", "PULS", "--bandcamp", "pulsromania"])
     ok(["set", "PULS", "--track-limit", "40"])
@@ -118,8 +112,6 @@ def test_set_with_only_bandcamp_is_a_field_to_change():
 
 
 # The store, for a file edited by hand
-
-
 def _hand_written(labels_: dict) -> labels.Registry:
     path = config.state_path("label_intent")
     path.parent.mkdir(parents=True, exist_ok=True)

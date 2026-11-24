@@ -1,16 +1,9 @@
-"""U46: the resume guarantee, measured through the SHIPPED binding.
-
-A real process running ``cli.handlers.run_job`` against the ``master`` handler is
-killed mid job, and the resume must redo the unfinished item and no other, so
-every job here has several items.
+"""U46: the resume guarantee, measured through the SHIPPED binding: a real ``run_job`` over
+the ``master`` handler killed mid job must redo the unfinished item and no other.
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -20,10 +13,7 @@ from cratekit.core import config, jobs
 from cratekit.master import cli as master_cli
 from cratekit.modules.tools import mastering
 from tests import job_worker
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC_ROOT = REPO_ROOT / "src"
-WORKER = Path(__file__).resolve().parent / "job_worker.py"
+from tests.test_jobs import _attempts, _config_document, _spawn_worker, _wait_for
 
 
 def fake_binaries(tmp_path: Path) -> tuple[Path, Path]:
@@ -41,21 +31,12 @@ def fake_binaries(tmp_path: Path) -> tuple[Path, Path]:
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch) -> config.Config:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
     ffmpeg, ffprobe = fake_binaries(tmp_path)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(tmp_path / "library"))
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
     monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", str(ffmpeg))
     monkeypatch.setenv("CRATEKIT_BIN_FFPROBE", str(ffprobe))
-    built = config.from_dict({
-        "schema_version": config.CURRENT_SCHEMA_VERSION,
-        "library": {
-            "root": str(root), "volume_id": "F1E2-D3C4", "db_path": str(root / "db" / "master.db"),
-        },
-        "paths": {"download_staging": str(tmp_path / "staging")},
-        "profile": {"name": "full"},
-    })
+    built = config.from_dict(_config_document(tmp_path))
     config.save(built)
     config.reset_cache()
     return built
@@ -63,7 +44,6 @@ def cfg(tmp_path, monkeypatch) -> config.Config:
 
 @pytest.fixture
 def queued(cfg, tmp_path):
-    """Four recordings, one job, one item each, in a queue of its own."""
     sets = tmp_path / "library" / "Sets"
     sets.mkdir(parents=True)
     sources = []
@@ -71,7 +51,6 @@ def queued(cfg, tmp_path):
         path = sets / f"{name}.wav"
         path.write_bytes(b"not really audio, and nothing here ever reads it")
         sources.append(path)
-
     root = tmp_path / "jobs"
     root.mkdir()
     db = root / jobs.QUEUE_FILENAME
@@ -83,29 +62,12 @@ def queued(cfg, tmp_path):
 
 
 def _kill_at(stall: str, db: Path, job, root: Path, ledger: Path) -> None:
-    """Run the seam worker over the job and kill it once it stalls inside ``stall``."""
-    env = {**os.environ, "PYTHONPATH": str(SRC_ROOT)}
-    argv = [sys.executable, str(WORKER), "seam", str(db), job.job_id, str(root), str(ledger), stall]
-    pipe = subprocess.PIPE
-    worker = subprocess.Popen(argv, env=env, stdout=pipe, stderr=pipe, text=True)
+    worker = _spawn_worker("seam", str(db), job.job_id, str(root), str(ledger), stall)
     try:
-        _wait_for(root / f"stalled-{stall}")
+        _wait_for(root / f"stalled-{stall}", seconds=30.0)
     finally:
         worker.kill()
         worker.wait(timeout=30)
-
-
-def _wait_for(path: Path, *, seconds: float = 30.0) -> None:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        if path.exists():
-            return
-        time.sleep(0.02)
-    raise AssertionError(f"{path.name} never appeared within {seconds}s")
-
-
-def _attempts(ledger: Path) -> list[str]:
-    return [line for line in ledger.read_text().splitlines() if line]
 
 
 def _states(db: Path, job_id: str) -> dict[str, jobs.ItemState]:
@@ -114,33 +76,27 @@ def _states(db: Path, job_id: str) -> dict[str, jobs.ItemState]:
 
 
 def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_item(
-    queued, monkeypatch
-):
+        queued, monkeypatch):
     job, db, root, sources = queued
     first = root / "first.log"
     first.write_text("")
     stall = "three"
-
     _kill_at(stall, db, job, root, first)
-
     before = _attempts(first)
     assert before[-1] == stall, before
     assert before.count(stall) == 1
     finished = [name for name in before if name != stall]
     assert finished, "nothing completed before the kill, so 'and no other' ranges over nothing"
-
     states = _states(db, job.job_id)
     assert states[stall] == jobs.ItemState.CLAIMED, states
     for name in finished:
         assert states[name] == jobs.ItemState.DONE, states
-
     # The second pass runs here, in this process, through the same seam.
     second = root / "second.log"
     second.write_text("")
     monkeypatch.setattr(mastering, "subprocess_runner", job_worker.seam_encoder(second))
     with jobs.open_store(db) as store:
         result = handlers.run_job(store, jobs.get(store, job.job_id), root=root)
-
     redone = _attempts(second)
     assert stall in redone, redone
     again = sorted(set(redone) & set(finished))
@@ -156,9 +112,7 @@ def test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destin
     stalled_source = next(p for p in sources if p.stem == stall)
     ledger = root / "kill.log"
     ledger.write_text("")
-
     _kill_at(stall, db, job, root, ledger)
-
     final = mastering.output_path(stalled_source)
     assert not final.exists(), "a killed encode left a partial file at the destination"
     staging = final.parent / master_cli.MASTER_STAGING_DIRNAME / job.job_id

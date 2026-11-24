@@ -36,12 +36,9 @@ from tests._hardware import (
 def _require_hdiutil() -> None:
     if not hdiutil_available():
         pytest.fail(
-            "hdiutil is required to prove the volume fixtures against real "
-            "mounts, and it is missing here. These fixtures target macOS, where "
-            "hdiutil ships with the system. This fails rather than skips "
-            "because a skipped hardware proof is indistinguishable from a "
-            "passing one in every summary anybody reads."
-        )
+            "hdiutil is required to prove the volume fixtures against real mounts, and it is "
+            "missing here. These fixtures target macOS, where hdiutil ships with the system. "
+            "This fails rather than skips, since a skipped hardware proof reads as a pass.")
 
 
 class ScriptedClock:
@@ -89,14 +86,12 @@ def test_row_reports_count_rate_median_and_worst_together() -> None:
     assert "median" in row and "worst" in row
 
 
-def test_single_run_timing_is_refused() -> None:
-    with pytest.raises(ValueError, match="repeat count"):
-        time_repeated(lambda: None, repeats=1, threshold_seconds=1.0)
-
-
-def test_nonpositive_threshold_is_refused() -> None:
-    with pytest.raises(ValueError, match="positive"):
-        time_repeated(lambda: None, repeats=2, threshold_seconds=0.0)
+@pytest.mark.parametrize(
+    ("repeats", "threshold", "said"), [(1, 1.0, "repeat count"), (2, 0.0, "positive")],
+    ids=["single-run", "nonpositive-threshold"])
+def test_a_timing_of_the_wrong_shape_is_refused(repeats, threshold, said) -> None:
+    with pytest.raises(ValueError, match=said):
+        time_repeated(lambda: None, repeats=repeats, threshold_seconds=threshold)
 
 
 def test_a_measurement_is_a_record_not_a_workspace() -> None:
@@ -183,15 +178,13 @@ def test_committed_calibration_loads() -> None:
 # Volumes: real images, real mounts, real teardown.
 
 
-def test_fat_volume_refuses_sizes_fat32_cannot_hold() -> None:
-    with pytest.raises(ValueError, match="newfs_msdos"):
-        with fat_volume(size_mb=FAT32_MIN_MB - 1):
-            raise AssertionError("the fixture must refuse before it yields")
-
-
-def test_fat_label_rules_are_enforced() -> None:
-    with pytest.raises(ValueError, match="11 uppercase"):
-        with fat_volume(label="lowercase"):
+@pytest.mark.parametrize(
+    ("asked", "said"),
+    [({"size_mb": FAT32_MIN_MB - 1}, "newfs_msdos"), ({"label": "lowercase"}, "11 uppercase")],
+    ids=["a-size-fat32-cannot-hold", "a-label-off-the-rules"])
+def test_fat_volume_refuses_what_fat32_cannot_take(asked, said) -> None:
+    with pytest.raises(ValueError, match=said):
+        with fat_volume(**asked):
             raise AssertionError("the fixture must refuse before it yields")
 
 
@@ -210,7 +203,6 @@ def test_read_only_volume_serves_content_and_refuses_writes() -> None:
 
     def populate(root: Path) -> None:
         (root / "seed.txt").write_text("populated")
-
     with read_only_volume(populate) as mount:
         assert (mount / "seed.txt").read_text() == "populated"
         assert "read-only" in mount_flags(mount)
@@ -226,7 +218,6 @@ def test_teardown_runs_when_the_body_raises() -> None:
 
     class Boom(Exception):
         pass
-
     seen: list[Path] = []
     with pytest.raises(Boom):
         with fat_volume() as mount:
@@ -257,12 +248,10 @@ def test_mount_lookup_is_exact_never_a_prefix(tmp_path: Path) -> None:
     image = tmp_path / "probe.dmg"
     mountpoint = tmp_path / "PROBE (1)"
     mountpoint.mkdir()
-    _run(
-        [
-            "hdiutil", "create", "-size", "64m",
-            "-fs", "MS-DOS FAT32", "-volname", "CKPROBE", "-quiet", str(image),
-        ]
-    )
+    _run([
+        "hdiutil", "create", "-size", "64m", "-fs", "MS-DOS FAT32", "-volname", "CKPROBE", "-quiet",
+        str(image),
+    ])
     _run(["hdiutil", "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse", "-quiet"])
     try:
         assert filesystem_kind(mountpoint) == "msdos"

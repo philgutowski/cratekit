@@ -55,12 +55,8 @@ def _fill(cfg, playlist_id: str, count: int = 2) -> None:
 
 def _order(cfg, folder_id: str) -> list[str]:
     """The live children of the folder by name, in the order rekordbox shows them."""
-    return [str(name) for (name,) in _query(
-        cfg,
-        "SELECT Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0 "
-        "ORDER BY Seq, Name, ID",
-        folder_id,
-    )]
+    live = "SELECT Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0"
+    return [str(name) for (name,) in _query(cfg, f"{live} ORDER BY Seq, Name, ID", folder_id)]
 
 
 def _playlist_rows(cfg) -> list[tuple]:
@@ -152,9 +148,8 @@ def test_a_non_month_playlist_keeps_its_relative_place_after_the_months(home):
     _make(cfg, folder_id, "Crates", kind="folder")
     _make(cfg, folder_id, "2026-Q2", "Undated", "Alpha", "2026-10")
     acted, _shown = _approved()
-    assert _order(cfg, folder_id) == [
-        SOURCE, "2026-10", "2026-08", "Undated", "Zeta", "Crates", "2026-Q2", "Alpha"
-    ]
+    after = [SOURCE, "2026-10", "2026-08", "Undated", "Zeta", "Crates", "2026-Q2", "Alpha"]
+    assert _order(cfg, folder_id) == after
 
 
 def test_a_folder_named_as_a_month_is_not_a_month(home):
@@ -162,9 +157,8 @@ def test_a_folder_named_as_a_month_is_not_a_month(home):
     _make(cfg, folder_id, "2026-12", kind="folder")
     _make(cfg, folder_id, "2026-09")
     planned = order_cli.planned(cfg, source=SOURCE)
-    assert [(one.name, one.kind) for one in planned.children] == [
-        (SOURCE, "source"), ("2026-09", "month"), ("2026-12", "other"),
-    ]
+    kinds = [(SOURCE, "source"), ("2026-09", "month"), ("2026-12", "other")]
+    assert [(one.name, one.kind) for one in planned.children] == kinds
 
 
 def test_a_soft_deleted_month_is_neither_moved_nor_counted(home):
@@ -254,8 +248,8 @@ def test_the_order_takes_the_positions_the_live_children_hold_and_no_other(home)
     cfg, folder_id, source_id = home
     made = _make(cfg, folder_id, "2026-08", "Gone", "2026-09", "2026-10")
     _mark_removed(cfg, made["Gone"])
-    seqs = {source_id: 1, made["2026-08"]: 4, made["Gone"]: 7, made["2026-09"]: 9, made["2026-10"]: 9}
-    _set(cfg, "Seq", **seqs)
+    _set(cfg, "Seq", **{source_id: 1, made["2026-08"]: 4, made["Gone"]: 7, made["2026-09"]: 9,
+                        made["2026-10"]: 9})
     acted, _shown = _approved()
     assert _order(cfg, folder_id) == [SOURCE, "2026-10", "2026-09", "2026-08"]
     assert [_seq(cfg, made[name]) for name in ("2026-10", "2026-09", "2026-08")] == [4, 9, 10]
@@ -305,8 +299,7 @@ def _tables(playlists: dict, memberships: dict | None = None, content: dict | No
     return rb_writer.NodeTables(
         content=content or {"c1": "x"}, playlists=playlists,
         memberships=memberships if memberships is not None else {"m1": ("m1", "a", "c1", 1, 0)},
-        playlist_columns=_P_COLS, membership_columns=_M_COLS,
-    )
+        playlist_columns=_P_COLS, membership_columns=_M_COLS)
 
 
 _BEFORE = {
@@ -319,9 +312,8 @@ _AFTER = {
 
 
 def test_the_planned_order_is_confined():
-    assert order.order_violations(
-        _tables(_BEFORE), _tables(_AFTER), folder_id="f", seated={"x": 3, "y": 2}
-    ) == []
+    before, after = _tables(_BEFORE), _tables(_AFTER)
+    assert order.order_violations(before, after, folder_id="f", seated={"x": 3, "y": 2}) == []
 
 
 @pytest.mark.parametrize(
@@ -342,12 +334,10 @@ def test_the_planned_order_is_confined():
     ids=[
         "renamed", "reparented", "removed", "not-made", "unplanned-move", "source-moved",
         "row-added", "row-gone", "membership-changed", "membership-gone", "content-changed",
-    ],
-)
+    ])
 def test_an_order_reaching_what_it_did_not_plan_is_a_violation(after, memberships, content, seated, expected):
-    violations = order.order_violations(
-        _tables(_BEFORE), _tables(after, memberships, content), folder_id="f", seated=seated,
-    )
+    after = _tables(after, memberships, content)
+    violations = order.order_violations(_tables(_BEFORE), after, folder_id="f", seated=seated)
     assert any(expected in one for one in violations), violations
 
 
@@ -400,8 +390,6 @@ def test_the_verb_refuses_an_answer_the_read_back_does_not_hold(home, monkeypatc
 
 
 # The shared spine the four verbs and three writers run through, driven on its own.
-
-
 def test_the_write_handle_requires_rekordbox_closed_and_the_read_handle_does_not(monkeypatch):
     opened = []
     monkeypatch.setattr(spine.rb_writer, "live_db_path", lambda cfg: "live")
@@ -434,7 +422,6 @@ def test_a_commit_that_landed_and_then_raised_is_recorded_once(monkeypatch):
     @contextmanager
     def witnessing(_db):
         yield SimpleNamespace(landed=True)
-
     monkeypatch.setattr(spine.rb_writer, "commit_witness", witnessing)
     monkeypatch.setattr(spine.trees, "rollback_quietly", lambda db: None)
     recorded = []
@@ -450,8 +437,7 @@ def test_a_declined_gate_keeps_the_warnings_the_plan_carried(monkeypatch):
     ctx = SimpleNamespace(entry=None, gate=gate, envelope=lambda **kw: kw)
     engine = SimpleNamespace(payload=lambda plan: {"totals": {}}, facts=lambda plan: {})
     warning = {"code": "favorites-folders-left-alone", "message": "two folders"}
-    said = spine.run(
-        ctx, "cfg", "favorites.refresh.approve", engine, planned=lambda: SimpleNamespace(writes=True),
-        written=None, idle=None, done=None, told=lambda plan: [warning],
-    )
+    planned = SimpleNamespace(writes=True)
+    said = spine.run(ctx, "cfg", "favorites.refresh.approve", engine, planned=lambda: planned,
+                     written=None, idle=None, done=None, told=lambda plan: [warning])
     assert said["outcome"] is Outcome.NO_OP and said["warnings"] == [warning]

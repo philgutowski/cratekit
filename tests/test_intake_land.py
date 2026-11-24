@@ -53,7 +53,6 @@ def cfg(tmp_path: Path) -> config.Config:
     return built
 
 
-
 @pytest.fixture
 def export(tmp_path: Path) -> Path:
     path = tmp_path / "fresh.xml"
@@ -68,10 +67,8 @@ def _staging(cfg: config.Config) -> Path:
 def _stage(cfg: config.Config, silence: Path, name: str) -> Path:
     path = _staging(cfg) / name
     shutil.copyfile(silence, path)
-    assert tags.write_tags(
-        path,
-        {"title": Path(name).stem, "artist": "Probe", "genre": "Deep House", "energylevel": 7},
-    )
+    fields = {"title": Path(name).stem, "artist": "Probe", "genre": "Deep House", "energylevel": 7}
+    assert tags.write_tags(path, fields)
     return path
 
 
@@ -91,6 +88,13 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
     return code, document
 
 
+def _drove(argv: list[str], expected: ExitCode = ExitCode.OK) -> dict:
+    """``_drive``, its exit held to ``expected``."""
+    code, document = _drive(argv)
+    assert code == int(expected), document
+    return document
+
+
 def _human(argv: list[str]) -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)
@@ -107,8 +111,7 @@ def _answered(export: Path, *extra: str, answer: str = "apply") -> list[str]:
 
 def _decided(export: Path, *extra: str, answer: str = "apply") -> str:
     """Plan to the gate, record ``answer`` as a separate act, and answer the run id."""
-    code, refused = _drive(_land(export, *extra))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _drove(_land(export, *extra), ExitCode.DECISION_REQUIRED)
     decided, _ = _drive(["run", "decide", refused["run_id"], GATE, answer, "--actor", "a-person"])
     assert decided == int(ExitCode.OK)
     return refused["run_id"]
@@ -126,7 +129,6 @@ def _spy_preflight(monkeypatch) -> list[dict]:
     def spied(plan, **kwargs):
         asked.append(kwargs)
         return real(plan, **kwargs)
-
     monkeypatch.setattr(landing, "preflight", spied)
     return asked
 
@@ -144,22 +146,19 @@ def _watch_apply(monkeypatch, before=None, after=None) -> list[str]:
         if after:
             seen.append(after())
         return landed
-
     monkeypatch.setattr(landing, "apply", watched)
     return seen
 
 
 def test_the_first_run_stops_at_the_gate_and_an_abort_moves_nothing(
-    cfg, silence, export, monkeypatch
-):
+        cfg, silence, export, monkeypatch):
     """The screen names the files and the intake file, never the payload, and the
     preflight leaves an older answer fresh (R-677)."""
     from tests.test_intake_land_vox_native import _calibrate
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)
     asked = _spy_preflight(monkeypatch)
-    code, refused = _drive(_land(export, "--name", BATCH))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _drove(_land(export, "--name", BATCH), ExitCode.DECISION_REQUIRED)
     detail = refused["cause"]["detail"]
     assert detail["gate"] == GATE
     assert detail["options"] == ["apply", "abort"]
@@ -186,8 +185,7 @@ def test_the_first_run_stops_at_the_gate_and_an_abort_moves_nothing(
     assert f"{BATCH}_inboxed.xml" in screen
     assert str(_music(cfg, BATCH)) in screen
     assert "crate run decide" in screen and GATE in screen
-    code, envelope = _drive(_answered(export, "--name", BATCH, answer="abort"))
-    assert code == int(ExitCode.OK), envelope
+    envelope = _drove(_answered(export, "--name", BATCH, answer="abort"))
     assert envelope["outcome"] == "no_op"
     assert envelope["pending_human_action"] is None
     assert [item["action"] for item in envelope["data"]["items"]] == ["land", "land"]
@@ -195,8 +193,7 @@ def test_the_first_run_stops_at_the_gate_and_an_abort_moves_nothing(
     assert not _music(cfg, BATCH).exists()
     # U127: the bridge cannot carry a My Tag, so a calibrated library's screen names the step owed.
     _calibrate(cfg)
-    code, refused = _drive(_land(export, "--name", BATCH))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _drove(_land(export, "--name", BATCH), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["vox My Tag"] == land_cli.BRIDGE_VOX_OWED
     assert "crate metadata mytags-vocals --apply" in shown["vox My Tag"]
@@ -222,8 +219,7 @@ def test_an_answered_run_lands_with_an_import_blocking_nothing(cfg, silence, exp
     assert b'<COLLECTION Entries="2">' in body
     assert b"<TEMPO" not in body
     _stage(cfg, silence, "Three.flac")
-    code, envelope = _drive(_answered(export))
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _drove(_answered(export), ExitCode.PENDING_HUMAN)
     assert (_music(cfg, "2026-10-03 Downloads") / "Three.flac").is_file()
     stem = land_cli.default_name(envelope["run_id"])
     assert ":" not in stem
@@ -276,24 +272,22 @@ def test_an_answer_is_stale_for_any_other_plan(cfg, silence, export, tmp_path, c
 def test_an_empty_staging_folder_is_a_plan_of_nothing_and_makes_nothing(cfg, export, tmp_path):
     """The step still asks, and applying nothing leaves nothing; what staging holds
     between landings is not audio."""
-    code, refused = _drive(_land(export, "--name", BATCH))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _drove(_land(export, "--name", BATCH), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["shown"]["files"] == []
     staging = _staging(cfg)
     (staging / "lists").mkdir()
     (staging / ".cratekit-acquire-staging").mkdir()
     (staging / ".DS_Store").write_bytes(b"\0")
     (staging / "run_synced.xml").write_bytes(b"<DJ_PLAYLISTS/>")
-    code, envelope = _drive(_answered(export, "--name", BATCH))
-    assert code == int(ExitCode.OK), envelope
+    envelope = _drove(_answered(export, "--name", BATCH))
     assert envelope["outcome"] == "no_op"
     assert envelope["pending_human_action"] is None
     assert envelope["data"]["items"] == []
     assert not _music(cfg, BATCH).exists()
     assert not _intake(cfg, BATCH).exists()
     # A plan of nothing splices nothing, so it is not refused over the export.
-    code, refused = _drive(_land(export.with_name("absent.xml"), "--name", BATCH))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    absent = export.with_name("absent.xml")
+    refused = _drove(_land(absent, "--name", BATCH), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["shown"]["count"] == 0
     # A folder that is not there is refused before the gate.
     code, envelope = _drive(_land(export, str(tmp_path / "absent"), "--name", BATCH))
@@ -340,45 +334,31 @@ def _manifest(tmp_path: Path, listed: list[tuple[str, str, str, str, int]]) -> P
 
 
 def test_a_manifest_is_on_the_gate_and_its_labels_reported(
-    cfg, silence, export, tmp_path, monkeypatch
-):
+        cfg, silence, export, tmp_path, monkeypatch):
     """The engine is handed the manifest rows and fingerprint the gate compared."""
     _stage(cfg, silence, "One.flac")
-    manifest = _manifest(
-        tmp_path,
-        [("1", "Probe", "One", "Kompakt", 2025), ("2", "Probe", "Never Arrived", "Kompakt", 2024)],
-    )
+    never = ("2", "Probe", "Never Arrived", "Kompakt", 2024)
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025), never])
     argv = _land(export, "--name", BATCH, "--manifest", str(manifest))
     asked = _spy_preflight(monkeypatch)
-    code, refused = _drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _drove(argv, ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["labels filed from"] == str(manifest)
     assert shown["label playlists named"] == ["Kompakt 2024 (1 listed)", "Kompakt 2025 (1 listed)"]
     (call,) = asked
-    assert [(row.provenance.label_name, row.provenance.year) for row in call["label_rows"]] == [
-        ("Kompakt", 2025),
-        ("Kompakt", 2024),
-    ]
+    labelled = [(row.provenance.label_name, row.provenance.year) for row in call["label_rows"]]
+    assert labelled == [("Kompakt", 2025), ("Kompakt", 2024)]
     handed = _watch_apply(monkeypatch, before=lambda: None)
-    code, envelope = _drive(["-d", f"{GATE}=apply", *argv])
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _drove(["-d", f"{GATE}=apply", *argv], ExitCode.PENDING_HUMAN)
     assert handed == [hashlib.sha256(manifest.read_bytes()).hexdigest()]
     data = envelope["data"]
     assert [item["action"] for item in data["items"]] == ["landed", "filed", "unfiled"]
     assert data["items"][1] == {
-        "action": "filed",
-        "label": "Kompakt",
-        "year": 2025,
-        "playlist": "Kompakt 2025",
-        "count": 1,
+        "action": "filed", "label": "Kompakt", "year": 2025, "playlist": "Kompakt 2025", "count": 1,
     }
     unfiled = data["items"][2]
-    assert (unfiled["id"], unfiled["title"], unfiled["reason"]) == (
-        "2",
-        "Never Arrived",
-        "label-row-unmatched",
-    )
+    said = (unfiled["id"], unfiled["title"], unfiled["reason"])
+    assert said == ("2", "Never Arrived", "label-row-unmatched")
     assert data["totals"] == {"count": 1, "landed": 1, "refused": 0, "filed": 1, "unfiled": 1}
     (warning,) = envelope["warnings"]
     assert warning["code"] == "label-row-unmatched"
@@ -405,8 +385,8 @@ def test_an_answer_is_stale_once_its_manifest_is_rewritten(cfg, silence, export,
     assert stale["cause"]["detail"]["gate"] == GATE
     assert _staged_names(cfg) == ["One.flac"]
     unmatched = _manifest(tmp_path / "unmatched", [("2", "Probe", "Never Arrived", "Kompakt", 2024)])
-    code, envelope = _drive(_answered(export, "--name", BATCH, "--manifest", str(unmatched)))
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    argv = _answered(export, "--name", BATCH, "--manifest", str(unmatched))
+    envelope = _drove(argv, ExitCode.PENDING_HUMAN)
     data = envelope["data"]
     assert [item["action"] for item in data["items"]] == ["landed", "unfiled"]
     assert data["totals"] == {"count": 1, "landed": 1, "refused": 0, "filed": 0, "unfiled": 1}
@@ -472,11 +452,9 @@ def _intake_there(cfg, tmp_path: Path, export: Path) -> tuple[Path, str]:
         (_no_intake_folder, "library-export-unusable", ExitCode.PRECONDITION),
         (_unmounted, "library-root-unreachable", ExitCode.LIBRARY_UNAVAILABLE),
         (_intake_there, "output-exists", ExitCode.PRECONDITION),
-    ],
-)
+    ])
 def test_a_plan_the_engine_would_refuse_refuses_before_the_gate(
-    cfg, silence, export, tmp_path, unusable, reason, exit_code
-):
+        cfg, silence, export, tmp_path, unusable, reason, exit_code):
     """Refused with no gate offered, no run left to resume, and nothing moved."""
     _stage(cfg, silence, "One.flac")
     given, named = unusable(cfg, tmp_path, export)
@@ -501,8 +479,7 @@ def test_a_recorded_abort_is_honored_over_what_went_missing(cfg, silence, export
     runs = [_decided(export, "--name", BATCH, answer="abort") for _ in range(2)]
     kept = export.rename(tmp_path / "kept.xml")
     for run_id in runs:
-        code, envelope = _drive(["--run", run_id, *_land(export, "--name", BATCH)])
-        assert code == int(ExitCode.OK), envelope
+        envelope = _drove(["--run", run_id, *_land(export, "--name", BATCH)])
         assert envelope["outcome"] == "no_op"
         assert _staged_names(cfg) == ["One.flac"]
         if kept.exists():  # The export back, and the library gone instead.
@@ -511,8 +488,7 @@ def test_a_recorded_abort_is_honored_over_what_went_missing(cfg, silence, export
 
 
 def test_an_apply_over_a_missing_export_is_the_engine_s_refusal(
-    cfg, silence, export, tmp_path, monkeypatch
-):
+        cfg, silence, export, tmp_path, monkeypatch):
     """An answered apply reaches the engine, which asks its own checks again; over a
     missing export the person is told the plan moved."""
     _stage(cfg, silence, "One.flac")
@@ -595,22 +571,17 @@ def _every_target_taken(cfg, export, patched) -> None:
 def _an_engine_failing_with_no_refusal(cfg, export, patched) -> None:
     def broken(plan, **kwargs):
         raise RuntimeError("the engine failed with no cause")
-
     patched.setattr(landing, "apply", broken)
 
 
 @pytest.mark.parametrize(
     "arrange",
     [
-        _an_export_that_is_not_there,
-        _an_intake_file_already_there,
-        _every_target_taken,
+        _an_export_that_is_not_there, _an_intake_file_already_there, _every_target_taken,
         _an_engine_failing_with_no_refusal,
-    ],
-)
+    ])
 def test_the_lock_is_released_by_every_refusal(
-    cfg, silence, export, tmp_path, monkeypatch, arrange
-):
+        cfg, silence, export, tmp_path, monkeypatch, arrange):
     """Watched from inside the engine call, so a lock taken late or dropped early is seen."""
     _stage(cfg, silence, "One.flac")
     kept = tmp_path / "kept.xml"
@@ -630,10 +601,8 @@ def test_the_lock_is_released_by_every_refusal(
     def written() -> str:
         assert _intake(cfg, BATCH).exists()
         return _held_now()
-
     seen = _watch_apply(monkeypatch, before=_held_now, after=written)
-    code, envelope = _drive(_answered(export, "--name", BATCH))
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _drove(_answered(export, "--name", BATCH), ExitCode.PENDING_HUMAN)
     assert _staged_names(cfg) == []
     assert seen == ["job-driver-held", "job-driver-held"]
 
@@ -671,10 +640,7 @@ def test_a_landing_in_another_process_refuses_this_one_until_it_ends(cfg, silenc
     _stage(cfg, silence, "One.flac")
     holder = subprocess.Popen(
         [sys.executable, "-c", _HOLDER, BATCH],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
-    )
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     try:
         assert holder.stdout.readline().strip() == "held"
         code, envelope = _drive(_answered(export, "--name", BATCH))
@@ -683,8 +649,7 @@ def test_a_landing_in_another_process_refuses_this_one_until_it_ends(cfg, silenc
         assert _staged_names(cfg) == ["One.flac"]
         holder.kill()
         holder.wait(timeout=30)
-        code, envelope = _drive(_answered(export, "--name", BATCH))
-        assert code == int(ExitCode.PENDING_HUMAN), envelope
+        envelope = _drove(_answered(export, "--name", BATCH), ExitCode.PENDING_HUMAN)
         assert _staged_names(cfg) == []
     finally:
         if holder.poll() is None:

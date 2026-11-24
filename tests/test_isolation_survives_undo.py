@@ -1,9 +1,6 @@
-"""The suite's isolation outlives a test body's ``monkeypatch.undo()`` (R-658).
-
-The shared ``monkeypatch``'s ``undo()`` once reverted the isolation and a test
-overwrote the live configuration. These tests undo the body's patches and reach
-for everything redirected, resolving before writing, and the last bans a body
-``undo()`` on the shared instance anywhere else in ``tests/``.
+"""The suite's isolation outlives a test body's ``monkeypatch.undo()`` (R-658), which once
+reverted it so a test overwrote the live configuration; a body ``undo()`` of the shared
+instance is banned anywhere else in ``tests/``.
 """
 
 from __future__ import annotations
@@ -20,24 +17,19 @@ from cratekit.acquire import provider_session
 from cratekit.core import config, preflight
 from cratekit.intake import acrcloud, fetch
 
-# Read at import, before any fixture ran: what the PROCESS started with, which
-# an ``undo()`` used to restore.
+# Read at import, before any fixture: what the PROCESS started with, which ``undo()`` restored.
 _STARTING_ROOTS = (
     Path(platformdirs.user_config_dir("cratekit")),
     Path(platformdirs.user_state_dir("cratekit")),
-    *(
-        Path(os.environ[name])
-        for name in (config.ENV_CONFIG_DIR, config.ENV_STATE_DIR)
-        if os.environ.get(name)
-    ),
+    *(Path(os.environ[name]) for name in (config.ENV_CONFIG_DIR, config.ENV_STATE_DIR)
+      if os.environ.get(name)),
 )
 _REAL_SET_PASSWORD = keyring.set_password
 _REAL_CLIENT_FACTORY = provider_session.CLIENT_FACTORY
 _REAL_TRANSPORT = acrcloud.http_transport
 _REAL_FETCHER = fetch.fetcher
 _REAL_MOUNT_CHECK = preflight.assert_library_mounted
-# The spelling of a ``monkeypatch.undo`` attribute in source: only blanks,
-# closing brackets, continuations and comments can sit between the parts.
+# ``monkeypatch.undo`` in source, only blanks, brackets, continuations and comments between.
 _CALL = re.compile(r"\bmonkeypatch(?:[\s)\\]|#[^\n]*)*\.(?:[\s\\]|#[^\n]*)*undo\b")
 
 
@@ -46,8 +38,7 @@ def _inside(path: Path, root: Path) -> bool:
 
 
 def test_every_redirect_survives_an_undo_of_the_body_s_own_patch(
-    _isolate_state_roots, _isolate_keychain, _block_real_library_paths, monkeypatch
-):
+        _isolate_state_roots, _isolate_keychain, _block_real_library_paths, monkeypatch):
     """The 2026-09-20 shape: undo, resolve the config location, write."""
     monkeypatch.setenv("CRATEKIT_R658_PROBE", "the body's own patch")
     monkeypatch.undo()
@@ -64,9 +55,7 @@ def test_every_redirect_survives_an_undo_of_the_body_s_own_patch(
         )
         reached = [root for root in _STARTING_ROOTS if _inside(path, root)]
         assert not reached, f"{path} resolves under {reached}, where the process started"
-    assert keyring.set_password is not _REAL_SET_PASSWORD, (
-        "the real keychain is back after an undo"
-    )
+    assert keyring.set_password is not _REAL_SET_PASSWORD, "the real keychain is back after an undo"
     assert os.environ[config.ENV_LIBRARY_ROOT] == str(_block_real_library_paths)
     assert preflight.assert_library_mounted is not _REAL_MOUNT_CHECK
     assert provider_session.CLIENT_FACTORY is not _REAL_CLIENT_FACTORY
@@ -81,10 +70,8 @@ def test_every_redirect_survives_an_undo_of_the_body_s_own_patch(
 
 
 def test_a_body_patch_of_a_redirected_value_undoes_to_the_redirect(
-    _isolate_state_roots, monkeypatch
-):
-    """The body's instance is set up after the isolation's, so the HOME it
-    records as original, and an undo puts back, is the redirected one."""
+        _isolate_state_roots, monkeypatch):
+    """The body's instance is set up after the isolation's, so an undo restores the redirect."""
     redirected = {name: os.environ[name] for name in ("HOME", config.ENV_CONFIG_DIR)}
     for value in redirected.values():
         assert _inside(Path(value), _isolate_state_roots)
@@ -95,22 +82,14 @@ def test_a_body_patch_of_a_redirected_value_undoes_to_the_redirect(
 
 
 def _body_undoes(tree: ast.AST) -> list[int]:
-    """Line numbers of every ``monkeypatch.undo()`` in ``tree``."""
-    return [
-        node.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "undo"
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "monkeypatch"
-    ]
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    undo = [node for node in calls if getattr(node.func, "attr", None) == "undo"]
+    owners = [(node.lineno, node.func.value) for node in undo]
+    return [line for line, who in owners if isinstance(who, ast.Name) and who.id == "monkeypatch"]
 
 
 def test_no_test_undoes_the_shared_monkeypatch():
-    """Reverse one patch with a ``pytest.MonkeyPatch.context()`` around it; a scoped
-    instance's ``undo()`` is allowed. This file alone is exempt.
-    """
+    """A scoped ``MonkeyPatch.context()`` may undo; this file alone may undo the shared one."""
     assert _body_undoes(ast.parse("def t(monkeypatch):\n    monkeypatch.undo()\n")) == [2]
     assert _body_undoes(ast.parse("zone.undo()\n")) == []
     tests = Path(__file__).parent

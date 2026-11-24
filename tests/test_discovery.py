@@ -25,25 +25,17 @@ def touch(folder: Path, relative: str) -> Path:
 #: (files, recursive, expected items); a recursive id is posix, read back later.
 TREES = {
     "one-level-default-skips-a-subfolder": (
-        ["top.flac", "genre/nested.flac"], False, ("top.flac",)
-    ),
+        ["top.flac", "genre/nested.flac"], False, ("top.flac",)),
     "non-audio-suffix": (["cover.jpg", "notes.txt", "track.flac"], False, ("track.flac",)),
     "suffix-case-insensitive": (["shouted.FLAC"], False, ("shouted.FLAC",)),
     "nested-every-file-once-sorted": (
-        ["house/b.flac", "house/a.flac", "techno/deep/c.aiff", "top.mp3"],
-        True,
-        ("house/a.flac", "house/b.flac", "techno/deep/c.aiff", "top.mp3"),
-    ),
+        ["house/b.flac", "house/a.flac", "techno/deep/c.aiff", "top.mp3"], True,
+        ("house/a.flac", "house/b.flac", "techno/deep/c.aiff", "top.mp3")),
     "appledouble-sidecar-skipped": (
-        ["house/track.flac", "house/._track.flac", "house/.DS_Store.flac"],
-        True,
-        ("house/track.flac",),
-    ),
+        ["house/track.flac", "house/._track.flac", "house/.DS_Store.flac"], True,
+        ("house/track.flac",)),
     "dot-directory-not-descended": (
-        ["keep.flac", ".Trashes/deleted.flac", ".Spotlight-V100/index.flac"],
-        True,
-        ("keep.flac",),
-    ),
+        ["keep.flac", ".Trashes/deleted.flac", ".Spotlight-V100/index.flac"], True, ("keep.flac",)),
     "posix-separator": (["a/b/c.flac"], True, ("a/b/c.flac",)),
 }
 
@@ -85,8 +77,7 @@ def test_a_top_level_file_has_the_same_id_in_both_modes(tmp_path):
     touch(tmp_path, "top.flac")
     assert discovery.scan_audio(tmp_path).items == ("top.flac",)
     assert discovery.scan_audio(tmp_path).items == (
-        discovery.scan_audio(tmp_path, recursive=True).items
-    )
+        discovery.scan_audio(tmp_path, recursive=True).items)
 
 
 # Symlinks: the loop hazard, and the skip said out loud
@@ -146,9 +137,7 @@ def test_one_declined_link_reads_as_one_folder_and_not_as_one_folders(tmp_path):
     touch(tmp_path, "track.flac")
     (tmp_path / "linked").symlink_to(tmp_path.parent, target_is_directory=True)
     (warning,) = discovery.walk_warnings(*_omissions(tmp_path))
-    assert "1 folder under this tree is a symbolic link and was not walked" in (
-        warning["message"]
-    )
+    assert "1 folder under this tree is a symbolic link and was not walked" in warning["message"]
     assert "1 folders" not in warning["message"]
     assert "and 0 more" not in warning["message"]
 
@@ -193,15 +182,12 @@ def test_both_omissions_ride_together_links_first(tmp_path):
 def test_an_error_carrying_no_filename_is_still_reported(tmp_path):
     """The collected trace is the only evidence the omission happened at all."""
     (warning,) = discovery.walk_warnings(
-        unreadable=(discovery._relative_or_absolute(tmp_path, None),)
-    )
+        unreadable=(discovery._relative_or_absolute(tmp_path, None),))
     assert "an unnamed folder under this tree" in warning["message"]
 
 
 def test_a_path_outside_the_tree_is_reported_whole_rather_than_dropped(tmp_path):
-    assert discovery._relative_or_absolute(tmp_path, "/elsewhere/locked") == (
-        "/elsewhere/locked"
-    )
+    assert discovery._relative_or_absolute(tmp_path, "/elsewhere/locked") == "/elsewhere/locked"
 
 
 # What a resume reads back, because it never re-walks
@@ -210,14 +196,8 @@ def test_a_path_outside_the_tree_is_reported_whole_rather_than_dropped(tmp_path)
 def test_the_frozen_payload_carries_the_mode_and_both_omissions(tmp_path):
     touch(tmp_path, "track.flac")
     (tmp_path / "linked").symlink_to(tmp_path.parent, target_is_directory=True)
-    frozen = discovery.frozen_walk(
-        discovery.scan_audio(tmp_path, recursive=True), recursive=True
-    )
-    assert frozen == {
-        "recursive": True,
-        "skipped_links": ["linked"],
-        "unreadable_folders": [],
-    }
+    frozen = discovery.frozen_walk(discovery.scan_audio(tmp_path, recursive=True), recursive=True)
+    assert frozen == {"recursive": True, "skipped_links": ["linked"], "unreadable_folders": []}
 
 
 def test_a_resume_says_what_the_queue_said_from_the_payload_alone(tmp_path):
@@ -231,9 +211,7 @@ def test_a_resume_repeats_the_unreadable_half_and_not_only_the_links():
     """The two halves are frozen separately, so they are read back separately (D19)."""
     said = discovery.warnings_of({"unreadable_folders": ["locked"]})
     assert [one["code"] for one in said] == ["folder-unreadable"]
-    both = discovery.warnings_of(
-        {"skipped_links": ["linked"], "unreadable_folders": ["locked"]}
-    )
+    both = discovery.warnings_of({"skipped_links": ["linked"], "unreadable_folders": ["locked"]})
     assert [one["code"] for one in both] == ["linked-folder-skipped", "folder-unreadable"]
 
 
@@ -251,8 +229,7 @@ def test_a_payload_whose_lists_are_the_wrong_shape_says_nothing_rather_than_rais
 
 
 @pytest.mark.parametrize(
-    "item", ["house/track.flac", "track.flac"], ids=["relative", "bare-filename"]
-)
+    "item", ["house/track.flac", "track.flac"], ids=["relative", "bare-filename"])
 def test_an_id_joins_under_the_folder(tmp_path, item):
     """A bare filename too: ``analyze run`` never gets the flag, so its ids stay one segment."""
     assert discovery.item_path(tmp_path, item) == tmp_path / item

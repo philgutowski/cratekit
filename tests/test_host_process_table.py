@@ -30,10 +30,8 @@ REAL_WALK = pyrekordbox.utils.get_process_id
 def test_the_fake_host_lists_rekordbox_and_its_agent(rekordbox_on_the_host):
     listed = {pid: psutil.Process(pid).name() for pid in psutil.pids() if pid in rekordbox_on_the_host}
     assert listed == _host_processes.OPEN
-    assert sorted(proc.name() for proc in psutil.process_iter() if proc.pid in rekordbox_on_the_host) == [
-        "rekordbox",
-        "rekordboxAgent",
-    ]
+    named = sorted(proc.name() for proc in psutil.process_iter() if proc.pid in rekordbox_on_the_host)
+    assert named == ["rekordbox", "rekordboxAgent"]
     # The real listing is still there, read by psutil itself.
     assert os.getpid() in psutil.pids()
     assert psutil.Process().pid == os.getpid()
@@ -79,7 +77,6 @@ def test_a_test_that_fakes_rekordbox_at_the_seam_still_sees_it(rekordbox_on_the_
 
         def Process(self, pid):  # noqa: N802 - psutil's own name
             return _host_processes._Open(pid, "rekordboxAgent")
-
     monkeypatch.setattr(processes, "_platform", Table)
     assert processes.rekordbox_processes_running() == ("rekordboxAgent",)
 

@@ -1,9 +1,5 @@
-"""U140: a set's account playlist follows the library's rename, ledger and frozen name
-with it.
-
-The account is faked and the INSPIRATION row stood in for (its read is driven in
-``tests/test_set_inspiration_playlist.py``).
-"""
+"""U140: a set's account playlist follows the library's rename, ledger and frozen name with it;
+the account faked, the INSPIRATION row stood in for (``tests/test_set_inspiration_playlist.py``)."""
 
 from __future__ import annotations
 
@@ -42,16 +38,21 @@ NEW = "3_25_26 Public Service NYC Live at Probe 2-26"
 INSPIRATION_ID = "insp-1"
 
 
-def _rename_acts(job_id: str, option: str = "apply") -> tuple[int, dict, dict]:
-    argv = ["export", "set", "--rename", job_id]
+def _acts(argv: list[str], gate: str, option: str = "apply") -> tuple[int, dict, dict]:
+    """The first act refused at ``gate``, the decide, and the run that carries it out."""
     code, refused = drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == RENAME
-    assert refused["cause"]["detail"]["explicit"] is True
     run_id = refused["run_id"]
-    code, decided = drive(["run", "decide", run_id, RENAME, option, "--actor", "a-person"])
+    code, decided = drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
     assert code == int(ExitCode.OK), decided
     code, done = drive(["--run", run_id, *argv])
+    return code, done, refused
+
+
+def _rename_acts(job_id: str, option: str = "apply") -> tuple[int, dict, dict]:
+    code, done, refused = _acts(["export", "set", "--rename", job_id], RENAME, option)
+    assert refused["cause"]["detail"]["gate"] == RENAME
+    assert refused["cause"]["detail"]["explicit"] is True
     return code, done, refused
 
 
@@ -74,23 +75,19 @@ def _inspiration_named(monkeypatch, name: str) -> None:
 
 
 def _recorded(cfg, held, name: str) -> str:
-    remote_id, _made = ledger.reserve_set_playlist(
-        cfg, name, "2026", lambda: held.create_playlist(name)
-    )
+    made = ledger.reserve_set_playlist(cfg, name, "2026", lambda: held.create_playlist(name))
+    remote_id = made[0]
     ledger.record_set_tracks(cfg, name, added=["tid-1"])
     return remote_id
 
 
-def _landed(
-    cfg, job_id: str, name: str, *, state=session.SessionState.CLOSED,
-    source=session.SourceState.COMMITTED, stamp: str | None = None,
-) -> None:
+def _landed(cfg, job_id: str, name: str, *, state=session.SessionState.CLOSED,
+            source=session.SourceState.COMMITTED, stamp: str | None = None) -> None:
     """A landing's session record naming the set's INSPIRATION playlist ``name``."""
     record = session.open_session(cfg, workflow="intake", sources=("library",), session_id=stamp)
     record.sources["library"] = str(source)
-    record.detail[set_playlist.RECORD_KEY] = {
-        "id": "insp-row", "name": name, "job": job_id, "folder": "insp-folder"
-    }
+    recorded = {"id": "insp-row", "name": name, "job": job_id, "folder": "insp-folder"}
+    record.detail[set_playlist.RECORD_KEY] = recorded
     record.state = state
     record.ended = "2026-10-10T16:09:29+00:00"
     session.write_record(record, cfg)
@@ -116,8 +113,7 @@ def renamed(account, monkeypatch):
     remote_id = _recorded(cfg, held, OLD)
     live = {"name": NEW}
     monkeypatch.setattr(
-        set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live["name"])
-    )
+        set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live["name"]))
     return cfg, held, job.job_id, remote_id, live
 
 
@@ -171,8 +167,7 @@ def test_an_aborted_rename_writes_nothing(renamed):
 
 
 def test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it(
-    account, monkeypatch
-):
+    account, monkeypatch):
     """R-1004's twin: no frozen name, exported as queued, INSPIRATION now as posted."""
     cfg, _fake, held = account
     job = _succeeded_set_job(cfg, "", created="2026-10-09T12:00:00+00:00")
@@ -188,12 +183,7 @@ def test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it
     assert _backfill_shown()["inspiration without account playlist"] == ["none"]
     assert held.created == [queued]
     # A set exported again under its new name adds to the renamed playlist.
-    argv = ["export", "set", str(_tracklist(cfg)), "--name", posted]
-    code, refused = drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    assert drive(["run", "decide", run_id, BUILD, "apply", "--actor", "a-person"])[0] == 0
-    code, done = drive(["--run", run_id, *argv])
+    code, done, _refused = _acts(["export", "set", str(_tracklist(cfg)), "--name", posted], BUILD)
     assert code == int(ExitCode.OK), done
     (playlist,) = [i for i in done["data"]["items"] if i["kind"] == "playlist"]
     assert (playlist["id"], playlist["action"]) == (remote_id, "reuse")
@@ -240,10 +230,8 @@ def test_a_playlist_the_archive_marked_is_refused_rather_than_retitled(renamed):
     cfg, held, job_id, remote_id, _live = renamed
     mark_record.MarkRecord(cfg).record_marked("pass-1", {remote_id: (OLD, f"DOWNLOADED {OLD}")})
     done = _unresolved(job_id)
-    assert any(
-        "crate sync unmark --pass 'pass-1'" in step
-        for step in done["cause"]["remediation"]["steps"]
-    ), done["cause"]
+    steps = done["cause"]["remediation"]["steps"]
+    assert any("crate sync unmark --pass 'pass-1'" in step for step in steps), done["cause"]
     assert held.renamed == []
     assert _frozen(job_id) == OLD
 
@@ -310,9 +298,8 @@ def test_rename_with_a_tracklist_or_name_is_refused_before_anything(renamed):
 def test_a_job_that_is_not_a_set_is_refused(renamed):
     cfg, held, _job_id, _remote_id, _live = renamed
     with jobs.open_store() as store:
-        other = jobs.enqueue(
-            store, handler_key="intake.playlist", payload={intake_cli.SOURCE: "x"}, cfg=cfg
-        )
+        payload = {intake_cli.SOURCE: "x"}
+        other = jobs.enqueue(store, handler_key="intake.playlist", payload=payload, cfg=cfg)
     code, done = drive(["export", "set", "--rename", other.job_id])
     assert done["cause"]["reason"] == "job-unknown", done
     assert held.renamed == []
@@ -321,9 +308,8 @@ def test_a_job_that_is_not_a_set_is_refused(renamed):
 def test_refreeze_refuses_a_job_that_has_not_succeeded(account):
     cfg, _fake, _held = account
     with jobs.open_store() as store:
-        open_job = jobs.enqueue(
-            store, handler_key=set_playlist.SET_KEY, payload={"playlist_name": OLD}, cfg=cfg
-        )
+        payload = {"playlist_name": OLD}
+        open_job = jobs.enqueue(store, handler_key=set_playlist.SET_KEY, payload=payload, cfg=cfg)
         with pytest.raises(CratekitError) as caught:
             jobs.refreeze(store, open_job.job_id, intake_cli.PLAYLIST_NAME, NEW)
         assert "only a succeeded job" in caught.value.cause.message

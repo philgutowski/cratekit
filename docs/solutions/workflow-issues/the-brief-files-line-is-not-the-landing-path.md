@@ -56,9 +56,9 @@ asserts every planned module is genuinely still absent, so the marker
 expires the moment its unit lands rather than surviving as a comment
 nobody re-reads. The test that implements that promise is
 `test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`
-(`tests/test_cli_contract.py:1079-1188`). It does not walk the issue
+(`tests/test_cli_contract.py:864-879`). It does not walk the issue
 brief. It does not walk `src/`. It calls `importlib.util.find_spec(entry.module)`
-and treats a missing parent as absent (`tests/test_cli_contract.py:1088-1183`).
+and treats a missing parent as absent (`tests/test_cli_contract.py:871-874`).
 If that spec is missing, the test stays green and `planned_in` stays.
 If that spec appears, the test goes red and the marker must be cleared
 so the conformance suite starts driving the verb.
@@ -261,7 +261,7 @@ The landing that would have matched the brief is
 `src/cratekit/modules/labels/`. That package would have been
 `cratekit.modules.labels`. `find_spec("cratekit.label.cli")` would
 still have returned `None`. The countdown at
-`tests/test_cli_contract.py:1079` would have stayed green. The four
+`tests/test_cli_contract.py:864` would have stayed green. The four
 markers would have stayed. `landed_entries()` would have kept
 omitting `sync.labels`, `label.registry`, `label.import`, and
 `label.harvest`. The product would have shipped the engines and no

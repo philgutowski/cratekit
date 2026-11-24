@@ -28,8 +28,6 @@ ADDRESS = "<provider.artist.Artist object at 0x10b77ec00>"
 
 
 class Track:
-    """A provider row in the shape the provider reader reads."""
-
     def __init__(
         self, track_id: str, artist: str, name: str, *, version: str = "", genre: str = ""
     ) -> None:
@@ -44,9 +42,8 @@ class Track:
 
 
 def offer(
-    items, release_id: str, *, title: str = "Harbour Lights EP", label_id: str = "tide-works",
-    label_name: str = "Tide Works", artist: str = ADDRESS,
-) -> str:
+        items, release_id: str, *, title: str = "Harbour Lights EP", label_id: str = "tide-works",
+        label_name: str = "Tide Works", artist: str = ADDRESS) -> str:
     payload = {
         "artist": artist, "title": title, "label_id": label_id, "label_name": label_name,
         "identity": release_id,
@@ -67,15 +64,12 @@ def answered(cfg: config.Config, item_id: str, verdict: review.Verdict) -> None:
 
 
 def accepted_raw(
-    cfg: config.Config, identity: dict, payload: dict, *, kind: str = sweep.KIND,
-    handler_key: str = sweep.HANDLER_KEY,
-) -> str:
-    """An item offered straight into the label queue, then accepted. Its id."""
+        cfg: config.Config, identity: dict, payload: dict, *, kind: str = sweep.KIND,
+        handler_key: str = sweep.HANDLER_KEY) -> str:
     with review.open_store(cfg) as items:
         item = review.offer(
             items, queue=str(review.Queue.LABEL_RELEASE), kind=kind, identity=identity,
-            payload=payload, handler_key=handler_key,
-        )
+            payload=payload, handler_key=handler_key)
         review.resolve(items, item.item_id, review.Verdict.ACCEPTED, actor="suite")
     return item.item_id
 
@@ -98,7 +92,6 @@ def approved(*extra: str) -> tuple[int, dict]:
 
 
 def listed(monkeypatch, fake=None, *extra: str) -> dict:
-    """Bind ``fake`` (unless None) and run the verb, which must succeed. Its envelope."""
     if fake is not None:
         bind(monkeypatch, fake)
     code, envelope = approved(*extra)
@@ -107,7 +100,6 @@ def listed(monkeypatch, fake=None, *extra: str) -> dict:
 
 
 def unusable(monkeypatch, fake=None, *extra: str) -> dict:
-    """Bind ``fake`` (unless None) and run the verb, which must refuse the list. Its cause."""
     if fake is not None:
         bind(monkeypatch, fake)
     code, envelope = approved(*extra)
@@ -117,7 +109,6 @@ def unusable(monkeypatch, fake=None, *extra: str) -> dict:
 
 
 def one_release(cfg, monkeypatch, year: int | None = 2024) -> StrictCatalogue:
-    """``r-1`` accepted and its two tracks bound under ``year``. The fake."""
     accepted(cfg, "r-1")
     fake = StrictCatalogue(releases={"r-1": (two_track_release()[0], year)})
     bind(monkeypatch, fake)
@@ -127,7 +118,6 @@ def one_release(cfg, monkeypatch, year: int | None = 2024) -> StrictCatalogue:
 def listed_one(cfg, monkeypatch, year: int | None = 2024) -> dict:
     one_release(cfg, monkeypatch, year)
     return listed(monkeypatch)
-
 
 
 def lists_dir(library: Path) -> Path:
@@ -160,12 +150,27 @@ def two_track_release() -> tuple[list[Track], int]:
     return [Track("301", "Aurora Bloom", "Sun Path"), Track("302", "Nova Reef", "Tide")], 2024
 
 
+class Failing(StrictCatalogue):
+    """Raises ``error()`` for each release in ``failing``, or for every one when None."""
+
+    def __init__(self, *args, error, failing=None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.error, self.failing = error, failing
+
+    def release_tracks(self, release_id: str):
+        if self.failing is None or release_id in self.failing:
+            self.releases_asked_for.append(release_id)
+            raise self.error()
+        return super().release_tracks(release_id)
+
+
+def timed_out(error=RuntimeError):
+    return lambda: error("the provider timed out")
+
+
 # ── What is read, and what is listed ─────────────────────────────────────────
-
-
 def test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     accepted(cfg, "r-1")
     answered(cfg, offered(cfg, "r-2"), review.Verdict.REJECTED)
     offered(cfg, "r-3")
@@ -173,8 +178,7 @@ def test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read(
         releases={
             "r-1": two_track_release(), "r-2": ([Track("401", "Mira Vale", "Glass Hour")], 2023),
             "r-3": ([Track("501", "Lumen Drift", "Salt Road")], 2022),
-        }
-    )
+        })
     envelope = listed(monkeypatch, fake)
     assert envelope["outcome"] == "ok"
     assert fake.releases_asked_for == ["r-1"]
@@ -191,7 +195,7 @@ def test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read(
     assert "1 rejected and 1 not yet answered" in check(envelope, "queue")["detail"]
 
 
-def test_the_written_list_is_one_the_download_verbs_reader_accepts(cfg, library, monkeypatch):
+def test_the_written_list_is_one_the_download_verbs_reader_accepts(cfg, monkeypatch):
     envelope = listed_one(cfg, monkeypatch)
     wanted = match_cli.read_list(Path(envelope["data"]["summary"]["list"]))
     assert [(one.ref, one.artist, one.title) for one in wanted] == [
@@ -208,7 +212,7 @@ def test_an_owned_track_is_skipped(cfg, library, monkeypatch):
     assert check(envelope, "owned")["detail"].startswith("1 already in the library")
 
 
-def test_the_manifest_carries_the_label_the_year_and_the_release(cfg, library, monkeypatch):
+def test_the_manifest_carries_the_label_the_year_and_the_release(cfg, monkeypatch):
     accepted(cfg, "r-1")
     accepted(cfg, "r-2", label_id="glass-bay", label_name="Glass Bay", title="Low Water")
     glass = ([Track("401", "Mira Vale", "Glass Hour")], 2019)
@@ -228,9 +232,7 @@ def test_the_manifest_carries_the_label_the_year_and_the_release(cfg, library, m
     assert rows["401"]["source_ref"] == "r-2"
 
 
-def test_the_artist_comes_from_the_provider_and_never_from_the_review_payload(
-    cfg, library, monkeypatch
-):
+def test_the_artist_comes_from_the_provider_and_never_from_the_review_payload(cfg, monkeypatch):
     accepted(cfg, "r-1", artist=ADDRESS)
     envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
     summary = envelope["data"]["summary"]
@@ -261,9 +263,7 @@ def test_out_names_the_folder_the_list_is_written_into(cfg, library, tmp_path, m
 
 
 # ── A release that cannot be read ────────────────────────────────────────────
-
-
-def test_a_vanished_release_is_named_and_the_others_still_list(cfg, library, monkeypatch):
+def test_a_vanished_release_is_named_and_the_others_still_list(cfg, monkeypatch):
     gone_item = accepted(cfg, "r-gone", title="Withdrawn EP")
     envelope = listed_one(cfg, monkeypatch)
     summary = envelope["data"]["summary"]
@@ -280,22 +280,11 @@ def test_a_vanished_release_is_named_and_the_others_still_list(cfg, library, mon
     assert check(envelope, "releases")["detail"].startswith("1 accepted release(s) could not")
 
 
-class OneOutage(StrictCatalogue):
-    """Answers every release but one, which fails the way an outage fails."""
-
-    def release_tracks(self, release_id: str):
-        if release_id == "r-down":
-            self.releases_asked_for.append(release_id)
-            raise RuntimeError("the provider timed out")
-        return super().release_tracks(release_id)
-
-
-def test_a_release_the_provider_could_not_answer_for_is_a_retry_and_not_a_revoke(
-    cfg, library, monkeypatch
-):
+def test_a_release_the_provider_could_not_answer_for_is_a_retry_and_not_a_revoke(cfg, monkeypatch):
     accepted(cfg, "r-down")
     accepted(cfg, "r-1")
-    envelope = listed(monkeypatch, OneOutage(releases={"r-1": two_track_release()}))
+    outage = Failing(releases={"r-1": two_track_release()}, failing={"r-down"}, error=timed_out())
+    envelope = listed(monkeypatch, outage)
     failure = check(envelope, "release.r-down")
     assert "could not be read" in failure["detail"]
     assert "RuntimeError: the provider timed out" in failure["detail"]
@@ -304,7 +293,7 @@ def test_a_release_the_provider_could_not_answer_for_is_a_retry_and_not_a_revoke
     assert envelope["data"]["summary"]["failed"][0]["gone"] is False
 
 
-def test_every_release_read_is_said_so(cfg, library, monkeypatch):
+def test_every_release_read_is_said_so(cfg, monkeypatch):
     envelope = listed_one(cfg, monkeypatch)
     assert check(envelope, "releases") == {
         "key": "label.approved.releases", "title": "releases", "status": "ok",
@@ -332,18 +321,11 @@ def test_nothing_missing_with_a_release_unread_is_refused_too(cfg, library, monk
     assert not lists_dir(library).exists()
 
 
-class Expired(StrictCatalogue):
-    def release_tracks(self, release_id: str):
-        self.releases_asked_for.append(release_id)
-        raise refuse(
-            "credential-missing", "the stored provider session expired",
-            remedy=Remedy.REAUTHENTICATE_PROVIDER, origin=("suite",),
-        )
-
-
-def test_the_seams_own_refusal_passes_through_and_stops_the_run(cfg, library, monkeypatch):
+def test_the_seams_own_refusal_passes_through_and_stops_the_run(cfg, monkeypatch):
     accepted(cfg, "r-1", "r-2")
-    fake = Expired()
+    fake = Failing(error=lambda: refuse(
+        "credential-missing", "the stored provider session expired",
+        remedy=Remedy.REAUTHENTICATE_PROVIDER, origin=("suite",)))
     bind(monkeypatch, fake)
     code, envelope = approved()
     assert envelope["cause"]["reason"] == "credential-missing", envelope
@@ -351,10 +333,9 @@ def test_the_seams_own_refusal_passes_through_and_stops_the_run(cfg, library, mo
     assert fake.releases_asked_for == ["r-1"]
 
 
-def test_an_accepted_item_naming_no_release_is_a_named_failure(cfg, library, monkeypatch):
+def test_an_accepted_item_naming_no_release_is_a_named_failure(cfg, monkeypatch):
     stray = accepted_raw(
-        cfg, {"imported": "row-9"}, {"title": "No Identifier EP", "label_name": "Tide Works"}
-    )
+        cfg, {"imported": "row-9"}, {"title": "No Identifier EP", "label_name": "Tide Works"})
     fake = one_release(cfg, monkeypatch)
     envelope = listed(monkeypatch)
     assert fake.releases_asked_for == ["r-1"]
@@ -362,14 +343,11 @@ def test_an_accepted_item_naming_no_release_is_a_named_failure(cfg, library, mon
     assert "names no release identifier" in failure["detail"]
 
 
-def test_an_accepted_harvested_label_shares_the_queue_and_is_not_a_release(
-    cfg, library, monkeypatch
-):
+def test_an_accepted_harvested_label_shares_the_queue_and_is_not_a_release(cfg, monkeypatch):
     """Harvest offers label NAMES into the same queue, under another kind."""
     accepted_raw(
         cfg, {"name": "Tide Works"}, {"name": "Tide Works", "identity": "r-2"},
-        kind=harvest.KIND, handler_key="label.harvest",
-    )
+        kind=harvest.KIND, handler_key="label.harvest")
     accepted(cfg, "r-1")
     glass = ([Track("401", "Mira Vale", "Glass Hour")], 2023)
     fake = StrictCatalogue(releases={"r-1": two_track_release(), "r-2": glass})
@@ -380,8 +358,7 @@ def test_an_accepted_harvested_label_shares_the_queue_and_is_not_a_release(
 
 
 def test_the_items_identity_names_the_release_and_a_payload_that_disagrees_does_not(
-    cfg, library, monkeypatch
-):
+        cfg, monkeypatch):
     accepted_raw(cfg, {"release_id": "r-1"}, {"identity": "r-2", "label_name": "Tide Works"})
     glass = ([Track("401", "Mira Vale", "Glass Hour")], 2023)
     fake = StrictCatalogue(releases={"r-1": two_track_release(), "r-2": glass})
@@ -389,12 +366,11 @@ def test_the_items_identity_names_the_release_and_a_payload_that_disagrees_does_
     assert fake.releases_asked_for == ["r-1"]
 
 
-def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, library, monkeypatch):
+def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, monkeypatch):
     """``review import`` carries no identity, so the payload's copy is all there is."""
     accepted_raw(
         cfg, {"imported": "row-4"},
-        {"identity": "r-1", "label_id": "tide-works", "label_name": "Tide Works"},
-    )
+        {"identity": "r-1", "label_id": "tide-works", "label_name": "Tide Works"})
     fake = StrictCatalogue(releases={"r-1": two_track_release()})
     envelope = listed(monkeypatch, fake)
     assert fake.releases_asked_for == ["r-1"]
@@ -402,15 +378,12 @@ def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, lib
 
 
 # ── Nothing to do ────────────────────────────────────────────────────────────
-
-
 def test_nothing_accepted_is_a_no_op_that_never_opens_the_catalogue(cfg, library, monkeypatch):
     offered(cfg, "r-3")
     def never(_cfg):
         raise AssertionError("the catalogue was resolved with nothing accepted")
     monkeypatch.setattr(catalogue, "resolve", never)
-    code, envelope = approved()
-    assert code == int(ExitCode.OK), envelope
+    envelope = listed(monkeypatch)
     assert envelope["outcome"] == "no_op"
     assert check(envelope, "written")["detail"] == "nothing listed: no label release is accepted"
     assert envelope["data"]["summary"]["open"] == 1
@@ -429,14 +402,11 @@ def test_every_track_owned_is_a_no_op_and_writes_nothing(cfg, library, monkeypat
 
 
 # ── A second run ─────────────────────────────────────────────────────────────
-
-
 def test_the_same_work_twice_writes_the_same_file_and_refuses_nothing(cfg, library, monkeypatch):
     one_release(cfg, monkeypatch)
     _code, first = approved()
     before = Path(first["data"]["summary"]["list"]).read_bytes()
-    code, second = approved()
-    assert code == int(ExitCode.OK), second
+    second = listed(monkeypatch)
     assert second["data"]["summary"]["list"] == first["data"]["summary"]["list"]
     assert Path(second["data"]["summary"]["list"]).read_bytes() == before
     stem = the_list(lists_dir(library)).name.removesuffix(".list.json")
@@ -449,8 +419,7 @@ def test_a_track_landed_since_the_last_run_is_left_out_under_a_new_name(cfg, lib
     one_release(cfg, monkeypatch)
     _code, first = approved()
     owned(library, "Aurora Bloom - Sun Path.flac")
-    code, second = approved()
-    assert code == int(ExitCode.OK), second
+    second = listed(monkeypatch)
     assert second["data"]["summary"]["list"] != first["data"]["summary"]["list"]
     assert LIST_NAME.fullmatch(Path(second["data"]["summary"]["list"]).name)
     assert len(list(lists_dir(library).glob("*.list.json"))) == 2
@@ -459,8 +428,7 @@ def test_a_track_landed_since_the_last_run_is_left_out_under_a_new_name(cfg, lib
 
 
 def test_a_file_of_the_lists_name_holding_something_else_is_refused_and_kept(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     one_release(cfg, monkeypatch)
     # The name is learned by one run, then both files go so the squatter alone holds it.
     _code, first = approved()
@@ -472,22 +440,15 @@ def test_a_file_of_the_lists_name_holding_something_else_is_refused_and_kept(
     assert [path.name for path in lists_dir(library).iterdir()] == [squatter.name]
 
 
-def test_an_out_that_is_a_file_is_refused(cfg, library, tmp_path, monkeypatch):
+def test_an_out_that_is_a_file_is_refused(cfg, tmp_path, monkeypatch):
     one_release(cfg, monkeypatch)
     in_the_way = tmp_path / "in-the-way"
     in_the_way.write_text("a file\n")
-    code, envelope = approved("--out", str(in_the_way))
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "label-list-unusable"
-    assert "is not a folder" in envelope["cause"]["message"]
+    assert "is not a folder" in unusable(monkeypatch, None, "--out", str(in_the_way))["message"]
 
 
 # ── The other three states, and the same recording twice ─────────────────────
-
-
-def test_the_same_recording_on_two_releases_is_listed_once_under_the_first(
-    cfg, library, monkeypatch
-):
+def test_the_same_recording_on_two_releases_is_listed_once_under_the_first(cfg, monkeypatch):
     accepted(cfg, "r-single", title="Sun Path")
     accepted(cfg, "r-album", title="Harbour Lights")
     album = [Track("901", "Aurora Bloom", "Sun Path"), Track("902", "Nova Reef", "Tide")]
@@ -503,8 +464,7 @@ def test_the_same_recording_on_two_releases_is_listed_once_under_the_first(
 
 
 def test_a_track_held_in_another_version_is_offered_under_this_verb_and_not_listed(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     owned(library, "Nova Reef - Tide (Someone Remix).flac")
     envelope = listed_one(cfg, monkeypatch)
     summary = envelope["data"]["summary"]
@@ -516,11 +476,10 @@ def test_a_track_held_in_another_version_is_offered_under_this_verb_and_not_list
     assert asked[0].queue == match_cli.QUEUE
 
 
-def test_a_track_deleted_on_purpose_is_not_listed(cfg, library, monkeypatch):
+def test_a_track_deleted_on_purpose_is_not_listed(cfg, monkeypatch):
     row = RemovedRow(
         content_id="9001", recorded="2026-09-18", sequence=1, size=None, artist="Nova Reef",
-        title="Tide",
-    )
+        title="Tide")
     stores.record_tombstone(cfg, row, actor="deletion")
     envelope = listed_one(cfg, monkeypatch)
     summary = envelope["data"]["summary"]
@@ -528,7 +487,7 @@ def test_a_track_deleted_on_purpose_is_not_listed(cfg, library, monkeypatch):
     assert listed_ids(envelope) == ["301"]
 
 
-def test_a_release_with_no_year_is_listed_and_said_to_be_undated(cfg, library, monkeypatch):
+def test_a_release_with_no_year_is_listed_and_said_to_be_undated(cfg, monkeypatch):
     envelope = listed_one(cfg, monkeypatch, None)
     undated = check(envelope, "undated")
     assert undated["status"] == "fail"
@@ -538,15 +497,13 @@ def test_a_release_with_no_year_is_listed_and_said_to_be_undated(cfg, library, m
     assert sidecar["rows"]["301"]["year"] is None
 
 
-def test_a_dated_release_says_every_release_carries_its_year(cfg, library, monkeypatch):
+def test_a_dated_release_says_every_release_carries_its_year(cfg, monkeypatch):
     envelope = listed_one(cfg, monkeypatch)
     assert check(envelope, "undated")["status"] == "ok"
     assert envelope["data"]["summary"]["undated"] == []
 
 
-def test_a_track_with_no_provider_identifier_is_a_failing_line_and_not_dropped(
-    cfg, library, monkeypatch
-):
+def test_a_track_with_no_provider_identifier_is_a_failing_line_and_not_dropped(cfg, monkeypatch):
     accepted(cfg, "r-1")
     tracks = [Track("301", "Aurora Bloom", "Sun Path"), Track("", "Nova Reef", "Tide")]
     envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": (tracks, 2024)}))
@@ -558,12 +515,10 @@ def test_a_track_with_no_provider_identifier_is_a_failing_line_and_not_dropped(
 
 
 def test_missing_tracks_none_of_which_can_be_asked_for_is_refused_and_not_a_no_op(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     accepted(cfg, "r-1")
-    cause = unusable(
-        monkeypatch, StrictCatalogue(releases={"r-1": ([Track("", "Nova Reef", "Tide")], 2024)})
-    )
+    tide = ([Track("", "Nova Reef", "Tide")], 2024)
+    cause = unusable(monkeypatch, StrictCatalogue(releases={"r-1": tide}))
     assert "1 missing track(s) and none carries a provider identifier" in (cause["message"])
     assert cause["detail"]["unlisted_tracks"] == [{"artist": "Nova Reef", "title": "Tide"}]
     assert not lists_dir(library).exists()
@@ -593,23 +548,14 @@ def test_the_verb_declares_what_it_is():
     assert entry.landed
 
 
-class Parsing(StrictCatalogue):
-    """Fails the way a client fails while parsing a payload it did not expect."""
-
-    def release_tracks(self, release_id: str):
-        if release_id == "r-odd":
-            self.releases_asked_for.append(release_id)
-            raise KeyError("numberOfTracks")
-        return super().release_tracks(release_id)
-
-
-def test_a_lookup_error_that_is_not_the_seams_own_is_never_read_as_a_gone_release(
-    cfg, library, monkeypatch
-):
-    """``KeyError`` is a ``LookupError``. A parse failure is not a withdrawal."""
+def test_a_lookup_error_that_is_not_the_seams_own_is_never_read_as_a_gone_release(cfg, monkeypatch):
+    """``KeyError`` is a ``LookupError`` a client raises parsing: not a withdrawal."""
     accepted(cfg, "r-odd")
     accepted(cfg, "r-1")
-    envelope = listed(monkeypatch, Parsing(releases={"r-1": two_track_release()}))
+    odd = Failing(
+        releases={"r-1": two_track_release()}, failing={"r-odd"},
+        error=lambda: KeyError("numberOfTracks"))
+    envelope = listed(monkeypatch, odd)
     failure = check(envelope, "release.r-odd")
     assert "is gone from the provider" not in failure["detail"]
     assert "review clear" not in failure["detail"]
@@ -617,21 +563,18 @@ def test_a_lookup_error_that_is_not_the_seams_own_is_never_read_as_a_gone_releas
 
 
 def test_the_same_tracks_with_a_corrected_year_take_a_new_name_and_are_not_refused(
-    cfg, library, monkeypatch
-):
+        cfg, monkeypatch):
     one_release(cfg, monkeypatch, None)
     _code, first = approved()
     bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-    code, second = approved()
-    assert code == int(ExitCode.OK), second
+    second = listed(monkeypatch)
     assert second["data"]["summary"]["list"] != first["data"]["summary"]["list"]
     sidecar = json.loads(Path(second["data"]["summary"]["manifest"]).read_text())
     assert sidecar["rows"]["301"]["year"] == 2024
 
 
 def test_a_folder_the_account_cannot_write_keeps_the_permission_refusal_and_its_path(
-    cfg, library, monkeypatch
-):
+        cfg, library, monkeypatch):
     """A refusal raised FROM a permission error keeps that cause (raised: root defeats chmod)."""
     one_release(cfg, monkeypatch)
     def denied(payload, path):
@@ -643,9 +586,7 @@ def test_a_folder_the_account_cannot_write_keeps_the_permission_refusal_and_its_
     assert str(lists_dir(library)) in envelope["cause"]["detail"]["path"]
 
 
-def test_a_write_the_disk_refuses_is_the_verbs_refusal_and_not_an_internal_error(
-    cfg, library, monkeypatch
-):
+def test_a_write_the_disk_refuses_is_the_verbs_refusal_and_not_an_internal_error(cfg, monkeypatch):
     one_release(cfg, monkeypatch)
     def full(payload, path):
         raise OSError(errno.ENOSPC, "No space left on device", str(path))
@@ -655,9 +596,7 @@ def test_a_write_the_disk_refuses_is_the_verbs_refusal_and_not_an_internal_error
     assert "name another folder with --out" in json.dumps(cause)
 
 
-def test_one_unreadable_row_is_reported_and_the_rest_of_the_release_still_lists(
-    cfg, library, monkeypatch
-):
+def test_one_unreadable_row_is_reported_and_the_rest_of_the_release_still_lists(cfg, monkeypatch):
     accepted(cfg, "r-1")
     tracks, _year = two_track_release()
     tracks.insert(1, Track("399", "", ""))
@@ -670,7 +609,7 @@ def test_one_unreadable_row_is_reported_and_the_rest_of_the_release_still_lists(
     assert envelope["data"]["summary"]["unreadable"] == 1
 
 
-def test_an_item_naming_no_release_is_told_to_clear_it_and_not_to_wait(cfg, library, monkeypatch):
+def test_an_item_naming_no_release_is_told_to_clear_it_and_not_to_wait(cfg, monkeypatch):
     stray = accepted_raw(cfg, {"imported": "row-9"}, {"title": "No Identifier EP"})
     envelope = listed_one(cfg, monkeypatch)
     failure = check(envelope, f"release.{stray}")
@@ -678,49 +617,27 @@ def test_an_item_naming_no_release_is_told_to_clear_it_and_not_to_wait(cfg, libr
     assert "once the provider answers" not in failure["detail"]
 
 
-class Down(StrictCatalogue):
-    """A provider that has stopped answering for every release."""
-
-    def release_tracks(self, release_id: str):
-        self.releases_asked_for.append(release_id)
-        raise ConnectionError("the provider timed out")
-
-
-def test_a_provider_that_stopped_answering_is_not_asked_about_every_release(
-    cfg, library, monkeypatch
-):
+def test_a_provider_that_stopped_answering_is_not_asked_about_every_release(cfg, monkeypatch):
     accepted(cfg, *(f"r-{number}" for number in range(1, 8)))
-    fake = Down()
-    bind(monkeypatch, fake)
-    code, envelope = approved()
-    assert code == int(ExitCode.PRECONDITION), envelope
+    fake = Failing(error=timed_out(ConnectionError))
+    failed = unusable(monkeypatch, fake)["detail"]["failed"]
     assert fake.releases_asked_for == ["r-1", "r-2", "r-3"]
-    failed = envelope["cause"]["detail"]["failed"]
     assert [one["kind"] for one in failed] == ["provider"] * 3 + ["not-asked"] * 4
 
 
-class Flaky(StrictCatalogue):
-    """Two failures, an answer, then two more: never three in a row."""
-
-    def release_tracks(self, release_id: str):
-        if release_id in {"r-1", "r-2", "r-4", "r-5"}:
-            self.releases_asked_for.append(release_id)
-            raise ConnectionError("the provider timed out")
-        return super().release_tracks(release_id)
-
-
-def test_an_answer_resets_the_count_so_scattered_failures_never_stop_the_run(
-    cfg, library, monkeypatch
-):
+def test_an_answer_resets_the_count_so_scattered_failures_never_stop_the_run(cfg, monkeypatch):
     accepted(cfg, *(f"r-{number}" for number in range(1, 7)))
     glass = ([Track("601", "Mira Vale", "Glass Hour")], 2020)
-    fake = Flaky(releases={"r-3": two_track_release(), "r-6": glass})
+    # Two failures, an answer, then two more: never three in a row.
+    fake = Failing(
+        releases={"r-3": two_track_release(), "r-6": glass}, failing={"r-1", "r-2", "r-4", "r-5"},
+        error=timed_out(ConnectionError))
     envelope = listed(monkeypatch, fake)
     assert fake.releases_asked_for == ["r-1", "r-2", "r-3", "r-4", "r-5", "r-6"]
     assert envelope["data"]["summary"]["written"] == 3
 
 
-def test_a_gone_release_does_not_count_towards_an_outage(cfg, library, monkeypatch):
+def test_a_gone_release_does_not_count_towards_an_outage(cfg, monkeypatch):
     accepted(cfg, "g-1", "g-2", "g-3", "g-4")
     fake = one_release(cfg, monkeypatch)
     envelope = listed(monkeypatch)
@@ -729,24 +646,21 @@ def test_a_gone_release_does_not_count_towards_an_outage(cfg, library, monkeypat
 
 
 # ── The genre gate, U101: 10 house (no family) and 1 hip hop put hip_hop_rnb under 10% ──
-
 #: How many house releases make one hip hop release out of place on a label.
 HOUSE_RELEASES = 10
 
 
-def house_label(cfg, releases: dict, *, label_id: str = "tide-works", prefix: str = "h") -> None:
-    """Ten accepted house releases on one label, one track each."""
-    ids = [f"{prefix}-{n}" for n in range(HOUSE_RELEASES)]
+def house_label(cfg, *, label_id: str = "tide-works", count: int = HOUSE_RELEASES) -> dict:
+    ids = [f"h-{n}" for n in range(count)]
     accepted(cfg, *ids, label_id=label_id, label_name=label_id.title())
-    for n, release_id in enumerate(ids):
-        house = Track(f"{prefix}{n}", f"House Artist {prefix}{n}", "Deep Cut", genre="Deep House")
-        releases[release_id] = ([house], 2024)
+    return {
+        release_id: ([Track(f"h{n}", f"House Artist h{n}", "Deep Cut", genre="Deep House")], 2024)
+        for n, release_id in enumerate(ids)
+    }
 
 
-def held_label(cfg, **fields: str) -> dict:
-    """The ten house releases, then hip hop ``r-hh`` accepted on Tide Works. The releases."""
-    releases: dict = {}
-    house_label(cfg, releases)
+def held_label(cfg, count: int = HOUSE_RELEASES, **fields: str) -> dict:
+    releases = house_label(cfg, count=count)
     accepted(cfg, "r-hh", **fields)
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     return releases
@@ -757,9 +671,7 @@ def listed_ids(envelope: dict) -> list[str]:
     return [t["id"] for t in json.loads(Path(path).read_text())["tracks"]] if path else []
 
 
-def test_a_release_of_an_out_of_place_genre_is_held_by_name_and_not_listed(
-    cfg, library, monkeypatch
-):
+def test_a_release_of_an_out_of_place_genre_is_held_by_name_and_not_listed(cfg, monkeypatch):
     fake = StrictCatalogue(releases=held_label(cfg, title="Corner Talk"))
     envelope = listed(monkeypatch, fake)
     assert "r-hh" in fake.releases_asked_for
@@ -792,7 +704,7 @@ def test_a_held_release_is_never_offered_for_review(cfg, library, monkeypatch):
     assert not [one for one in page.items if "Corner Talk" in json.dumps(one.payload)]
 
 
-def test_a_genre_the_label_makes_enough_of_is_listed(cfg, library, monkeypatch):
+def test_a_genre_the_label_makes_enough_of_is_listed(cfg, monkeypatch):
     accepted(cfg, "r-1", "r-2", "r-3")
     envelope = listed(monkeypatch, StrictCatalogue(releases={
         "r-1": ([Track("301", "Aurora Bloom", "Sun Path", genre="Deep House")], 2024),
@@ -808,7 +720,7 @@ def test_a_genre_the_label_makes_enough_of_is_listed(cfg, library, monkeypatch):
     assert check(envelope, "ungated")["detail"] == "every release read was judged by the genre gate"
 
 
-def test_a_release_with_no_genre_known_is_listed_with_a_failing_line(cfg, library, monkeypatch):
+def test_a_release_with_no_genre_known_is_listed_with_a_failing_line(cfg, monkeypatch):
     envelope = listed_one(cfg, monkeypatch)
     assert envelope["outcome"] == "ok"
     assert listed_ids(envelope) == ["301", "302"]
@@ -820,9 +732,8 @@ def test_a_release_with_no_genre_known_is_listed_with_a_failing_line(cfg, librar
     assert envelope["data"]["summary"]["ungated"] == ["r-1"]
 
 
-def test_tracks_that_disagree_on_the_genre_are_not_judged_and_are_listed(cfg, library, monkeypatch):
-    releases: dict = {}
-    house_label(cfg, releases)
+def test_tracks_that_disagree_on_the_genre_are_not_judged_and_are_listed(cfg, monkeypatch):
+    releases = house_label(cfg)
     accepted(cfg, "r-mix")
     releases["r-mix"] = ([
         Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop"),
@@ -836,7 +747,7 @@ def test_tracks_that_disagree_on_the_genre_are_not_judged_and_are_listed(cfg, li
     assert "its tracks report 'Hip Hop' and 'Deep House'" in ungated["detail"]
 
 
-def test_one_genre_in_two_cases_is_one_genre_and_is_judged(cfg, library, monkeypatch):
+def test_one_genre_in_two_cases_is_one_genre_and_is_judged(cfg, monkeypatch):
     accepted(cfg, "r-1")
     tracks = [
         Track("301", "Aurora Bloom", "Sun Path", genre="Deep House"),
@@ -848,7 +759,7 @@ def test_one_genre_in_two_cases_is_one_genre_and_is_judged(cfg, library, monkeyp
     assert envelope["data"]["summary"]["ungated"] == []
 
 
-def test_each_label_is_judged_against_its_own_output(cfg, library, monkeypatch):
+def test_each_label_is_judged_against_its_own_output(cfg, monkeypatch):
     releases = held_label(cfg)
     accepted(cfg, "r-other", label_id="salt-flats", label_name="Salt Flats")
     releases["r-other"] = ([Track("902", "Lumen Drift", "Iron", genre="Hip Hop")], 2024)
@@ -858,12 +769,8 @@ def test_each_label_is_judged_against_its_own_output(cfg, library, monkeypatch):
     assert [one["release_id"] for one in envelope["data"]["summary"]["held"]] == ["r-hh"]
 
 
-def test_releases_naming_no_label_are_each_judged_alone(cfg, library, monkeypatch):
-    releases = {
-        f"h-{n}": ([Track(f"h{n}", f"House Artist {n}", "Deep Cut", genre="Deep House")], 2024)
-        for n in range(HOUSE_RELEASES)
-    }
-    accepted(cfg, *releases, label_id="", label_name="")
+def test_releases_naming_no_label_are_each_judged_alone(cfg, monkeypatch):
+    releases = house_label(cfg, label_id="")
     accepted(cfg, "r-hh", label_id="", label_name="")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
@@ -872,14 +779,10 @@ def test_releases_naming_no_label_are_each_judged_alone(cfg, library, monkeypatc
 
 
 def test_every_release_held_or_owned_is_a_no_op_that_does_not_claim_the_held_one(
-    cfg, library, monkeypatch
-):
-    releases: dict = {}
-    house_label(cfg, releases)
+        cfg, library, monkeypatch):
+    releases = held_label(cfg)
     for n in range(HOUSE_RELEASES):
         owned(library, f"House Artist h{n} - Deep Cut.flac")
-    accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
-    releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
     assert envelope["outcome"] == "no_op"
     assert check(envelope, "written")["detail"] == (
@@ -890,33 +793,25 @@ def test_every_release_held_or_owned_is_a_no_op_that_does_not_claim_the_held_one
 
 
 def test_nothing_missing_with_one_held_and_one_unread_is_refused_and_says_both(
-    cfg, library, monkeypatch
-):
-    releases: dict = {}
-    house_label(cfg, releases)
+        cfg, library, monkeypatch):
+    releases = held_label(cfg)
     for n in range(HOUSE_RELEASES):
         owned(library, f"House Artist h{n} - Deep Cut.flac")
-    accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
-    releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     accepted(cfg, "r-gone", label_id="salt-flats", label_name="Salt Flats")
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-    code, envelope = approved()
-    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = unusable(monkeypatch, StrictCatalogue(releases=releases))
     assert (
         "nothing is missing from the 10 release(s) that could be read and passed the "
         "genre gate (1 more held by it), and 1 could not be"
-    ) in envelope["cause"]["message"]
+    ) in cause["message"]
 
 
-def test_the_default_human_output_names_a_held_release(cfg, library, monkeypatch):
+def test_the_default_human_output_names_a_held_release(cfg, monkeypatch):
     bind(monkeypatch, StrictCatalogue(releases=held_label(cfg, title="Corner Talk")))
     _code, text = human(["label", "approved"])
     assert "release r-hh ('Corner Talk' on Tide Works) is HELD by the genre gate" in text
 
 
-def test_a_label_with_a_release_unread_this_run_is_not_judged_and_says_why(
-    cfg, library, monkeypatch
-):
+def test_a_label_with_a_release_unread_this_run_is_not_judged_and_says_why(cfg, monkeypatch):
     releases = held_label(cfg)
     accepted(cfg, "r-gone", label_id="tide-works", label_name="Tide Works")
     envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
@@ -929,9 +824,7 @@ def test_a_label_with_a_release_unread_this_run_is_not_judged_and_says_why(
     ) in check(envelope, "ungated")["detail"]
 
 
-def test_a_release_unread_on_another_label_does_not_stop_this_label_being_judged(
-    cfg, library, monkeypatch
-):
+def test_a_release_unread_on_another_label_does_not_stop_this_label_being_judged(cfg, monkeypatch):
     releases = held_label(cfg)
     accepted(cfg, "r-gone", label_id="salt-flats", label_name="Salt Flats")
     envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
@@ -940,7 +833,7 @@ def test_a_release_unread_on_another_label_does_not_stop_this_label_being_judged
     assert envelope["data"]["summary"]["ungated"] == []
 
 
-def test_a_release_with_no_genre_is_not_counted_in_its_labels_share(cfg, library, monkeypatch):
+def test_a_release_with_no_genre_is_not_counted_in_its_labels_share(cfg, monkeypatch):
     releases = held_label(cfg)
     accepted(cfg, "r-none", label_id="tide-works", label_name="Tide Works")
     releases["r-none"] = ([Track("902", "Lumen Drift", "Iron")], 2024)
@@ -951,10 +844,8 @@ def test_a_release_with_no_genre_is_not_counted_in_its_labels_share(cfg, library
     assert envelope["data"]["summary"]["held"][0]["classified"] == 11
 
 
-def test_a_genre_on_a_mapping_row_is_read_like_one_on_an_object(cfg, library, monkeypatch):
-    releases: dict = {}
-    house_label(cfg, releases)
-    accepted(cfg, "r-hh")
+def test_a_genre_on_a_mapping_row_is_read_like_one_on_an_object(cfg, monkeypatch):
+    releases = held_label(cfg)
     row = {"id": "901", "name": "Corner Talk", "artist": {"name": "Mira Vale"}, "genre": "Hip Hop"}
     releases["r-hh"] = ([row], 2024)
     envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
@@ -962,16 +853,9 @@ def test_a_genre_on_a_mapping_row_is_read_like_one_on_an_object(cfg, library, mo
     assert [one["genre"] for one in envelope["data"]["summary"]["held"]] == ["Hip Hop"]
 
 
-
-def test_a_family_exactly_at_the_share_belongs_and_is_listed(cfg, library, monkeypatch):
+def test_a_family_exactly_at_the_share_belongs_and_is_listed(cfg, monkeypatch):
     """One hip hop release in ten is exactly the 10% share, and only UNDER it drops."""
-    releases = {
-        f"h-{n}": ([Track(f"h{n}", f"House Artist {n}", "Deep Cut", genre="Deep House")], 2024)
-        for n in range(HOUSE_RELEASES - 1)
-    }
-    accepted(cfg, *releases)
-    accepted(cfg, "r-hh")
-    releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
+    releases = held_label(cfg, HOUSE_RELEASES - 1)
     envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
     assert "901" in listed_ids(envelope)
     assert envelope["data"]["summary"]["held"] == []

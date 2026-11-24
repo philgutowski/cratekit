@@ -61,7 +61,7 @@ the two rules agree (`tests/modules/test_reports_engines.py:415`).
 `src/cratekit/cli/doctor.py:455` and killed nothing because the guard watched a
 temporary directory for a created folder, and on macOS `layout_for` resolves that
 directory's volume root to `/`, so the create was refused by the filesystem
-rather than by the argument under test (`tests/test_doctor.py:2268`).
+rather than by the argument under test (`tests/test_doctor.py:2613`, the test that replaced that guard by capturing the call).
 
 The fourth was not a test gap at all, and round one read it as one.
 

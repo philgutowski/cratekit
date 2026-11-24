@@ -1,8 +1,5 @@
-"""R-837: a set becomes a private playlist on the account, and is archived.
-
-Through the real dispatcher with catalogue and account faked; a real account is
-attended.
-"""
+"""R-837: a set becomes a private playlist on the account, and is archived, through the real
+dispatcher with catalogue and account faked; a real account is attended."""
 
 from __future__ import annotations
 
@@ -40,13 +37,7 @@ ARCHIVE = "export.archive.confirm"
 NAME = "Warehouse Night"
 
 #: Five rows. The provider's search names four exactly and nothing for the fifth.
-ROWS = (
-    ("Artist One", "Title One"),
-    ("Artist Two", "Title Two"),
-    ("Artist Three", "Title Three"),
-    ("Artist Four", "Title Four"),
-    ("Artist Five", "Title Five"),
-)
+ROWS = tuple((f"Artist {n}", f"Title {n}") for n in ("One", "Two", "Three", "Four", "Five"))
 FIVE = ROWS[4]
 SEARCHES = {
     (artist, title): [Hit(f"tid-{index}", artist, title)]
@@ -119,6 +110,13 @@ def _archived(xml: Path, option: str = "apply", name: str = NAME) -> dict:
     return done
 
 
+@pytest.fixture
+def built(account):
+    """``account`` with the five row set built on it and approved."""
+    _built(_tracklist(account[0]))
+    return account
+
+
 def _tracks(done: dict) -> list[dict]:
     return [item for item in done["data"]["items"] if item["kind"] == "track"]
 
@@ -135,7 +133,6 @@ def _accepted(cfg, line: str, hits, option: str) -> None:
 
 
 # 1. The declaration
-
 def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
     for name, gate in (("export.set", BUILD), ("export.archive", ARCHIVE)):
         entry = registry.entry(name)
@@ -154,15 +151,16 @@ def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
 
 def test_a_tracklist_name_keeps_the_digest_that_tells_two_recordings_apart():
     # Two recordings sharing a stem are two sets, each keyed by its name.
-    assert set_cli.name_of(Path("REC001-aaaaaaaaaaaa.tracklist.txt")) == "REC001-aaaaaaaaaaaa"
-    assert set_cli.name_of(Path("REC001-bbbbbbbbbbbb.tracklist.txt")) == "REC001-bbbbbbbbbbbb"
-    assert set_cli.name_of(Path("typed set.txt")) == "typed set"
-    assert set_cli.name_of(Path("found.list.json")) == "found"
+    named = {
+        "REC001-aaaaaaaaaaaa.tracklist.txt": "REC001-aaaaaaaaaaaa",
+        "REC001-bbbbbbbbbbbb.tracklist.txt": "REC001-bbbbbbbbbbbb",
+        "typed set.txt": "typed set", "found.list.json": "found",
+    }
+    assert {name: set_cli.name_of(Path(name)) for name in named} == named
     assert set_cli.set_name(" Live / Boiler Room ") == "Live - Boiler Room"
 
 
 # 2. The set playlist
-
 def test_five_rows_with_one_unmatched_plan_four_and_name_the_fifth(account):
     cfg, _fake, held = account
     done = _built(_tracklist(cfg), "abort")
@@ -204,9 +202,8 @@ def test_a_second_run_onto_the_same_set_plans_nothing(account):
     assert [row["action"] for row in _tracks(done)] == ["already"] * 4 + ["unmatched"]
 
 
-def test_a_row_added_to_the_tracklist_later_is_added_to_the_same_playlist(account):
-    cfg, fake, held = account
-    _built(_tracklist(cfg))
+def test_a_row_added_to_the_tracklist_later_is_added_to_the_same_playlist(built):
+    cfg, fake, held = built
     fake.searches[FIVE] = [Hit("tid-5", *FIVE)]
     _built(_tracklist(cfg))
     assert held.created == [NAME]
@@ -252,10 +249,8 @@ def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
     handed: list[frozenset[str]] = []
     class Stop(Exception):
         pass
-    def plan(
-        store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
-        paired=frozenset(), mirrored=frozenset(),
-    ):
+    def plan(store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
+             paired=frozenset(), mirrored=frozenset()):
         handed.append(set_built)
         raise Stop
     monkeypatch.setattr(sync_playlists, "plan", plan)
@@ -297,9 +292,8 @@ def test_a_track_refused_before_is_said_as_refused_not_as_on_the_playlist(accoun
     assert "would not add it" in _tracks(done)[1]["why"]
 
 
-def test_a_track_taken_off_by_a_person_is_said_and_not_put_back(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_a_track_taken_off_by_a_person_is_said_and_not_put_back(built):
+    cfg, _fake, held = built
     (playlist,) = held.playlists
     held.playlists[playlist].remove("tid-3")
     fake_rows = (*ROWS, ("Artist One", "Title One"))
@@ -309,9 +303,8 @@ def test_a_track_taken_off_by_a_person_is_said_and_not_put_back(account):
     assert "tid-3" not in held.playlists[playlist]
 
 
-def test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for(account):
-    cfg, fake, held = account
-    _built(_tracklist(cfg))
+def test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for(built):
+    cfg, fake, held = built
     (playlist,) = held.playlists
     # The fifth row's track was added by hand: on the playlist, never written here.
     held.playlists[playlist].append("tid-5")
@@ -344,7 +337,6 @@ def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(accou
 
 
 # 2b. R-879: a set the library holds, and a search that fills its page
-
 SEVEN = ("Artist Seven", "Title Seven")
 
 
@@ -370,9 +362,15 @@ def _held(silence, cfg, isrc: str = "", name: str = "Title Seven", album: str = 
 
 def _isrc_asked(album: str = "") -> dict:
     """What the account is asked for ``SEVEN`` by its held file's ISRC."""
-    artist, title = SEVEN
-    return {"identity": "set-row-1", "isrc": "QZABC2600007", "title": title, "artist": artist,
+    return {"identity": "set-row-1", "isrc": "QZABC2600007", "title": SEVEN[1], "artist": SEVEN[0],
             "album": album}
+
+
+def _paged(account, hits: list) -> tuple[dict, FakeCatalogue]:
+    """``SEVEN``'s row planned over a search serving ``hits``, and the catalogue that served it."""
+    cfg, fake, _held = account
+    fake.searches[SEVEN] = hits
+    return _seventh(cfg, "paged.txt"), fake
 
 
 def _filler(count: int, start: int = 0) -> list[Hit]:
@@ -380,28 +378,22 @@ def _filler(count: int, start: int = 0) -> list[Hit]:
     return [Hit(f"fill-{n}", "Other Act", f"Unrelated {n}") for n in range(start, start + count)]
 
 
-def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(account, silence):
+@pytest.mark.parametrize(
+    ("album", "handed", "listed"),
+    # R-572: the set path reads the album beside the ISRC the way file_identity does.
+    [("", "", "held.txt"), ("  Tidal Lines ", "Tidal Lines", "held-album.txt")],
+    ids=["no-album-tag", "its-album-tag-handed-over"])
+def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
+    account, silence, album, handed, listed):
     cfg, fake, held = account
-    _held(silence, cfg, isrc="QZABC2600007")
+    _held(silence, cfg, isrc="QZABC2600007", album=album)
     held.catalog["set-row-1"] = "tid-by-file"
-    row = _seventh(cfg, "held.txt")
+    row = _seventh(cfg, listed)
     assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
     # Twice, once at the gate's refusal and once on the run that carries it out.
-    asked = _isrc_asked()
+    asked = _isrc_asked(album=handed)
     assert held.matches == [asked, asked]
     assert held.agreeing == ["set-row-1", "set-row-1"], "a file's tag was trusted alone"
-    assert fake.searched_for == []
-
-
-def test_a_held_files_album_tag_is_handed_to_the_account_with_its_isrc(account, silence):
-    """R-572. The set path reads the album beside the ISRC the way file_identity does."""
-    cfg, fake, held = account
-    _held(silence, cfg, isrc="QZABC2600007", album="  Tidal Lines ")
-    held.catalog["set-row-1"] = "tid-by-file"
-    row = _seventh(cfg, "held-album.txt")
-    assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
-    asked = _isrc_asked(album="Tidal Lines")
-    assert held.matches == [asked, asked]
     assert fake.searched_for == []
 
 
@@ -422,8 +414,7 @@ def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(acc
     row = _seventh(cfg, "held.txt")
     assert row["action"] == "unmatched"
     assert row["why"].startswith(
-        "the provider names no single track under its library file's ISRC QZABC2600007; "
-    )
+        "the provider names no single track under its library file's ISRC QZABC2600007; ")
     assert fake.searched_for == [SEVEN, SEVEN]
 
 
@@ -436,8 +427,7 @@ def test_held_copies_carrying_different_isrcs_ask_the_account_nothing(account, s
     row = _seventh(cfg, "held.txt")
     assert held.matches == []
     assert row["why"].startswith(
-        "the library holds it in 2 file(s) carrying 2 different ISRCs, so none was asked about; "
-    )
+        "the library holds it in 2 file(s) carrying 2 different ISRCs, so none was asked about; ")
 
 
 def test_another_versions_isrc_is_not_the_rows(account, silence):
@@ -453,8 +443,7 @@ def test_another_versions_isrc_is_not_the_rows(account, silence):
 @pytest.mark.parametrize(
     "isrc, name",
     [("QZABC2600010", "Title Seven (Extended Mix)"), ("QZABC2600008", "Another Title")],
-    ids=["held-only-at-another-version", "not-held"],
-)
+    ids=["held-only-at-another-version", "not-held"])
 def test_a_row_the_library_does_not_hold_asks_the_account_nothing(account, silence, isrc, name):
     """A file of another version, or another title, is not the row's."""
     cfg, _fake, held = account
@@ -481,52 +470,38 @@ def test_an_absent_music_folder_is_said_and_never_read_as_holding_nothing(accoun
 
 
 def test_a_full_first_page_with_one_exact_and_a_second_with_none_lists_it(account):
-    cfg, fake, _held_account = account
-    fake.searches[SEVEN] = [Hit("tid-7", *SEVEN), *_filler(49), *_filler(10, start=49)]
-    row = _seventh(cfg, "paged.txt")
+    row, fake = _paged(account, [Hit("tid-7", *SEVEN), *_filler(49), *_filler(10, start=49)])
     assert (row["id"], row["how"], row["action"]) == ("tid-7", "search", "add")
     assert fake.pages_asked == [(*SEVEN, 0), (*SEVEN, catalogue.TRACK_SEARCH_PAGE)] * 2
 
 
-def test_an_exact_match_on_the_second_page_alone_is_listed(account):
-    cfg, fake, _held_account = account
-    fake.searches[SEVEN] = [*_filler(50), Hit("tid-7", *SEVEN)]
-    row = _seventh(cfg, "paged.txt")
+@pytest.mark.parametrize(
+    "hits",
+    [[*_filler(50), Hit("tid-7", *SEVEN)],
+     [Hit("tid-7", *SEVEN), *_filler(49), Hit("tid-7", *SEVEN)]],
+    ids=["on-the-second-page-alone", "served-again-on-the-next-page"])
+def test_one_exact_track_over_two_pages_is_listed(account, hits):
+    row, _fake = _paged(account, hits)
     assert (row["id"], row["how"]) == ("tid-7", "search")
 
 
 def test_a_second_distinct_exact_match_on_the_next_page_leaves_it_out_as_several(account):
-    cfg, fake, _held_account = account
-    fake.searches[SEVEN] = [Hit("tid-7a", *SEVEN), *_filler(49), Hit("tid-7b", *SEVEN)]
-    row = _seventh(cfg, "paged.txt")
+    row, _fake = _paged(account, [Hit("tid-7a", *SEVEN), *_filler(49), Hit("tid-7b", *SEVEN)])
     assert row["action"] == "unmatched"
     assert "several match it exactly, 2 distinct tracks" in row["why"]
 
 
-def test_the_same_exact_track_served_again_on_the_next_page_is_one(account):
-    cfg, fake, _held_account = account
-    fake.searches[SEVEN] = [Hit("tid-7", *SEVEN), *_filler(49), Hit("tid-7", *SEVEN)]
-    row = _seventh(cfg, "paged.txt")
-    assert (row["id"], row["how"]) == ("tid-7", "search")
-
-
 def test_no_exact_match_on_any_page_leaves_it_out_as_none(account):
-    cfg, fake, _held_account = account
     near = Hit("tid-near", SEVEN[0], "Title Sevens")
-    fake.searches[SEVEN] = [*_filler(50), *_filler(5, start=50), near]
-    row = _seventh(cfg, "paged.txt")
+    row, _fake = _paged(account, [*_filler(50), *_filler(5, start=50), near])
     assert row["action"] == "unmatched"
     assert row["why"].startswith(
-        "the provider's search returned 56 hit(s) over 2 page(s) and none matches it exactly"
-    )
+        "the provider's search returned 56 hit(s) over 2 page(s) and none matches it exactly")
 
 
 def test_the_page_bound_reached_leaves_it_out_and_says_so(account):
-    cfg, fake, _held_account = account
-    pages = candidates.SEARCH_PAGES
-    page = catalogue.TRACK_SEARCH_PAGE
-    fake.searches[SEVEN] = [Hit("tid-7", *SEVEN), *_filler(pages * page + 20 - 1)]
-    row = _seventh(cfg, "paged.txt")
+    pages, page = candidates.SEARCH_PAGES, catalogue.TRACK_SEARCH_PAGE
+    row, fake = _paged(account, [Hit("tid-7", *SEVEN), *_filler(pages * page + 20 - 1)])
     assert row["action"] == "unmatched"
     assert "the page bound was reached with one exact match" in row["why"]
     assert [offset for *_row, offset in fake.pages_asked] == [n * page for n in range(pages)] * 2
@@ -553,9 +528,7 @@ def test_a_title_read_two_ways_on_a_full_page_says_so_and_not_the_bound(account)
 
 
 def test_an_exact_match_with_no_identifier_is_not_said_to_resemble_nothing(account):
-    cfg, fake, _held_account = account
-    fake.searches[SEVEN] = [Hit("", *SEVEN)]
-    row = _seventh(cfg, "paged.txt")
+    row, _fake = _paged(account, [Hit("", *SEVEN)])
     assert "carries no identifier" in row["why"]
     assert "none resembles it" not in row["why"]
 
@@ -576,31 +549,26 @@ def test_a_short_first_page_is_read_once():
     assert candidates.sole_exact(answer).track.ref == "tid-7"
 
 
-def test_two_exact_matches_on_the_first_page_read_no_second():
-    hits = [Hit("tid-7a", *SEVEN), Hit("tid-7b", *SEVEN), *_filler(60)]
-    answer, asked = _walk("Artist Seven - Title Seven", hits)
-    assert asked == [0] and candidates.sole_exact(answer) is None
+class _Unreadable:
+    id = "tid-x"
 
 
-def test_a_title_that_reads_two_ways_reads_no_second_page():
-    hits = [Hit("tid-7", "Artist Seven", "Sun Path", version="Live"), *_filler(60)]
-    answer, asked = _walk("Artist Seven - Sun Path - Live", hits)
-    assert answer.ambiguous, "the fixture's title no longer reads two ways"
-    assert asked == [0] and candidates.sole_exact(answer) is None
-
-
-def test_an_unreadable_row_on_a_full_page_reads_no_second_page():
-    class Unreadable:
-        id = "tid-x"
-    hits = [Hit("tid-7", *SEVEN), Unreadable(), *_filler(60)]
-    answer, asked = _walk("Artist Seven - Title Seven", hits)
-    assert answer.unreadable == 1
-    assert asked == [0] and candidates.sole_exact(answer) is None
-
-
-def test_an_exact_match_with_no_identifier_on_a_full_page_reads_no_second_page():
-    hits = [Hit("", *SEVEN), *_filler(60)]
-    answer, asked = _walk("Artist Seven - Title Seven", hits)
+@pytest.mark.parametrize(
+    ("line", "hits", "said"),
+    [
+        ("Artist Seven - Title Seven", [Hit("tid-7a", *SEVEN), Hit("tid-7b", *SEVEN)], None),
+        ("Artist Seven - Sun Path - Live",
+         [Hit("tid-7", "Artist Seven", "Sun Path", version="Live")], lambda read: read.ambiguous),
+        ("Artist Seven - Title Seven", [Hit("tid-7", *SEVEN), _Unreadable()],
+         lambda answer: answer.unreadable == 1),
+        ("Artist Seven - Title Seven", [Hit("", *SEVEN)], None),
+    ],
+    ids=["two-exact-matches", "a-title-that-reads-two-ways", "an-unreadable-row",
+         "an-exact-match-with-no-identifier"])
+def test_a_full_first_page_that_can_list_nothing_reads_no_second_page(line, hits, said):
+    answer, asked = _walk(line, [*hits, *_filler(60)])
+    if said is not None:
+        assert said(answer), "the fixture no longer reads as its case says"
     assert asked == [0] and candidates.sole_exact(answer) is None
 
 
@@ -615,10 +583,8 @@ def test_an_empty_page_after_full_ones_ends_the_listing_and_a_full_last_page_nev
 
 
 # 3. The archive
-
-def test_the_archive_takes_records_and_files_it_in_a_year_folder_made_once(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_the_archive_takes_records_and_files_it_in_a_year_folder_made_once(built):
+    cfg, _fake, held = built
     other = "Second Night"
     _built(_tracklist(cfg, name=f"{other}.txt"))
     year = ledger.set_playlist(cfg, NAME).year
@@ -644,9 +610,8 @@ def test_the_archive_takes_records_and_files_it_in_a_year_folder_made_once(accou
     assert held.placed[second] == folder_id
 
 
-def test_a_playlist_already_in_its_folder_is_left(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_a_playlist_already_in_its_folder_is_left(built):
+    cfg, _fake, held = built
     xml = _landed(cfg)
     _archived(xml)
     held.moves.clear()
@@ -656,9 +621,8 @@ def test_a_playlist_already_in_its_folder_is_left(account):
     assert held.moves == [] and held.renamed == [] and len(held.folders_created) == 1
 
 
-def test_a_year_folder_deleted_on_the_account_is_made_again(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_a_year_folder_deleted_on_the_account_is_made_again(built):
+    cfg, _fake, held = built
     _built(_tracklist(cfg, name="Second Night.txt"))
     xml = _landed(cfg)
     _archived(xml)
@@ -674,9 +638,8 @@ def test_a_year_folder_deleted_on_the_account_is_made_again(account):
     assert ledger.set_folder(cfg, year) == ""
 
 
-def test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled(built):
+    cfg, _fake, held = built
     year = ledger.set_playlist(cfg, NAME).year
     held.folder_names["by-hand"] = f"Downloaded Sets {year}"
     _archived(_landed(cfg))
@@ -684,10 +647,9 @@ def test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled(account):
     assert held.placed[ledger.set_playlist(cfg, NAME).remote_id] == "by-hand"
 
 
-def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(account):
+def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(built):
     """U142: an adoption alone is no write, so no record is said to be replaced."""
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+    cfg, _fake, held = built
     recorded = ledger.set_playlist(cfg, NAME)
     folder_name = f"Downloaded Sets {recorded.year}"
     ledger.reserve_set_folder(cfg, folder_name, lambda: "gone-from-the-account")
@@ -711,9 +673,8 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     assert "as a person set it" in asked["cause"]["detail"]["shown"]["nothing to write"]
 
 
-def test_two_folders_named_as_the_year_refuse_and_write_nothing(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_two_folders_named_as_the_year_refuse_and_write_nothing(built):
+    cfg, _fake, held = built
     year = ledger.set_playlist(cfg, NAME).year
     held.folder_names.update({"one": f"Downloaded Sets {year}", "two": f"Downloaded Sets {year}"})
     code, refused = drive(["export", "archive", NAME, "--xml", str(_landed(cfg))])
@@ -723,9 +684,8 @@ def test_two_folders_named_as_the_year_refuse_and_write_nothing(account):
     assert held.moves == [] and held.renamed == []
 
 
-def test_a_playlist_retitled_by_a_person_is_filed_and_its_title_left(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_a_playlist_retitled_by_a_person_is_filed_and_its_title_left(built):
+    cfg, _fake, held = built
     playlist = ledger.set_playlist(cfg, NAME).remote_id
     held.titles[playlist] = "My Own Title"
     done = _archived(_landed(cfg))
@@ -745,9 +705,8 @@ def test_a_name_with_a_slash_finds_the_set_it_named_at_build(account):
     )
 
 
-def test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed(account, monkeypatch):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed(built, monkeypatch):
+    cfg, _fake, held = built
     lagging = {"on": True}
     listed = held.folder_playlists
     def folder_playlists(folder_id):
@@ -764,9 +723,8 @@ def test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed(accoun
     assert ledger.set_playlist(cfg, NAME).remote_id in mark_record.MarkRecord(cfg).taken_ids()
 
 
-def test_an_archive_with_no_landed_file_refuses_before_anything(account):
-    cfg, _fake, held = account
-    _built(_tracklist(cfg))
+def test_an_archive_with_no_landed_file_refuses_before_anything(built):
+    cfg, _fake, held = built
     missing = cfg.library.root / "landed" / "never_inboxed.xml"
     code, refused = drive(["export", "archive", NAME, "--xml", str(missing)])
     assert code == int(ExitCode.PRECONDITION), refused
@@ -781,9 +739,8 @@ def test_an_archive_of_a_set_never_made_says_so(account):
     assert [w["code"] for w in done["warnings"]] == ["export-archive-nothing-built"]
 
 
-def test_sync_unmark_takes_the_archive_mark_off_again(account):
-    cfg, fake, held = account
-    _built(_tracklist(cfg))
+def test_sync_unmark_takes_the_archive_mark_off_again(built):
+    cfg, fake, held = built
     _archived(_landed(cfg))
     listed = held.titles.items()
     fake.account = [AccountPlaylist(playlist_id=p, name=t, tracks=None) for p, t in listed]
@@ -795,19 +752,16 @@ def test_sync_unmark_takes_the_archive_mark_off_again(account):
 
 
 # 3b. The one gated loop both backfills share (U309)
-
 def _loop(option: str, apply, *plans: tuple[str, bool]) -> dict:
     """The shared loop over ``plans`` (name, writes), its gate answered ``option``."""
     ctx = SimpleNamespace(
         gate=SimpleNamespace(require=lambda *_a, **_k: option),
         entry=SimpleNamespace(gates=(BUILD,)),
-        envelope=lambda **shown: shown,
-    )
+        envelope=lambda **shown: shown)
     planned = [SimpleNamespace(name=name, writes=writes) for name, writes in plans]
     payload = {"totals": {"writes": True}}
-    return set_cli._gate_then_apply_each(
-        ctx, None, payload, {}, [], planned, apply, set_cli._SET_BACKFILL
-    )
+    backfill = set_cli._SET_BACKFILL
+    return set_cli._gate_then_apply_each(ctx, None, payload, {}, [], planned, apply, backfill)
 
 
 def test_a_backfill_whose_gate_was_aborted_applies_nothing():
@@ -824,7 +778,6 @@ def test_a_backfill_skips_the_planless_and_names_only_what_wrote():
     def apply(_cfg, one):
         asked.append(one.name)
         return None, [], one.name == "wrote"
-
     done = _loop("apply", apply, ("planless", False), ("wrote", True), ("unchanged", True))
     assert asked == ["wrote", "unchanged"]
     assert done["data"]["totals"]["applied"] == {"playlists": ["wrote"]}
@@ -836,18 +789,14 @@ def test_a_backfill_failing_before_anything_landed_raises_it_as_is():
 
     def apply(_cfg, _one):
         raise boom
-
     with pytest.raises(RuntimeError) as raised:
         _loop("apply", apply, ("first", True))
     assert raised.value is boom
 
 
 # 4. Add only, by the suite's own scan
-
 @pytest.mark.parametrize(
-    "source",
-    [Path(sets.__file__), *sorted(Path(set_cli.__file__).parent.glob("set_*.py"))],
-)
+    "source", [Path(sets.__file__), *sorted(Path(set_cli.__file__).parent.glob("set_*.py"))])
 def test_no_removal_shape_appears_in_the_set_path(source):
     called = {
         node.func.attr

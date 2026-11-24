@@ -1,13 +1,12 @@
-"""Another app's folder at the top of rekordbox's tree is left exactly as it is (U185).
-
-The predicate naming DEADCA7's top level folder, the commit guard every write
-passes, and the taxonomy's refusal of a tree of that name, over a disposable
-database carrying a push (``tests/deadca7_fixtures.py``).
-"""
+"""Another app's folder at the top of rekordbox's tree is left exactly as it is (U185): the
+predicate naming DEADCA7's top level folder, the commit guard every write passes, and the taxonomy's
+refusal of a tree of that name, over a database carrying a push (``tests/deadca7_fixtures.py``)."""
 
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
+from types import SimpleNamespace
 
 import pytest
 
@@ -65,8 +64,6 @@ def _rewrite_owner(db, pushed):
 
 
 # The predicate
-
-
 @pytest.mark.parametrize("parent", W.ROOT_PARENT_SENTINELS + (None,))
 def test_a_folder_named_deadca7_at_the_top_is_foreign_under_every_root_spelling(parent):
     assert foreign_tree.is_foreign_root("DEADCA7", parent, 1)
@@ -82,32 +79,24 @@ def test_a_folder_named_deadca7_at_the_top_is_foreign_under_every_root_spelling(
         ("DEADCA7 sets", "root", 1, "the name is matched whole"),
         ("DEADCA7", "root", None, "a row that cannot say it is a folder is not one"),
         ("DEADCA7", "root", "x", "nor one whose kind is not a number"),
-    ],
-)
+    ])
 def test_nothing_else_is_a_foreign_root(name, parent, attribute, why):
     assert not foreign_tree.is_foreign_root(name, parent, attribute), why
 
 
 def test_every_node_under_the_root_is_foreign_at_any_depth_and_nothing_beside_it():
-    roots, ids = foreign_tree.ids_of(
-        [
-            ("1", "DEADCA7", "root", 1),
-            ("2", "sets", "1", 1),
-            ("3", "peak", "2", 0),
-            ("4", "warm up", "1", 0),
-            ("5", "Mine", "root", 1),
-            ("6", "DEADCA7", "5", 1),
-            ("7", "inside the namesake", "6", 0),
-        ]
-    )
+    roots, ids = foreign_tree.ids_of([
+        ("1", "DEADCA7", "root", 1), ("2", "sets", "1", 1), ("3", "peak", "2", 0),
+        ("4", "warm up", "1", 0), ("5", "Mine", "root", 1), ("6", "DEADCA7", "5", 1),
+        ("7", "inside the namesake", "6", 0),
+    ])
     assert roots == {"1"}
     assert ids == {"1", "2", "3", "4"}
 
 
 def test_a_cycle_ends_the_walk_rather_than_looping():
     _roots, ids = foreign_tree.ids_of(
-        [("1", "DEADCA7", "root", 1), ("2", "a", "3", 1), ("3", "b", "2", 1), ("4", "c", "1", 0)]
-    )
+        [("1", "DEADCA7", "root", 1), ("2", "a", "3", 1), ("3", "b", "2", 1), ("4", "c", "1", 0)])
     assert ids == {"1", "4"}
 
 
@@ -115,13 +104,11 @@ def test_the_reading_at_open_names_the_push_and_not_a_namesake_below_the_top(
     pushed_db, cloud_sync_off  # noqa: F811 - the imported fixture
 ):
     path, pushed = pushed_db
-    conn = sqlite3.connect(path)
-    conn.execute(
-        "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, rb_local_deleted) "
-        "VALUES ('88950', 1, 'Mine', 1, 'root', 0)"
-    )
-    conn.commit()
-    conn.close()
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute(
+            "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, rb_local_deleted) "
+            "VALUES ('88950', 1, 'Mine', 1, 'root', 0)")
+        conn.commit()
     dc7.nested_namesake(path, "88950", node_id="88900")
     db = W.open_db(path, unlock=False)
     try:
@@ -137,8 +124,6 @@ def test_the_reading_at_open_names_the_push_and_not_a_namesake_below_the_top(
 
 
 # The commit guard
-
-
 @pytest.mark.parametrize(
     ("edit", "said"),
     [
@@ -155,14 +140,9 @@ def test_the_reading_at_open_names_the_push_and_not_a_namesake_below_the_top(
         (lambda db, p: setattr(db.get_cue(ContentID=p.pushed_track).first(), "InMsec", 5), "djmdCue"),
     ],
     ids=[
-        "folder-renamed",
-        "membership-added",
-        "membership-rewritten-to-another-owner",
-        "playlist-made-inside",
-        "position-named-at-the-top",
-        "cue-on-a-pushed-track",
-    ],
-)
+        "folder-renamed", "membership-added", "membership-rewritten-to-another-owner",
+        "playlist-made-inside", "position-named-at-the-top", "cue-on-a-pushed-track",
+    ])
 def test_a_write_to_the_push_is_refused_and_rolled_back(handle, edit, said):
     db, path, pushed = handle
     before = dc7.written(path, pushed)
@@ -179,9 +159,8 @@ def test_a_pushed_playlist_moved_out_of_the_folder_is_refused(handle):
     db.move_playlist(db.get_playlist(ID=pushed.playlist_ids[1]), mine)
     assert "DEADCA7's folder" in _refused(db)
     assert dc7.written(path, pushed)["djmdSongPlaylist"] == before["djmdSongPlaylist"]
-    assert [row[5] for row in dc7.written(path, pushed)["djmdPlaylist"]][1:] == [
-        pushed.folder_id
-    ] * 2
+    parents = [row[5] for row in dc7.written(path, pushed)["djmdPlaylist"]][1:]
+    assert parents == [pushed.folder_id] * 2
 
 
 def test_a_playlist_of_ones_own_moved_into_the_folder_is_refused(handle):
@@ -193,8 +172,7 @@ def test_a_playlist_of_ones_own_moved_into_the_folder_is_refused(handle):
 
 
 def test_a_soft_delete_of_a_pushed_playlist_is_refused_even_where_the_commit_admits_removals(
-    handle,
-):
+    handle):
     """The removal a few writers may ask for by name is still not one of these."""
     db, path, pushed = handle
     before = dc7.written(path, pushed)
@@ -211,9 +189,8 @@ def test_raw_sql_into_the_folder_is_seen_by_the_reading_again_from_sql(handle):
     from sqlalchemy import text
     db, path, pushed = handle
     membership = f"{pushed.playlist_ids[0]}01"
-    db.session.execute(
-        text("UPDATE djmdSongPlaylist SET TrackNo = 9 WHERE ID = :id"), {"id": membership}
-    )
+    statement = text("UPDATE djmdSongPlaylist SET TrackNo = 9 WHERE ID = :id")
+    db.session.execute(statement, {"id": membership})
     message = _refused(db)
     assert membership in message and "changed" in message
 
@@ -245,15 +222,9 @@ def test_a_handle_with_no_reading_at_open_refuses_rather_than_assuming_nothing_i
 def test_a_reading_that_failed_at_open_is_kept_as_unread_and_refuses(handle):
     db, _path, _pushed = handle
 
-    class _Broken:
-        def execute(self, *_args, **_kwargs):
-            raise RuntimeError("the table could not be read")
-
-
-    class _Handle:
-        session = _Broken()
-
-    held = _Handle()
+    def unreadable(*_args, **_kwargs):
+        raise RuntimeError("the table could not be read")
+    held = SimpleNamespace(session=SimpleNamespace(execute=unreadable))
     foreign_tree.remember(held)
     assert getattr(held, foreign_tree.ATTRIBUTE) == foreign_tree.UNREAD
     assert foreign_tree.reading_at_open(held) is None
@@ -263,12 +234,7 @@ def test_a_reading_that_failed_at_open_is_kept_as_unread_and_refuses(handle):
 
 
 # The taxonomy
-
-
-@pytest.mark.parametrize(
-    ("section", "display"),
-    [("tree", "BY GENRE + ENERGY")],
-)
+@pytest.mark.parametrize(("section", "display"), [("tree", "BY GENRE + ENERGY")])
 def test_a_tree_declared_with_the_folders_name_is_refused_so_none_adopts_it(section, display):
     text = setup_verb.template_text("default")
     assert f'display = "{display}"' in text
@@ -281,8 +247,7 @@ def test_a_tree_declared_with_the_folders_name_is_refused_so_none_adopts_it(sect
 def test_a_push_that_lands_while_a_handle_is_open_refuses_that_handles_commit(
     library, cloud_sync_off  # noqa: F811 - the imported fixtures
 ):
-    """Two writers serialised by refusal: rows that were not there at open refuse
-    the commit; a handle opened after the push commits the same write."""
+    """Two writers serialised by refusal: a push after the open refuses, a later handle commits."""
     path = library / "db" / "master.db"
     _build_disposable_database(path)
     db = W.open_db(path, unlock=False)

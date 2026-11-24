@@ -48,9 +48,8 @@ def test_steps_that_do_not_parse_are_not_read_and_say_why(cfg):
 def test_steps_of_another_version_are_not_read(cfg):
     path = held_plan.steps_path("run-e")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"version": 99, "run_id": "run-e", "digest": "d", "steps": {"a": {"done": True}}})
-    )
+    held = {"version": 99, "run_id": "run-e", "digest": "d", "steps": {"a": {"done": True}}}
+    path.write_text(json.dumps(held))
     read, why = held_plan.load_steps("run-e", "d")
     assert not read.started()
     assert "version" in why

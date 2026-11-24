@@ -41,8 +41,7 @@ def _favorites_playlists(cfg) -> dict[str, list[str]]:
             str(row.ID): sorted(
                 str(entry.ContentID)
                 for entry in handle.get_playlist_songs(PlaylistID=str(row.ID))
-                if not rb_writer.membership_removed(entry)
-            )
+                if not rb_writer.membership_removed(entry))
             for row in handle.get_playlist(Name=FAVORITES.display)
             if not rb_writer.is_folder(row) and not rb_writer.node_removed(row)
         }
@@ -56,9 +55,7 @@ def test_an_adoption_that_files_a_favourite_puts_it_in_its_folders_favorites(rea
     cfg, export, _root_id = ready
     source_id = _heart(cfg, "r-one")
     _cut_over(export)
-
     code, resumed = _adopt()
-
     assert code == int(ExitCode.OK), resumed
     favorites = _favorites_playlists(cfg)
     assert len(favorites) == 1, favorites
@@ -77,12 +74,9 @@ def test_an_adoption_with_no_source_playlist_files_its_tracks_and_says_the_refre
     """The skip carries its own cause in its note (U132)."""
     from cratekit.adopt import apply_cli
     from cratekit.write import genre_favorites
-
     cfg, export, _root_id = ready
     _cut_over(export)
-
     code, resumed = _adopt()
-
     assert code == int(ExitCode.OK), resumed
     assert _favorites_playlists(cfg) == {}
     kept = resumed["data"]["progress"]["adoption"]["favorites"]
@@ -96,7 +90,6 @@ def _without_the_class(monkeypatch) -> None:
     import dataclasses
 
     from cratekit.core import active_taxonomy
-
     real = active_taxonomy.load
 
     def narrowed(cfg):
@@ -104,20 +97,16 @@ def _without_the_class(monkeypatch) -> None:
         kept = tuple(e for e in declared.sub_classes if e.signal != taxonomy.SIGNAL_PLAYLIST)
         assert len(kept) == len(declared.sub_classes) - 1
         return dataclasses.replace(declared, sub_classes=kept)
-
     monkeypatch.setattr(active_taxonomy, "load", narrowed)
 
 
 def test_an_adoption_over_a_taxonomy_without_the_class_names_the_skipped_step(ready, monkeypatch):
     from cratekit.write import genre_favorites
-
     cfg, export, _root_id = ready
     _heart(cfg, "r-one")
     _cut_over(export)
     _without_the_class(monkeypatch)
-
     code, resumed = _adopt()
-
     assert code == int(ExitCode.OK), resumed
     assert _favorites_playlists(cfg) == {}
     kept = resumed["data"]["progress"]["adoption"]["favorites"]

@@ -1,15 +1,7 @@
-"""U246: no comprehension rebuilds the same set once for every element it tests.
-
-``x not in set(derived)`` inside a comprehension builds the same set per element; a
-rebuild of ten thousand tracks spent 17 of 28 seconds that way. The guard walks every
-module under ``src/cratekit`` but the vendored downloader and refuses a set (``set``,
-``frozenset``, ``dict.fromkeys``, or a set or dict comprehension) built per element from
-names the comprehension, or a comprehension or lambda inside it, does not bind: in a
-condition, or as a membership test's right hand side. The fix is to build it once above.
-
-An empty call and a set over the element itself (``set(row.tags)``) are not the shape. A
-``for`` statement and a later ``for`` clause's iterable are not read.
-"""
+"""U246: no comprehension rebuilds the same set once for every element it tests, as
+``x not in set(derived)`` does; a rebuild of ten thousand tracks spent 17 of 28 seconds that way.
+The guard refuses a set built per element from names the comprehension does not bind, in a
+condition or a membership test's right hand side; the fix builds it once above."""
 
 from __future__ import annotations
 
@@ -32,12 +24,8 @@ SET_CALLS = frozenset({"set", "frozenset"})
 def _binds(node: ast.AST) -> set[str]:
     """The names a comprehension's ``for`` clauses or a lambda's parameters bind."""
     if isinstance(node, COMPREHENSIONS):
-        return {
-            name.id
-            for generator in node.generators
-            for name in ast.walk(generator.target)
-            if isinstance(name, ast.Name)
-        }
+        targets = [name for generator in node.generators for name in ast.walk(generator.target)]
+        return {name.id for name in targets if isinstance(name, ast.Name)}
     if isinstance(node, ast.Lambda):
         arguments = node.args
         every = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
@@ -63,9 +51,7 @@ def _builds_a_set(node: ast.AST) -> bool:
 
 
 def _scoped_children(node: ast.AST, names: set[str]):
-    """Each child of ``node`` with the names varying there; a first iterable is
-    evaluated outside.
-    """
+    """Each child of ``node`` with the names varying there; a first iterable is read outside."""
     if isinstance(node, COMPREHENSIONS):
         first, *rest = node.generators
         inner = names | _binds(node)
@@ -106,9 +92,8 @@ def _membership_operands(expression: ast.AST):
 
 
 def _invariant_sets(expression: ast.AST, varying: set[str], *, anywhere: bool):
-    """Each set in ``expression`` reading none of ``varying``: all of them if
-    ``anywhere``, else only membership tests' right hand sides.
-    """
+    """Each set in ``expression`` reading none of ``varying``: all of them if ``anywhere``, else
+    only membership tests' right hand sides."""
     found = []
     pending = [(expression, varying)]
     while pending:
@@ -128,20 +113,9 @@ def rebuilt_per_element(source: str) -> list[str]:
         if not isinstance(comprehension, COMPREHENSIONS):
             continue
         varying = _binds(comprehension)
-        places = [
-            (condition, True)
-            for generator in comprehension.generators
-            for condition in generator.ifs
-        ]
-        places += [
-            (part, False)
-            for part in (
-                getattr(comprehension, "elt", None),
-                getattr(comprehension, "key", None),
-                getattr(comprehension, "value", None),
-            )
-            if part is not None
-        ]
+        places = [(condition, True) for one in comprehension.generators for condition in one.ifs]
+        parts = (getattr(comprehension, name, None) for name in ("elt", "key", "value"))
+        places += [(part, False) for part in parts if part is not None]
         for place, anywhere in places:
             for built in _invariant_sets(place, varying, anywhere=anywhere):
                 found[id(built)] = (built.lineno, ast.unparse(built))
@@ -149,9 +123,7 @@ def rebuilt_per_element(source: str) -> list[str]:
 
 
 def test_no_comprehension_in_the_package_rebuilds_an_invariant_set_per_element():
-    modules = [
-        path for path in sorted(SOURCE_ROOT.rglob("*.py")) if VENDORED not in path.parents
-    ]
+    modules = [path for path in sorted(SOURCE_ROOT.rglob("*.py")) if VENDORED not in path.parents]
     assert len(modules) > 100, f"the walk found {len(modules)} modules under {SOURCE_ROOT}"
     offenders = [
         f"{path.relative_to(SOURCE_ROOT.parent)}:{hit}"
@@ -186,8 +158,7 @@ def test_no_comprehension_in_the_package_rebuilds_an_invariant_set_per_element()
         "kept = [x not in set(ys) for x in xs]",
         "kept = {x in set(ys) for x in xs}",
         "kept = [e for e in xs if e in builtins.frozenset(ys)]",
-    ],
-)
+    ])
 def test_the_guard_finds_the_shape_in_every_comprehension(source):
     assert len(rebuilt_per_element(source)) == 1, source
 
@@ -212,7 +183,6 @@ def test_the_guard_finds_the_shape_in_every_comprehension(source):
         "kept = [one for one in rows if 1 in {one for one in one.kids}]",
         "kept = [x for x in xs if x in set(x for x in x.kids)]",
         "kept = [e for e in xs if any(filter(lambda *g, **h: 'a' in set(g), e.groups))]",
-    ],
-)
+    ])
 def test_the_guard_passes_a_set_built_once_or_built_from_the_element(source):
     assert rebuilt_per_element(source) == [], source

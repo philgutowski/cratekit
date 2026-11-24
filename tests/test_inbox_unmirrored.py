@@ -38,11 +38,8 @@ SMART = "Fresh this week"
 
 #: Each node the brief's INBOX leaves off, by name, to its kind.
 KINDS = {
-    OLD: rotate.LEFT_OLD,
-    native.ANALYZE: rotate.LEFT_ANALYZE,
-    FOLDER: rotate.LEFT_FOLDER,
-    LABELS: rotate.LEFT_UNRECOGNISED,
-    SMART: rotate.LEFT_SMART,
+    OLD: rotate.LEFT_OLD, native.ANALYZE: rotate.LEFT_ANALYZE, FOLDER: rotate.LEFT_FOLDER,
+    LABELS: rotate.LEFT_UNRECOGNISED, SMART: rotate.LEFT_SMART,
 }
 
 
@@ -53,10 +50,8 @@ def brief(native_library):
     ids: dict[str, str] = {}
     with _opened(cfg) as handle:
         def make(key, name, under, age=None, tracks=(), *, folder=False, smart=False):
-            parent = handle.get_playlist(ID=under)
-            made = (handle.create_playlist_folder if folder else handle.create_playlist)(
-                name, parent=parent
-            )
+            create = handle.create_playlist_folder if folder else handle.create_playlist
+            made = create(name, parent=handle.get_playlist(ID=under))
             if age is not None:
                 made.created_at = datetime.combine(TODAY - timedelta(days=age), datetime.min.time())
             for content_id in tracks:
@@ -65,7 +60,6 @@ def brief(native_library):
                 made.Attribute = 4
             handle.session.commit()
             ids[key] = str(made.ID)
-
         make("old", OLD, root_id, folder=True)
         make("batch", BATCH, root_id, 10, ("t1", "t2"))
         make("old batch", "2026-05-01 Tidal playlists", ids.pop("old"), 150, ("t6",))
@@ -91,9 +85,8 @@ def _opened(cfg):
 def _live(cfg, declared=None) -> rotate.Live:
     declared = declared or active_taxonomy.load(cfg)
     with _opened(cfg) as handle:
-        return rotate.live_batches(
-            cfg, handle, declared=declared, registry=tree_registry.read(cfg), today=TODAY
-        )
+        registry = tree_registry.read(cfg)
+        return rotate.live_batches(cfg, handle, declared=declared, registry=registry, today=TODAY)
 
 
 def _rotation(cfg) -> rotate.RotationPlan:
@@ -103,11 +96,16 @@ def _rotation(cfg) -> rotate.RotationPlan:
         )
 
 
+def _organized_rotation(cfg) -> tuple[Area, object]:
+    """The organize step's rotation over ``cfg``: its area, and the step it answers."""
+    area = Area(name="rekordbox")
+    return area, rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+
+
 def _inbox(cfg) -> mirror.Folder:
     with _opened(cfg) as handle:
-        _name, read = account_mirror._inbox(
-            cfg, handle, active_taxonomy.load(cfg), tree_registry.read(cfg), TODAY
-        )
+        declared, registry = active_taxonomy.load(cfg), tree_registry.read(cfg)
+        _name, read = account_mirror._inbox(cfg, handle, declared, registry, TODAY)
     assert isinstance(read, mirror.Folder), read
     return read
 
@@ -167,8 +165,7 @@ def test_a_playlist_whose_record_cannot_be_read_is_never_said_to_have_none(nativ
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.startswith(
         "no readable landing record names it (1 session record(s) could not be read, "
-        "and one of them may)"
-    )
+        "and one of them may)")
     assert "no landing record names it" not in node.reason
     assert planned.unreadable_records == 1
     assert [(one.name, one.reason) for one in planned.left] == [(node.name, node.reason)]
@@ -183,7 +180,6 @@ def _refuse_under(monkeypatch, call: str, under: Path) -> None:
         if Path(path) == under or under in Path(path).parents:
             raise PermissionError(13, "Permission denied", str(path))
         return real(path, *args, **kwargs)
-
     monkeypatch.setattr(os, call, refused)
 
 
@@ -203,8 +199,7 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.startswith(
         "no readable landing record names it (the session log could not be listed, "
-        "and a record in it may)"
-    )
+        "and a record in it may)")
     assert [(one.name, one.reason) for one in _rotation(cfg).left] == [(node.name, node.reason)]
     # The plan carries the listing to every warning: unlisted, never a count of one.
     plan = _rotation(cfg)
@@ -214,8 +209,7 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
         "aged from its playlist's creation date"
     )
     assert [one["message"] for one in rotate_cli.records_warnings(plan)] == [listed]
-    area = Area(name="rekordbox")
-    step = rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    _area, step = _organized_rotation(cfg)
     assert [one["message"] for one in step.warnings] == [listed]
 
 
@@ -240,8 +234,7 @@ def test_a_music_folder_that_cannot_be_read_is_never_read_as_no_batch_folder(nat
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.endswith(
         "and the music folder could not be read to look for a batch folder of its "
-        "name, which may be there"
-    )
+        "name, which may be there")
     assert "no batch folder under the music folder carries its name" not in node.reason
 
 
@@ -264,8 +257,7 @@ def test_a_folder_named_old_inside_old_is_a_folder_and_listed_as_yours(brief):
     again = _rotation(cfg)
     (inside,) = [node for node in again.left if node.playlist_id == nested]
     assert (inside.kind, inside.place) == (rotate.LEFT_FOLDER, again.old_place)
-    area = Area(name="rekordbox")
-    rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    area, _step = _organized_rotation(cfg)
     assert [one["kind"] for one in area.yours if one["name"] == OLD] == [rotate.LEFT_FOLDER]
 
 
@@ -336,8 +328,7 @@ def test_a_renamed_left_playlist_still_moves_the_rotations_digest(brief):
 
 def test_the_organize_rotation_step_does_not_list_old_as_yours(brief):
     cfg, _root, _ids = brief
-    area = Area(name="rekordbox")
-    rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    area, _step = _organized_rotation(cfg)
     yours = {one["name"] for one in area.yours}
     assert OLD not in yours
     assert {FOLDER, LABELS, SMART, native.ANALYZE} <= yours
@@ -354,15 +345,10 @@ UNMIRRORED = (
 def _with_unmirrored(*batches: tuple[str, tuple[int, ...]]) -> mirror.Folder:
     sources = tuple(
         mirror.Source(name=mirror.title("INBOX", name), rows=tuple(row(n) for n in numbers))
-        for name, numbers in batches
-    )
+        for name, numbers in batches)
+    present = frozenset(source.name for source in sources)
     return mirror.Folder(
-        name="INBOX",
-        playlists=sources,
-        retire=True,
-        present=frozenset(source.name for source in sources),
-        unmirrored=UNMIRRORED,
-    )
+        name="INBOX", playlists=sources, retire=True, present=present, unmirrored=UNMIRRORED)
 
 
 def _inbox_step(area: Area):
@@ -386,8 +372,7 @@ def test_the_inbox_step_names_each_unmirrored_node_on_its_plan_and_its_line(inst
     assert step.counts["left"] == 2
     assert step.detail.endswith(
         f"; 2 node(s) in INBOX not mirrored: {LABELS} (36 row(s)), not recognised as a "
-        f"batch; {OLD}, the Old folder"
-    )
+        f"batch; {OLD}, the Old folder")
 
 
 def test_an_inbox_with_nothing_to_write_still_names_them(installed, monkeypatch):
@@ -442,17 +427,13 @@ def test_a_rebuild_from_the_frozen_plan_still_names_them(installed, monkeypatch)
     world = World(installed, monkeypatch)
     world.mirror(_with_unmirrored((BATCH, (1,))))
     run = "2026-11-05T00:00:00Z-u215"
-    account_mirror.add_steps(
-        installed, Area(name="account"), lambda: world.account,
-        account_mirror.Run(run_id=run, record=True),
-    )
+    recorded = account_mirror.Run(run_id=run, record=True)
+    account_mirror.add_steps(installed, Area(name="account"), lambda: world.account, recorded)
     # The library now reads empty: a rebuild that named the nodes took the frozen one.
     world.mirror()
     area = Area(name="account")
-    account_mirror.add_steps(
-        installed, area, lambda: world.account,
-        account_mirror.Run(run_id=run, record=True, decided=True),
-    )
+    decided = account_mirror.Run(run_id=run, record=True, decided=True)
+    account_mirror.add_steps(installed, area, lambda: world.account, decided)
     step = _inbox_step(area)
     assert len(_named(step)) == 2
     assert "2 node(s) in INBOX not mirrored" in step.detail
@@ -470,14 +451,11 @@ def _frozen_as(cfg, run: str, edit) -> tuple:
 
 
 @pytest.mark.parametrize(
-    "held",
-    ["INBOX Old", [["a label only"]], [["a label", 3]], [("a", "b", "c")]],
-    ids=["text", "one part", "not text", "three parts"],
-)
+    "held", ["INBOX Old", [["a label only"]], [["a label", 3]], [("a", "b", "c")]],
+    ids=["text", "one part", "not text", "three parts"])
 def test_frozen_unmirrored_nodes_that_are_not_pairs_of_text_are_not_read(installed, held):
     def edit(document):
         document["library"]["folders"][0]["unmirrored"] = held
-
     frozen, said = _frozen_as(installed, "2026-11-05T00:00:00Z-ab12", edit)
     assert frozen is None and "is not one this build reads" in said
 
@@ -488,7 +466,6 @@ def test_a_version_four_frozen_plan_is_planned_afresh(installed):
     def edit(document):
         document["version"] = 4
         del document["library"]["folders"][0]["unmirrored"]
-
     frozen, said = _frozen_as(installed, "2026-11-05T00:00:00Z-cd34", edit)
     # 7 since U236, which froze the placements beside the snapshots U222 froze;
     # a version 4 record is still refused.

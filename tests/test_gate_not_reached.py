@@ -17,19 +17,14 @@ from tests.test_cli_contract import library as library  # noqa: PLC0414
 
 def digest_spec(name: str, *, explicit: bool = True, prompt: str = "Apply this plan?"):
     """A gate offering apply or abort whose answer binds the plan's digest."""
-    return registry.GateSpec(
-        name=name, options=("apply", "abort"), prompt=prompt, explicit=explicit,
-        digest_source="plan",
-    )
+    options = ("apply", "abort")
+    return registry.GateSpec(name, options, prompt, explicit=explicit, digest_source="plan")
 
 
 FIRST, SECOND = (
-    digest_spec(f"probe.{which}", prompt=f"Apply the {which} plan?")
-    for which in ("first", "second")
+    digest_spec(f"probe.{one}", prompt=f"Apply the {one} plan?") for one in ("first", "second")
 )
-UNBOUND = registry.GateSpec(
-    name="probe.unbound", options=("proceed", "abort"), prompt="Proceed?", explicit=True
-)
+UNBOUND = registry.GateSpec("probe.unbound", ("proceed", "abort"), "Proceed?", explicit=True)
 
 
 def _plan(digest: str) -> dict:
@@ -40,11 +35,17 @@ def _state(**kwargs) -> gates.RunState:
     return gates.RunState(run_id="r", verb="probe", created="now", **kwargs)
 
 
+def _reached(state: gates.RunState, spec: registry.GateSpec, **kwargs):
+    """The cause ``spec``'s open gate refuses with on ``state``, as a first act leaves it."""
+    with pytest.raises(gates.DecisionRequired) as raised:
+        gates.Gates(state=state).require(spec, **kwargs)
+    return raised.value.cause
+
+
 def _open_at_first() -> gates.RunState:
     """The first gate reached and left open over its plan; the second never reached."""
     state = _state(argv=("probe", "--all"))
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(FIRST, plan=_plan("sha256:first"))
+    _reached(state, FIRST, plan=_plan("sha256:first"))
     return state
 
 
@@ -57,16 +58,11 @@ def _refused(state: gates.RunState, spec: registry.GateSpec, option: str = "appl
 
 
 # The gate layer
-
-
 def test_a_decide_on_a_digest_gate_the_run_has_not_reached_is_refused_and_writes_nothing():
     cause = _refused(_open_at_first(), SECOND)
     assert cause["reason"] == "gate-not-reached"
     assert cause["detail"] == {
-        "gate": "probe.second",
-        "run_id": "r",
-        "verb": "probe",
-        "open_gate": "probe.first",
+        "gate": "probe.second", "run_id": "r", "verb": "probe", "open_gate": "probe.first",
         "continue": "crate --run r probe --all",
     }
     assert "probe.second" in cause["message"] and "probe.first" in cause["message"]
@@ -83,8 +79,7 @@ def test_the_refusal_names_the_open_gate_first_and_then_the_run_that_reaches_thi
 
 
 def test_a_run_waiting_at_no_gate_is_told_to_continue_to_this_one():
-    state = _state()
-    steps = _refused(state, SECOND)["remediation"]["steps"]
+    steps = _refused(_state(), SECOND)["remediation"]["steps"]
     # A run recorded before it kept a command line names the verb's words.
     assert steps == [
         "continue the run: crate --run r probe ...; it puts probe.second and its plan on "
@@ -118,8 +113,7 @@ def test_a_gate_reached_and_left_open_takes_the_answer_and_binds_what_it_showed(
 
 def test_a_gate_reached_with_no_digest_and_left_open_still_takes_a_decide():
     state = _state()
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(SECOND)
+    _reached(state, SECOND)
     assert "probe.second" not in state.offers
     gates.record(state, SECOND, "apply", actor="a-person")
     assert state.decisions["probe.second"].option == "apply"
@@ -130,11 +124,9 @@ def test_a_gate_reached_with_no_digest_and_left_open_still_takes_a_decide():
 def test_a_gate_already_answered_takes_a_new_answer_once_the_run_waits_elsewhere():
     """Reached with no digest and answered, then the run went on to another gate."""
     state = _state()
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(SECOND)
+    _reached(state, SECOND)
     gates.record(state, SECOND, "apply", actor="a-person")
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(FIRST, plan=_plan("sha256:first"))
+    _reached(state, FIRST, plan=_plan("sha256:first"))
     gates.record(state, SECOND, "abort", actor="a-person")
     assert state.decisions["probe.second"].option == "abort"
 
@@ -142,8 +134,7 @@ def test_a_gate_already_answered_takes_a_new_answer_once_the_run_waits_elsewhere
 def test_a_gate_offered_and_answered_takes_a_new_answer_over_its_offer():
     state = _open_at_first()
     gates.record(state, FIRST, "apply", actor="a-person")
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(SECOND, plan=_plan("sha256:second"))
+    _reached(state, SECOND, plan=_plan("sha256:second"))
     gates.record(state, FIRST, "abort", actor="a-person")
     assert state.decisions["probe.first"].option == "abort"
     assert state.decisions["probe.first"].digest == "sha256:first"
@@ -171,8 +162,6 @@ def test_retire_records_on_an_open_gate_only_so_it_is_untouched():
 
 
 # Through the dispatcher
-
-
 def _drive(argv: list[str]) -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)

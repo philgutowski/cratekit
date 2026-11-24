@@ -1,7 +1,6 @@
 """U78: a set's missing tracks are named by exact ISRC, and the rest handed on.
 
-Only the catalogue is a fake. D1 applies, every ISRC in a range nobody holds.
-"""
+Only the catalogue is a fake. D1 applies, every ISRC in a range nobody holds."""
 
 from __future__ import annotations
 
@@ -66,15 +65,18 @@ def finished_set(library: Path, transport, monkeypatch, *answers: dict) -> str:
     transport.answers[:] = list(answers)
     path = library / "set.mp3"
     path.write_bytes(b"ID3")
-    code, envelope = drive(["intake", "set", str(path)])
-    assert code == int(ExitCode.OK), envelope
-    job_id = envelope["data"]["job_id"]
+    job_id = _ok(drive(["intake", "set", str(path)]))["data"]["job_id"]
     with jobs.open_store() as store:
         argv = cli_jobs.argv_for(jobs.get(store, job_id))
-    code, envelope = drive(argv)
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["state"] == "succeeded"
+    assert _ok(drive(argv))["data"]["state"] == "succeeded"
     return job_id
+
+
+def _ok(driven: tuple[int, dict]) -> dict:
+    """The envelope of a drive that must succeed."""
+    code, envelope = driven
+    assert code == int(ExitCode.OK), envelope
+    return envelope
 
 
 def bind(monkeypatch, fake: FakeCatalogue) -> FakeCatalogue:
@@ -95,23 +97,16 @@ def three() -> tuple[dict, ...]:
 
 
 # One id is listed, anything else is handed on
-
-
 def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
-    cfg, library, recognised, monkeypatch
-):
+        cfg, library, recognised, monkeypatch):
     """One set read every way: nothing written until every answer is in hand, then the one id
     listed, the rest handed on to a text list that reads back, and a second run the same."""
     from cratekit.core.cause import refuse
     from cratekit.core.exit_codes import Remedy
     class Expired(FakeCatalogue):
         def tracks_for_isrc(self, isrc):
-            raise refuse(
-                "credential-missing",
-                "the stored session expired mid lookup",
-                remedy=Remedy.REAUTHENTICATE_PROVIDER,
-                origin=("test",),
-            )
+            raise refuse("credential-missing", "the stored session expired mid lookup",
+                         remedy=Remedy.REAUTHENTICATE_PROVIDER, origin=("test",))
     job_id = finished_set(library, recognised, monkeypatch, *three())
     # NO STORED SESSION: the real ``resolve``, over an isolated keychain holding none.
     code, envelope = missing(job_id)
@@ -144,8 +139,7 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     assert sorted(p.name for p in handed.parent.iterdir()) == [handed.name]
     handed.unlink()
     fake = bind(monkeypatch, FakeCatalogue(isrcs=answers))
-    code, envelope = missing(job_id)
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(missing(job_id))
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["by_isrc"], summary["unlisted"]) == (1, 1, 2)
     assert fake.isrcs_asked_for == [ONE, TWO], "a row with no ISRC was asked about"
@@ -156,8 +150,7 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     manifest = json.loads(Path(summary["manifest"]).read_text())
     assert manifest["rows"]["9001"]["source"] == "set"
     assert [(t["artist"], t["title"], t["why"]) for t in summary["unlisted_tracks"]] == [
-        ("Nova Reef", "Tide", missing_cli.SEVERAL),
-        ("Mira Vale", "Glass Hour", missing_cli.NO_ISRC),
+        ("Nova Reef", "Tide", missing_cli.SEVERAL), ("Mira Vale", "Glass Hour", missing_cli.NO_ISRC)
     ]
     assert "9002, 9003" in summary["unlisted_tracks"][0]["reason"]
     assert summary["unlisted_tracks"][0]["isrc"] == TWO
@@ -176,33 +169,26 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     assert check["status"] == "fail"
     assert f"crate intake missing --list {handed}" in check["detail"]
     # A SECOND RUN over the same answers is not refused.
-    again = missing(job_id)
-    assert again[0] == int(ExitCode.OK), again[1]
-    assert again[1]["data"]["summary"] == summary
+    assert _ok(missing(job_id))["data"]["summary"] == summary
     # U206: the SHIPPED catalogue keeps an ISRC answer, so a later run asks nothing.
     from cratekit.cli import ISRC_LOOKUPS
     from cratekit.label import tidal_catalogue
     client = _CountingClient(
-        {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]}
-    )
+        {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]})
     monkeypatch.setattr(catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client))
-    first = missing(job_id)
-    assert first[0] == int(ExitCode.OK), first[1]
+    first = _ok(missing(job_id))
     assert sorted(client.asked) == [ONE, TWO]
-    again = missing(job_id)
-    assert again[0] == int(ExitCode.OK), again[1]
+    again = _ok(missing(job_id))
     assert sorted(client.asked) == [ONE, TWO], "the second run asked the provider again"
-    assert again[1]["data"]["summary"] == first[1]["data"]["summary"]
-    said = [w["message"] for w in again[1]["warnings"] if w["code"] == ISRC_LOOKUPS]
+    assert again["data"]["summary"] == first["data"]["summary"]
+    said = [w["message"] for w in again["warnings"] if w["code"] == ISRC_LOOKUPS]
     assert said == ["2 ISRC lookups answered from the cache, 0 asked of the streaming provider"]
 
 
 def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(cfg, library, recognised, monkeypatch):
     job_id = finished_set(library, recognised, monkeypatch, hit("Lumen Drift", "Salt Road", isrc=NONE_FILED))
     fake = bind(monkeypatch, FakeCatalogue())
-    code, envelope = missing(job_id)
-    assert code == int(ExitCode.OK), envelope
-    summary = envelope["data"]["summary"]
+    summary = _ok(missing(job_id))["data"]["summary"]
     assert fake.isrcs_asked_for == [NONE_FILED]
     assert (summary["list"], summary["written"]) == (None, 0)
     assert [t["why"] for t in summary["unlisted_tracks"]] == [missing_cli.UNKNOWN]
@@ -211,12 +197,8 @@ def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(cfg, l
 
 def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked(cfg, library, recognised, monkeypatch):
     job_id = finished_set(
-        library,
-        recognised,
-        monkeypatch,
-        hit("Aurora Bloom", "Sun Path", isrc="qz-aaa-26-00001"),
-        hit("Nova Reef", "Tide", isrc="CAT-0042"),
-    )
+        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc="qz-aaa-26-00001"),
+        hit("Nova Reef", "Tide", isrc="CAT-0042"))
     fake = bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001")]}))
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
@@ -239,33 +221,22 @@ def test_the_same_id_twice_in_one_answer_is_one_id_and_is_listed(cfg, library, r
 
 
 # Nothing is written unless every answer is in hand
-
-
 def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(cfg, library, recognised, monkeypatch):
     job_id = finished_set(
-        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide")
-    )
+        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide"))
     def never(cfg):
         raise AssertionError("the catalogue was resolved with nothing to ask it")
     monkeypatch.setattr(catalogue, "resolve", never)
-    code, envelope = missing(job_id)
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["summary"]["unlisted"] == 2
+    assert _ok(missing(job_id))["data"]["summary"]["unlisted"] == 2
 
 
 def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_written(cfg, library, recognised, monkeypatch):
     """One row no text line can hold is named on its own check; the rest are still written."""
     job_id = finished_set(
-        library,
-        recognised,
-        monkeypatch,
-        hit("Aurora Bloom", "Sun Path", isrc=ONE),
-        hit("Kite - Harbor", "Low Tide Signal"),
-        hit("Mira Vale", "Glass Hour"),
-    )
+        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE),
+        hit("Kite - Harbor", "Low Tide Signal"), hit("Mira Vale", "Glass Hour"))
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001")]}))
-    code, envelope = missing(job_id)
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(missing(job_id))
     summary = envelope["data"]["summary"]
     assert summary["written"] == 1
     assert [(t["artist"], t["why"]) for t in summary["unlisted_tracks"]] == [
@@ -285,8 +256,7 @@ def test_the_order_the_provider_answers_in_does_not_change_the_files(cfg, librar
     bind(monkeypatch, FakeCatalogue(isrcs={TWO: [FakeTrack("9003"), FakeTrack("9002")]}))
     first = missing(job_id)
     bind(monkeypatch, FakeCatalogue(isrcs={TWO: [FakeTrack("9002"), FakeTrack("9003")]}))
-    again = missing(job_id)
-    assert again[0] == int(ExitCode.OK), again[1]
+    _ok(missing(job_id))
     assert "(9002, 9003)" in first[1]["data"]["summary"]["unlisted_tracks"][0]["reason"]
 
 
@@ -301,8 +271,6 @@ def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(cf
 
 
 # U206: the shipped catalogue keeps an ISRC answer, so a second run asks nothing
-
-
 class _ProviderTrack:
     """A provider track the matcher can read: an identifier, an artist, a title."""
 
@@ -327,5 +295,3 @@ class _CountingClient:
         if code not in self.answers:
             raise ObjectNotFound()
         return list(self.answers[code])
-
-

@@ -1,12 +1,11 @@
-"""Every genre folder has a Favorites playlist that mirrors All Favorites (U119).
-
-The engine on a disposable database with a cut over routing tree, and the verb
-through the command line for its gate and refusals. D1 applies.
-"""
+"""Every genre folder has a Favorites playlist that mirrors All Favorites (U119): the engine on a
+disposable database with a cut over tree, the verb through the command line for its gate and
+refusals. D1 applies."""
 
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -42,27 +41,20 @@ ROWS = ("1", "2", "3", "4", "5", "6")
 UNDECLARED = replace(DECLARED, sub_classes=tuple(c for c in DECLARED.sub_classes if c.id != "favorites"))
 
 
-
 @pytest.fixture
 def db(cfg, monkeypatch):
     """A disposable database holding six content rows, opened through the gate."""
     path = Path(cfg.library.db_path)
     _build_disposable_database(path)
-    conn = sqlite3.connect(path)
-    try:
-        for content_id in ROWS:
-            conn.execute(
-                "INSERT OR IGNORE INTO djmdContent (ID, Title, rb_local_deleted, created_at, "
-                "updated_at) VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
-                (content_id, f"track {content_id}"),
-            )
-            conn.execute(
-                "UPDATE djmdContent SET FolderPath = ?, rb_local_deleted = 0 WHERE ID = ?",
-                (f"{cfg.library.root}/Music/track {content_id}.flac", content_id),
-            )
+    with closing(sqlite3.connect(path)) as conn:
+        conn.executemany(
+            "INSERT OR IGNORE INTO djmdContent (ID, Title, rb_local_deleted, created_at, "
+            "updated_at) VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
+            [(content_id, f"track {content_id}") for content_id in ROWS])
+        conn.executemany(
+            "UPDATE djmdContent SET FolderPath = ?, rb_local_deleted = 0 WHERE ID = ?",
+            [(f"{cfg.library.root}/Music/track {row}.flac", row) for row in ROWS])
         conn.commit()
-    finally:
-        conn.close()
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
@@ -81,12 +73,8 @@ class Tree:
         self.root = rb_writer.ensure_folder(db, DECLARED.tree.display)
         db.session.commit()
         record = tree_registry.TreeRecord(
-            tree_id=TREE,
-            mode=tree_registry.Mode.DATABASE,
-            cutover_on=date(2026, 10, 9),
-            root_id=str(self.root.ID),
-            source=tree_registry.DerivationSource.TAXONOMY,
-        )
+            tree_id=TREE, mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 10, 9),
+            root_id=str(self.root.ID), source=tree_registry.DerivationSource.TAXONOMY)
         self.registry = tree_registry.Registry((record,))
         tree_registry.write(cfg, self.registry)
         self.folders: dict[str, object] = {}
@@ -113,6 +101,12 @@ class Tree:
         return row
 
 
+@pytest.fixture
+def tree(cfg, gates_pass, db) -> Tree:
+    """The routing tree on the fixture's handle, the gates passing."""
+    return Tree(cfg, db)
+
+
 def _members(db, playlist_id: str) -> set[str]:
     return {
         str(row.ContentID)
@@ -121,39 +115,62 @@ def _members(db, playlist_id: str) -> set[str]:
     }
 
 
-def _favorites_of(db, tree: Tree, bucket: taxonomy.Bucket):
+def _favorites_of(tree: Tree, bucket: taxonomy.Bucket):
     folder = tree.folder(bucket)
-    rows = [r for r in db.get_playlist(Name=FAVORITES.display) if str(r.ParentID) == str(folder.ID) and not rb_writer.node_removed(r)]
+    rows = [r for r in tree.db.get_playlist(Name=FAVORITES.display)
+            if str(r.ParentID) == str(folder.ID) and not rb_writer.node_removed(r)]
     assert len(rows) <= 1, "two live Favorites under one folder"
     return rows[0] if rows else None
 
 
-def _plan(cfg, db, tree: Tree, declared=DECLARED):
-    return genre_favorites.plan_refresh(cfg, db, declared, tree.registry)
+def _favored(tree: Tree, bucket: taxonomy.Bucket) -> set[str]:
+    """The members of the bucket's own Favorites."""
+    return _members(tree.db, _favorites_of(tree, bucket).ID)
 
 
-def _apply(cfg, db, tree: Tree, plan, *, remove=True, declared=DECLARED):
+def _plan(tree: Tree, declared=DECLARED):
+    return genre_favorites.plan_refresh(tree.cfg, tree.db, declared, tree.registry)
+
+
+def _apply(tree: Tree, plan, *, remove=True):
     return genre_favorites.apply_refresh(
-        cfg, db, plan, declared=declared, registry=tree.registry,
-        analysis_roots=[Path(cfg.library.root)], remove=remove,
-    )
+        tree.cfg, tree.db, plan, declared=DECLARED, registry=tree.registry,
+        analysis_roots=[Path(tree.cfg.library.root)], remove=remove)
 
 
-def _refresh(cfg, db, tree: Tree, *, remove=True):
-    return _apply(cfg, db, tree, _plan(cfg, db, tree), remove=remove)
+def _refresh(tree: Tree, *, remove=True):
+    return _apply(tree, _plan(tree), remove=remove)
+
+
+def _refused(call, *args, **kwargs):
+    """The cause ``call`` refuses with."""
+    with pytest.raises(CratekitError) as caught:
+        call(*args, **kwargs)
+    return caught.value.cause
+
+
+def _hand_added(tree: Tree):
+    """Med holding 1 and 2, its Favorites holding 2 by hand, and All Favorites holding 1."""
+    tree.playlist(DEEP, "Med", "1", "2")
+    favorites = tree.playlist(DEEP, FAVORITES.display, "2")
+    tree.source("1")
+    return favorites
 
 
 def _content_table(cfg) -> list[tuple]:
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
+    with closing(sqlite3.connect(cfg.library.db_path)) as conn:
         return conn.execute("SELECT * FROM djmdContent ORDER BY ID").fetchall()
-    finally:
-        conn.close()
 
 
 def _unmember(db, playlist, content_id: str) -> None:
     rb_writer.remove_memberships(db, playlist, [content_id])
     db.session.commit()
+
+
+def _recorded_trees(cfg) -> dict[str, tuple[int, int]]:
+    """The one refresh record's counts by tree."""
+    (record,) = [r for r in session.records(cfg) if r.workflow == genre_favorites.WORKFLOW]
+    return {c.tree: (c.created, c.updated) for c in record.change.trees}
 
 
 def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
@@ -168,26 +185,19 @@ def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
     return code, acted, refused
 
 
-
-def test_a_vocal_favourite_is_in_its_band_with_vox_and_favorites_under_one_genre(
-    cfg, gates_pass, db
-):
+def test_a_vocal_favourite_is_in_its_band_with_vox_and_favorites_under_one_genre(tree, cfg, db):
     """AE1. Favorites and "with vox" are independent memberships."""
-    tree = Tree(cfg, db)
     med = tree.playlist(DEEP, "Med", "1", "2")
     vox = tree.playlist(DEEP, DECLARED.sub_class("with_vox").display, "1")
     tree.source("1")
-
-    plan = _plan(cfg, db, tree)
+    plan = _plan(tree)
     (folder,) = plan.folders
     assert folder.bucket == DEEP.id and folder.members == ("1", "2")
     assert folder.wanted == ("1",) and folder.adds == ("1",) and folder.removes == ()
     assert plan.creates == 1
-
-    refreshed = _refresh(cfg, db, tree)
-
+    refreshed = _refresh(tree)
     assert (refreshed.added, refreshed.removed, refreshed.created) == (1, 0, (DEEP.display,))
-    favorites = _favorites_of(db, tree, DEEP)
+    favorites = _favorites_of(tree, DEEP)
     assert favorites is not None and _members(db, favorites.ID) == {"1"}
     assert _members(db, med.ID) == {"1", "2"} and _members(db, vox.ID) == {"1"}
     assert refreshed.disagreements == ()
@@ -199,168 +209,123 @@ def test_a_vocal_favourite_is_in_its_band_with_vox_and_favorites_under_one_genre
     assert node is not None and node.playlist_id == str(favorites.ID)
 
 
-def test_a_track_that_leaves_all_favorites_leaves_its_genre_favorites_and_keeps_its_band(
-    cfg, gates_pass, db
-):
-    tree = Tree(cfg, db)
+def test_a_track_that_leaves_all_favorites_leaves_its_genre_favorites_and_keeps_its_band(tree, db):
     high = tree.playlist(AFRO, "High", "3", "4")
     source = tree.source("3", "4")
-    _refresh(cfg, db, tree)
-    assert _members(db, _favorites_of(db, tree, AFRO).ID) == {"3", "4"}
-
+    _refresh(tree)
+    assert _favored(tree, AFRO) == {"3", "4"}
     _unmember(db, source, "3")
-    refreshed = _refresh(cfg, db, tree)
-
+    refreshed = _refresh(tree)
     assert (refreshed.added, refreshed.removed) == (0, 1)
-    assert _members(db, _favorites_of(db, tree, AFRO).ID) == {"4"}
+    assert _favored(tree, AFRO) == {"4"}
     assert _members(db, high.ID) == {"3", "4"}
 
 
-def test_a_favourite_with_no_genre_lands_only_in_the_folder_it_already_sits_in(cfg, gates_pass, db):
+def test_a_favourite_with_no_genre_lands_only_in_the_folder_it_already_sits_in(tree):
     """AE3. By the folder, never by re-reading the tag."""
-    tree = Tree(cfg, db)
     tree.playlist(OTHER, "Low", "5")
     tree.playlist(DEEP, "Med", "1")
     tree.source("5", "1")
-
-    refreshed = _refresh(cfg, db, tree)
-
-    assert refreshed.added == 2
-    assert _members(db, _favorites_of(db, tree, OTHER).ID) == {"5"}
-    assert _members(db, _favorites_of(db, tree, DEEP).ID) == {"1"}
+    assert _refresh(tree).added == 2
+    assert _favored(tree, OTHER) == {"5"}
+    assert _favored(tree, DEEP) == {"1"}
 
 
-def test_a_favourite_in_two_folders_is_in_both_folders_favorites(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_favourite_in_two_folders_is_in_both_folders_favorites(tree):
     tree.playlist(DEEP, "Med", "2")
     tree.playlist(AFRO, "High", "2")
     tree.source("2")
-
-    _refresh(cfg, db, tree)
-
-    assert _members(db, _favorites_of(db, tree, DEEP).ID) == {"2"}
-    assert _members(db, _favorites_of(db, tree, AFRO).ID) == {"2"}
+    _refresh(tree)
+    assert _favored(tree, DEEP) == {"2"}
+    assert _favored(tree, AFRO) == {"2"}
 
 
-def test_a_hand_added_track_not_in_all_favorites_is_removed_at_the_refresh(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
-
-    plan = _plan(cfg, db, tree)
-    (folder,) = plan.folders
+def test_a_hand_added_track_not_in_all_favorites_is_removed_at_the_refresh(tree):
+    _hand_added(tree)
+    (folder,) = _plan(tree).folders
     assert folder.present == ("2",) and folder.adds == ("1",) and folder.removes == ("2",)
-
-    refreshed = _refresh(cfg, db, tree)
-
+    refreshed = _refresh(tree)
     assert (refreshed.added, refreshed.removed, refreshed.created) == (1, 1, ())
-    assert _members(db, _favorites_of(db, tree, DEEP).ID) == {"1"}
+    assert _favored(tree, DEEP) == {"1"}
 
 
-def test_the_additive_half_adds_and_counts_what_it_leaves_owed(cfg, gates_pass, db):
+def test_the_additive_half_adds_and_counts_what_it_leaves_owed(tree):
     """What the end of an adoption runs: nothing taken out, the removals counted."""
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
-
-    refreshed = _refresh(cfg, db, tree, remove=False)
-
+    _hand_added(tree)
+    refreshed = _refresh(tree, remove=False)
     assert (refreshed.added, refreshed.removed, refreshed.removals_owed) == (1, 0, 1)
-    assert _members(db, _favorites_of(db, tree, DEEP).ID) == {"1", "2"}
+    assert _favored(tree, DEEP) == {"1", "2"}
     assert refreshed.disagreements == ()
 
 
-def test_the_digest_covers_the_target_and_stands_still_across_a_partial_apply(cfg, gates_pass, db):
+def test_the_digest_covers_the_target_and_stands_still_across_a_partial_apply(tree, db):
     """The lesson of R-788: a plan whose apply changes what it reads digests what stays put."""
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
-    before = _plan(cfg, db, tree)
-    _apply(cfg, db, tree, before, remove=False)
-    after = _plan(cfg, db, tree)
+    _hand_added(tree)
+    before = _plan(tree)
+    _apply(tree, before, remove=False)
+    after = _plan(tree)
     assert after.digest == before.digest
     assert after.adds == 0 and after.removes == 1
     # And it moves when the target moves.
     source = next(row for row in db.get_playlist(Name=SOURCE) if not rb_writer.is_folder(row))
     db.add_to_playlist(source, "2")
     db.session.commit()
-    assert _plan(cfg, db, tree).digest != before.digest
+    assert _plan(tree).digest != before.digest
 
 
-def test_a_plan_that_moved_between_the_approval_and_the_write_is_refused(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_plan_that_moved_between_the_approval_and_the_write_is_refused(tree, db):
     tree.playlist(DEEP, "Med", "1", "2")
     source = tree.source("1")
-    plan = _plan(cfg, db, tree)
+    plan = _plan(tree)
     db.add_to_playlist(source, "2")
     db.session.commit()
-    with pytest.raises(CratekitError) as caught:
-        _apply(cfg, db, tree, plan)
-    assert caught.value.cause.reason == "decision-stale"
-    assert _favorites_of(db, tree, DEEP) is None
+    assert _refused(_apply, tree, plan).reason == "decision-stale"
+    assert _favorites_of(tree, DEEP) is None
 
 
-def test_a_library_with_no_source_playlist_refuses_by_name_and_empties_nothing(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_library_with_no_source_playlist_refuses_by_name_and_empties_nothing(tree, db):
     tree.playlist(DEEP, "Med", "1")
     kept = tree.playlist(DEEP, FAVORITES.display, "1")
-    with pytest.raises(CratekitError) as caught:
-        _plan(cfg, db, tree)
-    assert caught.value.cause.reason == genre_favorites.SOURCE_MISSING
+    assert _refused(_plan, tree).reason == genre_favorites.SOURCE_MISSING
     assert _members(db, kept.ID) == {"1"}
 
 
-def test_two_source_playlists_are_refused_rather_than_one_chosen(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_two_source_playlists_are_refused_rather_than_one_chosen(tree, db):
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
     db.create_playlist(SOURCE)
     db.session.commit()
-    with pytest.raises(CratekitError) as caught:
-        _plan(cfg, db, tree)
-    assert caught.value.cause.reason == genre_favorites.SOURCE_MISSING
-    assert caught.value.cause.detail["count"] == 2
+    cause = _refused(_plan, tree)
+    assert cause.reason == genre_favorites.SOURCE_MISSING
+    assert cause.detail["count"] == 2
 
 
-def test_a_source_namesake_inside_deadca7s_folder_is_not_a_second_source(cfg, gates_pass, db):
+def test_a_source_namesake_inside_deadca7s_folder_is_not_a_second_source(tree, db):
     """U185. A playlist another app pushed into its own folder is not the source."""
-    tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1")
     source = tree.source("1")
-    pushed = db.create_playlist_folder("DEADCA7")
-    db.create_playlist(SOURCE, parent=pushed)
+    db.create_playlist(SOURCE, parent=db.create_playlist_folder("DEADCA7"))
     db.session.commit()
     assert str(genre_favorites.source_playlist(db, SOURCE).ID) == str(source.ID)
-    _plan(cfg, db, tree)
+    _plan(tree)
 
 
-def test_a_folder_of_the_source_name_is_not_the_source(cfg, gates_pass, db):
+def test_a_folder_of_the_source_name_is_not_the_source(tree, db):
     """The live library's Favorites is a FOLDER; its child All Favorites is the playlist."""
-    tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1")
     db.create_playlist_folder(SOURCE)
     db.session.commit()
-    with pytest.raises(CratekitError) as caught:
-        _plan(cfg, db, tree)
-    assert caught.value.cause.reason == genre_favorites.SOURCE_MISSING
+    assert _refused(_plan, tree).reason == genre_favorites.SOURCE_MISSING
 
 
-def test_a_taxonomy_declaring_no_playlist_class_refuses_by_name(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_taxonomy_declaring_no_playlist_class_refuses_by_name(tree):
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
-    trimmed = UNDECLARED
-    with pytest.raises(CratekitError) as caught:
-        _plan(cfg, db, tree, declared=trimmed)
-    assert caught.value.cause.reason == genre_favorites.CLASS_UNDECLARED
-    assert genre_favorites.favorites_class(trimmed) is None
+    assert _refused(_plan, tree, declared=UNDECLARED).reason == genre_favorites.CLASS_UNDECLARED
+    assert genre_favorites.favorites_class(UNDECLARED) is None
 
 
-def test_a_folder_nobody_declares_and_a_name_two_folders_carry_are_left_alone(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_folder_nobody_declares_and_a_name_two_folders_carry_are_left_alone(tree, db):
     tree.playlist(DEEP, "Med", "1")
     own = db.create_playlist_folder("My Crate", parent=tree.root)
     db.session.commit()
@@ -372,54 +337,41 @@ def test_a_folder_nobody_declares_and_a_name_two_folders_carry_are_left_alone(cf
     db.add_to_playlist(db.create_playlist("High", parent=twin_b), "4")
     db.session.commit()
     tree.source("1", "2", "3", "4")
-
-    plan = _plan(cfg, db, tree)
-
+    plan = _plan(tree)
     assert [folder.bucket for folder in plan.folders] == [DEEP.id]
     assert len(plan.unclaimed) == 3
     assert any("My Crate" in name for name in plan.unclaimed)
-    refreshed = _apply(cfg, db, tree, plan)
-    assert refreshed.added == 1
+    assert _apply(tree, plan).added == 1
     assert [row for row in db.get_playlist(Name=FAVORITES.display)
             if str(row.ParentID) in {str(own.ID), str(twin_a.ID), str(twin_b.ID)}] == []
 
 
-def test_a_renamed_folder_is_still_its_buckets_through_the_recorded_node(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_renamed_folder_is_still_its_buckets_through_the_recorded_node(tree, db):
     tree.playlist(DEEP, "Med", "1", "2")
     tree.source("1", "2")
-    _refresh(cfg, db, tree)
-    folder = tree.folder(DEEP)
-    folder.Name = "Deep Cuts!"
+    _refresh(tree)
+    tree.folder(DEEP).Name = "Deep Cuts!"
     db.session.commit()
-
-    plan = _plan(cfg, db, tree)
-
-    (planned,) = plan.folders
+    (planned,) = _plan(tree).folders
     assert planned.bucket == DEEP.id and planned.folder_display == "Deep Cuts!"
     assert planned.present == ("1", "2") and planned.adds == ()
 
 
-def test_a_second_refresh_adds_and_removes_nothing(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_second_refresh_adds_and_removes_nothing(tree):
     tree.playlist(DEEP, "Med", "1", "2")
     tree.source("1")
-    _refresh(cfg, db, tree)
-    plan = _plan(cfg, db, tree)
+    _refresh(tree)
+    plan = _plan(tree)
     assert not plan.writes
-    refreshed = _apply(cfg, db, tree, plan)
+    refreshed = _apply(tree, plan)
     assert (refreshed.added, refreshed.removed) == (0, 0)
 
 
-def test_no_content_row_tempo_or_rating_is_written(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
+def test_no_content_row_tempo_or_rating_is_written(tree, cfg):
+    _hand_added(tree)
     before = _content_table(cfg)
-    _refresh(cfg, db, tree)
+    _refresh(tree)
     assert _content_table(cfg) == before
-
 
 
 def _rows(cfg) -> list[trees.ContentRow]:
@@ -429,36 +381,33 @@ def _rows(cfg) -> list[trees.ContentRow]:
     ]
 
 
-def _check(cfg, db, tree: Tree, placed, gaps):
+def _placements(tree: Tree):
+    return genre_favorites.placements(tree.cfg, tree.db, DECLARED, tree.registry, _rows(tree.cfg))
+
+
+def _check(tree: Tree, placed, gaps):
     return rebuild.check(
-        cfg, db, tree_id=TREE, registry=tree.registry, declared=DECLARED, placements=placed,
-        rows=_rows(cfg), root_exists=lambda _root: True, not_compared=gaps,
-    )
+        tree.cfg, tree.db, tree_id=TREE, registry=tree.registry, declared=DECLARED,
+        placements=placed, rows=_rows(tree.cfg), root_exists=lambda _root: True, not_compared=gaps)
 
 
-def _rebuild_track_one(cfg, db, tree: Tree):
+def _rebuild_track_one(tree: Tree):
     """The rebuild over track 1 alone, untagged, at the top of the energy scale."""
-    truth = [
-        rebuild.Truth(
-            location=f"{cfg.library.root}/Music/track 1.flac", genre=None,
-            energy=DECLARED.energy.scale_max, voxlevel=None,
-        )
-    ]
+    cfg = tree.cfg
+    truth = [rebuild.Truth(location=f"{cfg.library.root}/Music/track 1.flac", genre=None,
+                           energy=DECLARED.energy.scale_max, voxlevel=None)]
     return rebuild.rebuild_tree(
-        cfg, db, tree_id=TREE, registry=tree.registry, declared=DECLARED, rows=_rows(cfg)[:1],
+        cfg, tree.db, tree_id=TREE, registry=tree.registry, declared=DECLARED, rows=_rows(cfg)[:1],
         root_exists=lambda _root: True, analysis_roots=[Path(cfg.library.root)],
-        vocal_threshold=None, truth=truth,
-    )
+        vocal_threshold=None, truth=truth)
 
 
-def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(tree):
     tree.playlist(DEEP, "Med", "1", "2")
-    placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
+    placed, gaps = _placements(tree)
     assert placed == () and gaps == (genre_favorites.FAVORITES_DIMENSION,)
-
     tree.source("1")
-    placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
+    placed, gaps = _placements(tree)
     assert gaps == ()
     assert [(p.bucket, p.sub, Path(p.location).name) for p in placed] == [
         (DEEP.id, FAVORITES.id, "track 1.flac")
@@ -466,15 +415,10 @@ def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(cf
 
 
 def test_the_check_reports_a_favourite_missing_from_its_favorites_and_not_a_hand_added_one_as_foreign(
-    cfg, gates_pass, db
-):
+    tree):
     """A favourite the folder lacks is missing, a Favorites non-favourite unexpected, neither foreign."""
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
-    placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
-    report = _check(cfg, db, tree, placed, gaps)
+    _hand_added(tree)
+    report = _check(tree, *_placements(tree))
     missing = {(d.bucket, d.sub, d.content_id) for d in report.missing}
     unexpected = {(d.bucket, d.sub, d.content_id) for d in report.unexpected}
     assert (DEEP.id, FAVORITES.id, "1") in missing
@@ -482,36 +426,24 @@ def test_the_check_reports_a_favourite_missing_from_its_favorites_and_not_a_hand
     assert not any(FAVORITES.display in name for name in report.foreign)
 
 
-def test_with_favorites_leaves_another_tree_and_an_undeclared_class_alone(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_with_favorites_leaves_another_tree_and_an_undeclared_class_alone(tree, cfg, db):
     placements, gaps = rebuild.with_favorites(
-        cfg, db, DECLARED, tree.registry, _rows(cfg), (), ("vocal",), tree_id="another_tree"
-    )
+        cfg, db, DECLARED, tree.registry, _rows(cfg), (), ("vocal",), tree_id="another_tree")
     assert placements == () and gaps == ("vocal",)
-    trimmed = UNDECLARED
     placements, gaps = rebuild.with_favorites(
-        cfg, db, trimmed, tree.registry, _rows(cfg), (), (), tree_id=TREE
-    )
+        cfg, db, UNDECLARED, tree.registry, _rows(cfg), (), (), tree_id=TREE)
     assert placements == () and gaps == ()
 
 
-
-def test_the_additive_refresh_at_an_adoptions_end_skips_what_it_cannot_read_and_says_why(
-    cfg, gates_pass, db
-):
-    tree = Tree(cfg, db)
+def test_the_additive_refresh_at_an_adoptions_end_skips_what_it_cannot_read_and_says_why(tree, cfg):
     tree.playlist(DEEP, "Med", "1")
     roots = [Path(cfg.library.root)]
-    rb_writer.close_db(db)
+    rb_writer.close_db(tree.db)
     outcome = genre_favorites.refresh_additive(cfg, DECLARED, analysis_roots=roots)
     assert outcome.refreshed is None and "no live playlist" in outcome.skipped
-
-    trimmed = UNDECLARED
-    outcome = genre_favorites.refresh_additive(cfg, trimmed, analysis_roots=roots)
+    outcome = genre_favorites.refresh_additive(cfg, UNDECLARED, analysis_roots=roots)
     assert outcome.refreshed is None and "declares no sub class" in outcome.skipped
-
-    on_the_bridge = tree_registry.Registry()
-    tree_registry.write(cfg, on_the_bridge)
+    tree_registry.write(cfg, tree_registry.Registry())
     outcome = genre_favorites.refresh_additive(cfg, DECLARED, analysis_roots=roots)
     assert outcome.refreshed is None and outcome.skipped
     tree_registry.write(cfg, tree.registry)
@@ -525,22 +457,18 @@ def test_the_resume_carries_the_removals_owed_as_a_note():
     assert apply_cli.favorites_warnings({}) == []
 
 
-
 def _closed(db) -> None:
     """The verb opens handles of its own, so the fixture's is closed first."""
     rb_writer.close_db(db)
 
 
-def test_the_verb_asks_its_explicit_gate_then_adds_and_removes_and_reads_back(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_the_verb_asks_its_explicit_gate_then_adds_and_removes_and_reads_back(tree, cfg, db):
     tree.playlist(DEEP, "Med", "1", "2")
     tree.playlist(DEEP, FAVORITES.display, "2")
     tree.playlist(AFRO, "High", "3")
     tree.source("1", "3")
     _closed(db)
-
     code, acted, refused = _two_acts(VERB)
-
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["adds"] == 2 and shown["removes"] == 1 and shown["playlists to create"] == 1
@@ -550,11 +478,10 @@ def test_the_verb_asks_its_explicit_gate_then_adds_and_removes_and_reads_back(cf
     assert [w["code"] for w in acted["warnings"]] == [refresh_cli.REFRESHED]
     (record,) = [r for r in session.records(cfg) if r.workflow == genre_favorites.WORKFLOW]
     assert record.state is session.SessionState.CLOSED
-    assert {c.tree: (c.created, c.updated) for c in record.change.trees} == {TREE: (2, 1)}
+    assert _recorded_trees(cfg) == {TREE: (2, 1)}
 
 
-def test_the_verb_over_a_mirror_already_true_asks_and_then_writes_nothing(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_the_verb_over_a_mirror_already_true_asks_and_then_writes_nothing(tree, db):
     tree.playlist(DEEP, "Med", "1")
     tree.playlist(DEEP, FAVORITES.display, "1")
     tree.source("1")
@@ -564,8 +491,7 @@ def test_the_verb_over_a_mirror_already_true_asks_and_then_writes_nothing(cfg, g
     assert [w["code"] for w in acted["warnings"]] == [refresh_cli.NOTHING_TO_REFRESH]
 
 
-def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(tree, cfg, db):
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
     _closed(db)
@@ -575,8 +501,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(cfg, gates_pass
     assert "gate" not in (refused.get("cause") or {}).get("detail", {})
 
 
-def test_a_tree_on_the_bridge_is_refused_before_the_gate(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_tree_on_the_bridge_is_refused_before_the_gate(tree, cfg, db):
     tree.source("1")
     tree_registry.write(cfg, tree_registry.Registry())
     _closed(db)
@@ -585,8 +510,7 @@ def test_a_tree_on_the_bridge_is_refused_before_the_gate(cfg, gates_pass, db):
     assert refused["cause"]["reason"] == "tree-unconverged"
 
 
-def test_a_source_that_went_between_the_two_acts_is_refused_by_the_gate(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_source_that_went_between_the_two_acts_is_refused_by_the_gate(tree, cfg, db):
     tree.playlist(DEEP, "Med", "1", "2")
     source_id = str(tree.source("1").ID)
     _closed(db)
@@ -605,87 +529,65 @@ def test_a_source_that_went_between_the_two_acts_is_refused_by_the_gate(cfg, gat
     assert acted["cause"]["reason"] == "decision-stale", acted
 
 
-def test_the_verb_refuses_an_undeclared_class_by_name(cfg, gates_pass, db, monkeypatch):
-    tree = Tree(cfg, db)
+def test_the_verb_refuses_an_undeclared_class_by_name(tree, db, monkeypatch):
     tree.source("1")
     _closed(db)
-    trimmed = UNDECLARED
-    monkeypatch.setattr(active_taxonomy, "load", lambda _cfg: trimmed)
+    monkeypatch.setattr(active_taxonomy, "load", lambda _cfg: UNDECLARED)
     code, refused = drive(VERB)
     assert refused["cause"]["reason"] == genre_favorites.CLASS_UNDECLARED, refused
     assert code != int(ExitCode.DECISION_REQUIRED)
 
 
-
-def test_a_smart_playlist_or_an_emptied_playlist_of_the_source_name_is_not_the_source(
-    cfg, gates_pass, db
-):
+def test_a_smart_playlist_or_an_emptied_playlist_of_the_source_name_is_not_the_source(tree, db):
     """A smart or emptied playlist reads as empty, and either would empty every genre Favorites."""
-    tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1")
     kept = tree.playlist(DEEP, FAVORITES.display, "1")
     smart = db.create_playlist(SOURCE)
     smart.Attribute = 4
     db.session.commit()
-    with pytest.raises(CratekitError) as caught:
-        _plan(cfg, db, tree)
-    assert caught.value.cause.reason == genre_favorites.SOURCE_MISSING
+    assert _refused(_plan, tree).reason == genre_favorites.SOURCE_MISSING
     smart.Attribute = 0
     db.session.commit()
-    with pytest.raises(CratekitError) as caught:
-        _plan(cfg, db, tree)
-    assert caught.value.cause.reason == genre_favorites.SOURCE_MISSING
-    assert "no live track" in caught.value.cause.message
+    cause = _refused(_plan, tree)
+    assert cause.reason == genre_favorites.SOURCE_MISSING
+    assert "no live track" in cause.message
     assert _members(db, kept.ID) == {"1"}
 
 
-def test_a_folder_the_record_binds_to_one_bucket_is_not_bound_to_another_by_its_new_name(
-    cfg, gates_pass, db
-):
+def test_a_folder_the_record_binds_to_one_bucket_is_not_bound_to_another_by_its_new_name(tree, db):
     """A folder recorded for Deep House and renamed to Afro House's name stays Deep House's alone."""
-    tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1", "2")
     tree.source("1", "2")
-    _refresh(cfg, db, tree)
-    folder = tree.folder(DEEP)
-    folder.Name = AFRO.display
+    _refresh(tree)
+    tree.folder(DEEP).Name = AFRO.display
     db.session.commit()
-
-    plan = _plan(cfg, db, tree)
-
+    plan = _plan(tree)
     assert [folder.bucket for folder in plan.folders] == [DEEP.id]
     assert plan.unclaimed == ()
-    refreshed = _apply(cfg, db, tree, plan)
-    assert refreshed.added == 0
-    recorded = convergence.read(cfg).tree(TREE)
+    assert _apply(tree, plan).added == 0
+    recorded = convergence.read(tree.cfg).tree(TREE)
     assert recorded.node(AFRO.id, FAVORITES.id) is None
     assert recorded.node(DEEP.id, FAVORITES.id) is not None
 
 
-def test_the_digest_moves_when_a_track_is_dragged_into_favorites_between_the_acts(
-    cfg, gates_pass, db
-):
+def test_the_digest_moves_when_a_track_is_dragged_into_favorites_between_the_acts(tree, db):
     """A removal the gate never showed is another plan."""
-    tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1", "2", "3")
     favorites = tree.playlist(DEEP, FAVORITES.display, "1")
     tree.source("1")
-    approved = _plan(cfg, db, tree)
+    approved = _plan(tree)
     assert approved.removes == 0
     db.add_to_playlist(favorites, "3")
     db.session.commit()
-    with pytest.raises(CratekitError) as caught:
-        _apply(cfg, db, tree, approved)
-    assert caught.value.cause.reason == "decision-stale"
+    assert _refused(_apply, tree, approved).reason == "decision-stale"
     assert _members(db, favorites.ID) == {"1", "3"}
 
 
-def test_the_rebuild_files_a_favourite_into_the_folder_it_moves_it_to(cfg, gates_pass, db):
+def test_the_rebuild_files_a_favourite_into_the_folder_it_moves_it_to(tree, cfg, db):
     """Favourites are derived after the rebuild's write, so the after check converges as left."""
-    tree = Tree(cfg, db)
     tree.source("1")
     bucket_id = rebuild.routing.resolve_bucket(DECLARED, None).bucket_id
-    report = _rebuild_track_one(cfg, db, tree)
+    report = _rebuild_track_one(tree)
     nodes = {
         (node.folder_display, node.playlist_display): node for node in rebuild.read_tree(db, str(tree.root.ID))
     }
@@ -709,7 +611,6 @@ def test_the_summary_keeps_the_removals_owed_past_an_attempt_that_filed_nothing(
         @staticmethod
         def committed(_cfg, _job_id):
             return reports
-
     real = module.artifacts
     module.artifacts = _Artifacts  # type: ignore[assignment]
     try:
@@ -729,73 +630,54 @@ def test_a_read_back_disagreement_at_an_adoptions_end_is_a_note_not_a_clean_coun
 
 
 def test_the_additive_half_turns_any_refusal_into_a_skip_once_the_adoption_has_landed(
-    cfg, gates_pass, db, monkeypatch
-):
-    tree = Tree(cfg, db)
+    tree, cfg, db, monkeypatch):
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
     rb_writer.close_db(db)
 
     def stale(*_args, **_kwargs):
         from cratekit.core.cause import refuse
-
         raise refuse("decision-stale", "the plan moved", origin=("test",))
-
     monkeypatch.setattr(genre_favorites, "plan_refresh", stale)
-    outcome = genre_favorites.refresh_additive(
-        cfg, DECLARED, analysis_roots=[Path(cfg.library.root)]
-    )
+    roots = [Path(cfg.library.root)]
+    outcome = genre_favorites.refresh_additive(cfg, DECLARED, analysis_roots=roots)
     assert outcome.refreshed is None and outcome.skipped == "the plan moved"
 
 
-
-def test_a_favourite_sitting_only_in_favorites_after_leaving_its_band_is_removed(
-    cfg, gates_pass, db
-):
+def test_a_favourite_sitting_only_in_favorites_after_leaving_its_band_is_removed(tree, db):
     """The folder's Favorites is not among its members, so a favourite moved out by hand leaves it."""
-    tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1")
     favorites = tree.playlist(DEEP, FAVORITES.display, "1", "2")
     tree.source("1", "2")
-
-    plan = _plan(cfg, db, tree)
+    plan = _plan(tree)
     (folder,) = plan.folders
     assert folder.members == ("1",) and folder.removes == ("2",)
-    refreshed = _apply(cfg, db, tree, plan)
-
+    refreshed = _apply(tree, plan)
     assert (refreshed.added, refreshed.removed) == (0, 1)
     assert _members(db, favorites.ID) == {"1"}
 
 
-def test_a_removed_favorites_under_the_folder_is_not_written_into(cfg, gates_pass, db):
-    tree = Tree(cfg, db)
+def test_a_removed_favorites_under_the_folder_is_not_written_into(tree, db):
     tree.playlist(DEEP, "Med", "1")
     gone = tree.playlist(DEEP, FAVORITES.display)
     setattr(gone, rb_writer.SOFT_DELETE_COLUMN, 1)
     db.session.commit()
     tree.source("1")
-
-    refreshed = _refresh(cfg, db, tree)
-
+    refreshed = _refresh(tree)
     assert refreshed.created == (DEEP.display,) and refreshed.added == 1
-    live = _favorites_of(db, tree, DEEP)
+    live = _favorites_of(tree, DEEP)
     assert live is not None and str(live.ID) != str(gone.ID)
     assert _members(db, live.ID) == {"1"} and _members(db, gone.ID) == set()
 
 
-
 def _record_band(cfg, bucket: taxonomy.Bucket, folder_id: str, playlist_id: str, sub: str) -> None:
     node = convergence.DestinationNode(
-        bucket=bucket.id, sub=sub, folder_id=folder_id, playlist_id=playlist_id
-    )
+        bucket=bucket.id, sub=sub, folder_id=folder_id, playlist_id=playlist_id)
     convergence.record_nodes(cfg, TREE, [node])
 
 
-def test_the_rebuild_puts_a_first_favorites_under_a_renamed_folder_its_record_binds(
-    cfg, gates_pass, db
-):
+def test_the_rebuild_puts_a_first_favorites_under_a_renamed_folder_its_record_binds(tree, cfg, db):
     """With the band recorded and the folder renamed, the first Favorites goes under the recorded folder."""
-    tree = Tree(cfg, db)
     bucket_id = rebuild.routing.resolve_bucket(DECLARED, None).bucket_id
     bucket = DECLARED.bucket(bucket_id)
     sub = rebuild.routing.energy_sub(DECLARED, bucket_id, DECLARED.energy.scale_max)
@@ -805,23 +687,19 @@ def test_the_rebuild_puts_a_first_favorites_under_a_renamed_folder_its_record_bi
     folder.Name = f"{bucket.display} ✦"
     db.session.commit()
     tree.source("1")
-
-    report = _rebuild_track_one(cfg, db, tree)
-
+    report = _rebuild_track_one(tree)
     folders = {node.folder_display for node in rebuild.read_tree(db, str(tree.root.ID))}
     assert folders == {f"{bucket.display} ✦"}, folders
-    favorites = _favorites_of(db, tree, bucket)
+    favorites = _favorites_of(tree, bucket)
     assert favorites is not None and _members(db, favorites.ID) == {"1"}
     assert report.after.converged, report.after.summaries()
     # And the next refresh binds the bucket to the same folder and plans no removal.
-    plan = _plan(cfg, db, tree)
-    (planned,) = plan.folders
+    (planned,) = _plan(tree).folders
     assert planned.folder_id == str(folder.ID) and planned.removes == ()
 
 
-def test_a_bucket_is_bound_by_its_band_entries_before_its_favorites_entry(cfg, gates_pass, db):
+def test_a_bucket_is_bound_by_its_band_entries_before_its_favorites_entry(tree, cfg, db):
     """A Favorites recorded under a parallel folder does not claim the bucket."""
-    tree = Tree(cfg, db)
     real = tree.folder(DEEP)
     band = tree.playlist(DEEP, "Med", "1", "2")
     tree.source("1", "2")
@@ -830,72 +708,58 @@ def test_a_bucket_is_bound_by_its_band_entries_before_its_favorites_entry(cfg, g
     stray = tree.playlist(DEEP, FAVORITES.display, parent=twin)
     _record_band(cfg, DEEP, str(real.ID), str(band.ID), "med")
     _record_band(cfg, DEEP, str(twin.ID), str(stray.ID), FAVORITES.id)
-
-    plan = _plan(cfg, db, tree)
-
+    plan = _plan(tree)
     assert [folder.bucket for folder in plan.folders] == []
     assert any("beside another folder" in name for name in plan.unclaimed)
     assert len(plan.unclaimed) == 2
-    refreshed = _apply(cfg, db, tree, plan)
+    refreshed = _apply(tree, plan)
     assert (refreshed.added, refreshed.removed) == (0, 0)
     assert _members(db, band.ID) == {"1", "2"}
 
 
-def test_a_check_with_no_source_leaves_the_recorded_favorites_out_and_names_the_gap(
-    cfg, gates_pass, db
-):
-    tree = Tree(cfg, db)
+def test_a_check_with_no_source_leaves_the_recorded_favorites_out_and_names_the_gap(tree, cfg, db):
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
-    _refresh(cfg, db, tree)
+    _refresh(tree)
     source = next(row for row in db.get_playlist(Name=SOURCE) if not rb_writer.is_folder(row))
     setattr(source, rb_writer.SOFT_DELETE_COLUMN, 1)
     db.session.commit()
-
-    placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
+    placed, gaps = _placements(tree)
     assert placed == () and gaps == (genre_favorites.FAVORITES_DIMENSION,)
     # Track 1's own band, as a derivation places it: a run derives something or
     # refuses, and a band nothing derives into is compared since R-1949.
     band = rebuild.DeclaredPlacement(f"{cfg.library.root}/Music/track 1.flac", DEEP.id, "med")
-    report = _check(cfg, db, tree, (band,), gaps)
+    report = _check(tree, (band,), gaps)
     assert report.unexpected == ()
     assert not any(FAVORITES.display in name for name in report.foreign)
     assert genre_favorites.FAVORITES_DIMENSION in report.not_compared
     assert rebuild.left_behind(report, DECLARED) == ()
 
 
-def test_a_removal_that_fails_after_the_additions_landed_says_what_landed(
-    cfg, gates_pass, db, monkeypatch
-):
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    favorites = tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
-    plan = _plan(cfg, db, tree)
-
+def _broken_removal(monkeypatch) -> None:
     def broken(*_args, **_kwargs):
         raise RuntimeError("the disk went away")
-
     monkeypatch.setattr(rb_writer, "remove_memberships", broken)
+
+
+def test_a_removal_that_fails_after_the_additions_landed_says_what_landed(tree, db, monkeypatch):
+    favorites = _hand_added(tree)
+    plan = _plan(tree)
+    _broken_removal(monkeypatch)
     with pytest.raises(genre_favorites.RefreshInterrupted) as caught:
-        _apply(cfg, db, tree, plan)
+        _apply(tree, plan)
     partial = caught.value.partial
     assert partial.added == 1 and partial.removed == 0 and partial.session_id
     assert isinstance(caught.value.__cause__, RuntimeError)
     assert _members(db, favorites.ID) == {"1", "2"}
-    (record,) = [r for r in session.records(cfg) if r.workflow == genre_favorites.WORKFLOW]
-    assert {c.tree: (c.created, c.updated) for c in record.change.trees} == {TREE: (1, 0)}
+    assert _recorded_trees(tree.cfg) == {TREE: (1, 0)}
 
 
-def test_a_removal_commit_that_lands_and_then_raises_is_recorded_with_its_count(
-    cfg, gates_pass, db, monkeypatch
-):
+def test_a_removal_commit_that_lands_and_then_raises_is_recorded_with_its_count(tree, monkeypatch):
     """An exception out of the removals' commit is not proof nothing was taken out."""
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    favorites = tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
-    plan = _plan(cfg, db, tree)
+    db = tree.db
+    favorites = _hand_added(tree)
+    plan = _plan(tree)
     real_remove, real_commit = rb_writer.remove_memberships, db.commit
     removing: list[bool] = []
 
@@ -907,30 +771,19 @@ def test_a_removal_commit_that_lands_and_then_raises_is_recorded_with_its_count(
         real_commit(*args, **kwargs)
         if removing:
             raise OSError("the playlist file could not be saved")
-
     monkeypatch.setattr(rb_writer, "remove_memberships", remove)
     monkeypatch.setattr(db, "commit", lands_then_fails)
     with pytest.raises(genre_favorites.RefreshInterrupted):
-        _apply(cfg, db, tree, plan)
-
+        _apply(tree, plan)
     assert _members(db, favorites.ID) == {"1"}, "the fixture did not land the removal"
-    (record,) = [r for r in session.records(cfg) if r.workflow == genre_favorites.WORKFLOW]
-    assert {c.tree: (c.created, c.updated) for c in record.change.trees} == {TREE: (1, 1)}
+    assert _recorded_trees(tree.cfg) == {TREE: (1, 1)}
 
 
 def test_the_verb_reports_an_interrupted_refresh_with_the_additions_that_committed(
-    cfg, gates_pass, db, monkeypatch
-):
-    tree = Tree(cfg, db)
-    tree.playlist(DEEP, "Med", "1", "2")
-    tree.playlist(DEEP, FAVORITES.display, "2")
-    tree.source("1")
-    _closed(db)
-
-    def broken(*_args, **_kwargs):
-        raise RuntimeError("the disk went away")
-
-    monkeypatch.setattr(rb_writer, "remove_memberships", broken)
+    tree, monkeypatch):
+    _hand_added(tree)
+    _closed(tree.db)
+    _broken_removal(monkeypatch)
     code, acted, _ = _two_acts(VERB)
     assert code != int(ExitCode.OK)
     assert acted["cause"]["reason"] == "internal-error"
@@ -938,21 +791,16 @@ def test_the_verb_reports_an_interrupted_refresh_with_the_additions_that_committ
     assert "nothing was taken out" in acted["cause"]["message"]
 
 
-def test_the_additive_half_carries_the_additions_when_interrupted_past_them(
-    cfg, gates_pass, db, monkeypatch
-):
-    tree = Tree(cfg, db)
+def test_the_additive_half_carries_the_additions_when_interrupted_past_them(tree, cfg, monkeypatch):
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
-    rb_writer.close_db(db)
+    rb_writer.close_db(tree.db)
 
     def broken(*_args, **_kwargs):
         raise RuntimeError("the record went away")
-
     monkeypatch.setattr(convergence, "record_nodes", broken)
-    outcome = genre_favorites.refresh_additive(
-        cfg, DECLARED, analysis_roots=[Path(cfg.library.root)]
-    )
+    roots = [Path(cfg.library.root)]
+    outcome = genre_favorites.refresh_additive(cfg, DECLARED, analysis_roots=roots)
     assert outcome.refreshed is not None and outcome.refreshed.added == 1
     assert "the record went away" in outcome.skipped
 
@@ -968,13 +816,10 @@ def test_a_skipped_refresh_at_an_adoptions_end_is_said():
 
 def test_the_undeclared_note_states_the_version_the_skip_saw():
     """U132: read back from the job's report, so a later upgrade does not change the note."""
-    summary = {
-        "favorites": {
-            "skipped": "the taxonomy declares no sub class derived from a playlist",
-            "cause": genre_favorites.CLASS_UNDECLARED,
-            "schema_version": 2,
-        }
-    }
+    summary = {"favorites": {
+        "skipped": "the taxonomy declares no sub class derived from a playlist",
+        "cause": genre_favorites.CLASS_UNDECLARED, "schema_version": 2,
+    }}
     (note,) = apply_cli.favorites_warnings(summary)
     assert note["code"] == genre_favorites.CLASS_UNDECLARED
     assert "states schema_version 2 and declares no sub class" in note["message"]

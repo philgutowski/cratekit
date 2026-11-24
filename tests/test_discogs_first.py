@@ -56,13 +56,7 @@ def build(fetch, *, token: str | None = SENT, walk=None, refusals=None):
     asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
     extra = {} if walk is None else {"walk": walk}
     return searchers.catalogue_searcher(
-        TAXONOMY,
-        fetch=fetch,
-        sleep=lambda _s: None,
-        discogs=asker,
-        refusals=refusals,
-        **extra,
-    )
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals, **extra)
 
 
 def said(hit: SearchHit) -> list[tuple[str, str]]:
@@ -88,11 +82,15 @@ def beatport_tag() -> str:
     return routing.suggest_tag(TAXONOMY, BUCKET_GENRE).tag
 
 
-def _both_answer(seen: list[str]):
-    """A fetch where Discogs files the track as Deep House and Beatport holds it too."""
-    return routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=beatport_row(), seen=seen
-    )
+def deep_house(**more):
+    """A fetch where Discogs files the track as Deep House, Beatport answering as ``more`` says."""
+    return routed(search=results(7), releases=matching_release("Deep House"), **more)
+
+
+def _both_answer() -> tuple:
+    """Discogs files the track as Deep House and Beatport holds it too; and every URL sent."""
+    seen: list[str] = []
+    return deep_house(beatport=beatport_row(), seen=seen), seen
 
 
 # A. The order
@@ -105,21 +103,12 @@ def test_the_default_walk_is_discogs_then_beatport():
 def test_a_record_and_a_summary_list_discogs_first():
     assert searchers.SOURCES[0] == searchers.DISCOGS
     assert set(searchers.SOURCES) == {
-        searchers.DISCOGS,
-        searchers.BEATPORT,
-        searchers.TRAXSOURCE,
-        searchers.BANDCAMP,
+        searchers.DISCOGS, searchers.BEATPORT, searchers.TRAXSOURCE, searchers.BANDCAMP
     }
 
 
 def test_a_discogs_match_decides_and_beatport_is_not_asked():
-    seen: list[str] = []
-    fetch = routed(
-        search=results(7),
-        releases=matching_release("Deep House"),
-        beatport=beatport_row(),
-        seen=seen,
-    )
+    fetch, seen = _both_answer()
     hit = build(fetch)(ARTIST, TITLE)
     assert (hit.source, hit.genre) == (searchers.DISCOGS, discogs_tag("Deep House"))
     assert said(hit) == [(searchers.DISCOGS, "matched"), (searchers.BEATPORT, searchers.NOT_ASKED)]
@@ -142,15 +131,12 @@ def test_a_discogs_miss_asks_beatport_and_beatport_decides():
 
 
 @pytest.mark.parametrize(
-    "styles",
-    [(UNMAPPED,), (FALLBACK_GENRE,), (UNMAPPED, FALLBACK_GENRE), ()],
-    ids=["unmapped", "fallback-only", "both", "styleless"],
-)
+    "styles", [(UNMAPPED,), (FALLBACK_GENRE,), (UNMAPPED, FALLBACK_GENRE), ()],
+    ids=["unmapped", "fallback-only", "both", "styleless"])
 def test_a_discogs_decline_goes_on_to_beatport_which_decides(styles):
     seen: list[str] = []
     fetch = routed(
-        search=results(7), releases=matching_release(*styles), beatport=beatport_row(), seen=seen
-    )
+        search=results(7), releases=matching_release(*styles), beatport=beatport_row(), seen=seen)
     hit = build(fetch)(ARTIST, TITLE)
     assert beatport_asked(seen) == 1
     assert (hit.source, hit.genre) == (searchers.BEATPORT, beatport_tag())
@@ -175,11 +161,8 @@ def test_a_discogs_decline_beside_a_beatport_miss_keeps_discogs_word_and_is_not_
         (searchers.Fetched(note="timed out"), "unreachable"),
         (searchers.Fetched(text="<html>no payload</html>", status=200), "parse-break"),
     ],
-    ids=["refused", "outage", "reshaped"],
-)
-def test_a_discogs_decline_beside_an_unread_beatport_is_a_decline_never_an_outage(
-    refusal, answer
-):
+    ids=["refused", "outage", "reshaped"])
+def test_a_discogs_decline_beside_an_unread_beatport_is_a_decline_never_an_outage(refusal, answer):
     fetch = routed(search=results(7), releases=matching_release(UNMAPPED), beatport=refusal)
     hit = build(fetch)(ARTIST, TITLE)
     assert hit.genre is None
@@ -190,18 +173,13 @@ def test_a_discogs_decline_beside_an_unread_beatport_is_a_decline_never_an_outag
 
 def test_two_declines_keep_discogs_word_and_beatport_s_picture():
     fetch = routed(
-        search=results(7),
-        releases=matching_release(UNMAPPED),
-        beatport=beatport_row(FALLBACK_GENRE),
-    )
+        search=results(7), releases=matching_release(UNMAPPED),
+        beatport=beatport_row(FALLBACK_GENRE))
     hit = build(fetch)(ARTIST, TITLE)
     assert hit.genre is None
     assert (hit.source, hit.source_genre) == (searchers.DISCOGS, UNMAPPED)
     assert answer_of(hit, searchers.BEATPORT).source_genre == FALLBACK_GENRE
-    assert (hit.art_url, hit.art_source) == (
-        beatport_row_art(),
-        searchers.BEATPORT,
-    )
+    assert (hit.art_url, hit.art_source) == (beatport_row_art(), searchers.BEATPORT)
 
 
 def beatport_row_art() -> str:
@@ -209,9 +187,7 @@ def beatport_row_art() -> str:
 
 
 def test_with_no_token_beatport_decides_exactly_as_before():
-    seen: list[str] = []
-    fetch = routed(search=results(7), releases=matching_release("Deep House"),
-                   beatport=beatport_row(), seen=seen)
+    fetch, seen = _both_answer()
     hit = build(fetch, token=None)(ARTIST, TITLE)
     assert (hit.source, hit.genre) == (searchers.BEATPORT, beatport_tag())
     assert hit.art_url == beatport_row_art() and hit.art_source is None
@@ -229,15 +205,9 @@ def test_with_no_token_a_beatport_miss_is_still_sources_unread_and_never_no_hit(
 
 @pytest.mark.parametrize(
     "discogs, answer",
-    [
-        (CHALLENGE, "blocked"),
-        (searchers.Fetched(note="timed out"), "unreachable"),
-    ],
-    ids=["refused", "outage"],
-)
-def test_an_unread_discogs_goes_on_to_beatport_and_beside_its_miss_is_never_no_hit(
-    discogs, answer
-):
+    [(CHALLENGE, "blocked"), (searchers.Fetched(note="timed out"), "unreachable")],
+    ids=["refused", "outage"])
+def test_an_unread_discogs_goes_on_to_beatport_and_beside_its_miss_is_never_no_hit(discogs, answer):
     fetch = routed(search=discogs)
     hit = build(fetch)(ARTIST, TITLE)
     assert said(hit) == [(searchers.DISCOGS, answer), (searchers.BEATPORT, "miss")]
@@ -256,14 +226,11 @@ def test_a_refused_beatport_beside_a_discogs_match_tags_the_file():
     """U281's outcome: Beatport stopped after three refusals, and Discogs still decides."""
     refusals = searchers.Refusals()
     seen: list[str] = []
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=CHALLENGE, seen=seen
-    )
+    fetch = deep_house(beatport=CHALLENGE, seen=seen)
     for _ in range(searchers.REFUSALS_BEFORE_STOP):
         # Three files Discogs misses, each refused by Beatport.
         build(routed(search=results(), beatport=CHALLENGE, seen=seen), refusals=refusals)(
-            ARTIST, TITLE
-        )
+            ARTIST, TITLE)
     assert beatport_asked(seen) == searchers.REFUSALS_BEFORE_STOP
     hit = build(fetch, refusals=refusals)(ARTIST, TITLE)
     assert (hit.source, hit.genre) == (searchers.DISCOGS, discogs_tag("Deep House"))
@@ -278,8 +245,7 @@ def test_both_unread_still_refuse_as_unreadable():
 
 
 def test_an_explicit_walk_naming_beatport_first_is_honoured():
-    seen: list[str] = []
-    fetch = _both_answer(seen)
+    fetch, seen = _both_answer()
     hit = build(fetch, walk=(searchers.BEATPORT, searchers.DISCOGS))(ARTIST, TITLE)
     assert hit.source == searchers.BEATPORT
     assert said(hit) == [(searchers.BEATPORT, "matched"), (searchers.DISCOGS, searchers.NOT_ASKED)]
@@ -291,15 +257,13 @@ def test_an_explicit_walk_naming_beatport_first_is_honoured():
 
 
 def test_a_discogs_match_carries_a_picture_ask_and_spends_nothing_until_asked():
-    seen: list[str] = []
-    fetch = _both_answer(seen)
+    fetch, seen = _both_answer()
     hit = build(fetch)(ARTIST, TITLE)
     assert hit.ask_picture is not None
     assert (hit.art_url, hit.art_source) == ("", "")
     note = answer_of(hit, searchers.BEATPORT).note
     assert note.startswith(searchers.NOT_SENT) and "picture" in note
     assert beatport_asked(seen) == 0
-
     pictured = hit.ask_picture(hit)
     assert beatport_asked(seen) == 1
     assert pictured.genre == hit.genre and pictured.source == searchers.DISCOGS
@@ -310,7 +274,7 @@ def test_a_discogs_match_carries_a_picture_ask_and_spends_nothing_until_asked():
 
 
 def test_a_picture_ask_beatport_misses_names_no_picture_and_no_unread():
-    fetch = routed(search=results(7), releases=matching_release("Deep House"))
+    fetch = deep_house()
     hit = build(fetch)(ARTIST, TITLE)
     pictured = hit.ask_picture(hit)
     assert answer_of(pictured, searchers.BEATPORT).answer == "miss"
@@ -320,9 +284,7 @@ def test_a_picture_ask_beatport_misses_names_no_picture_and_no_unread():
 def test_a_picture_ask_beatport_refuses_is_unread_and_counts_toward_the_stop():
     refusals = searchers.Refusals()
     seen: list[str] = []
-    fetch = routed(
-        search=results(7), releases=matching_release("Deep House"), beatport=CHALLENGE, seen=seen
-    )
+    fetch = deep_house(beatport=CHALLENGE, seen=seen)
     for _ in range(searchers.REFUSALS_BEFORE_STOP):
         hit = build(fetch, refusals=refusals)(ARTIST, TITLE)
         pictured = hit.ask_picture(hit)
@@ -340,12 +302,7 @@ def test_a_picture_ask_beatport_refuses_is_unread_and_counts_toward_the_stop():
 def test_a_record_shop_decline_still_ends_an_explicit_walk():
     """Only a source that names no picture gives way on a decline."""
     seen: list[str] = []
-    fetch = routed(
-        search=results(7),
-        releases=matching_release("Deep House"),
-        beatport=beatport_row(FALLBACK_GENRE),
-        seen=seen,
-    )
+    fetch = deep_house(beatport=beatport_row(FALLBACK_GENRE), seen=seen)
     hit = build(fetch, walk=(searchers.BEATPORT, searchers.DISCOGS))(ARTIST, TITLE)
     assert hit.genre is None
     assert (hit.source, hit.source_genre) == (searchers.BEATPORT, FALLBACK_GENRE)
@@ -364,7 +321,6 @@ def silence(tmp_path_factory) -> Path:
 
 def a_file(folder: Path, silence: Path, *, genre: str | None = None, picture: bool = False) -> Path:
     from tests.test_tagging_engine import _jpeg, place, plant
-
     path = place(folder, silence, TITLE, genre=genre)
     assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE})
     if picture:
@@ -380,15 +336,13 @@ class Images:
 
     def __call__(self, url: str) -> bytes:
         from tests.test_tagging_engine import _jpeg
-
         self.asked.append(url)
         return _jpeg(400, 400)
 
 
 def test_a_file_discogs_tagged_with_no_picture_gets_beatport_s_cover(tmp_path, silence):
-    seen: list[str] = []
     path = a_file(tmp_path, silence)
-    fetch = _both_answer(seen)
+    fetch, seen = _both_answer()
     images = Images()
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=images)
     assert result.genre_written == discogs_tag("Deep House")
@@ -399,15 +353,13 @@ def test_a_file_discogs_tagged_with_no_picture_gets_beatport_s_cover(tmp_path, s
     assert images.asked == [beatport_row_art()]
     assert beatport_asked(seen) == 1
     assert [(one.source, one.answer) for one in result.answers] == [
-        (searchers.DISCOGS, "matched"),
-        (searchers.BEATPORT, "matched"),
+        (searchers.DISCOGS, "matched"), (searchers.BEATPORT, "matched")
     ]
 
 
 def test_a_file_discogs_tagged_that_has_a_picture_sends_beatport_nothing(tmp_path, silence):
-    seen: list[str] = []
     path = a_file(tmp_path, silence, picture=True)
-    fetch = _both_answer(seen)
+    fetch, seen = _both_answer()
     images = Images()
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=images)
     assert result.genre_written == discogs_tag("Deep House")
@@ -418,9 +370,8 @@ def test_a_file_discogs_tagged_that_has_a_picture_sends_beatport_nothing(tmp_pat
 
 
 def test_a_tagged_file_with_no_picture_keeps_its_genre_and_gets_the_cover(tmp_path, silence):
-    seen: list[str] = []
     path = a_file(tmp_path, silence, genre="Somebody's Own Word")
-    fetch = _both_answer(seen)
+    fetch, seen = _both_answer()
     images = Images()
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=images)
     assert result.skipped == tag.HAS_GENRE and result.genre_written is None
@@ -432,7 +383,7 @@ def test_a_tagged_file_with_no_picture_keeps_its_genre_and_gets_the_cover(tmp_pa
 def test_a_tagged_file_with_a_picture_is_never_searched(tmp_path, silence):
     seen: list[str] = []
     path = a_file(tmp_path, silence, genre="Somebody's Own Word", picture=True)
-    fetch = routed(search=results(7), releases=matching_release("Deep House"), seen=seen)
+    fetch = deep_house(seen=seen)
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=Images())
     assert result.skipped == tag.HAS_GENRE
     assert seen == []
@@ -441,7 +392,7 @@ def test_a_tagged_file_with_a_picture_is_never_searched(tmp_path, silence):
 
 def test_a_refused_picture_ask_keeps_the_genre_and_says_beatport_went_unread(tmp_path, silence):
     path = a_file(tmp_path, silence)
-    fetch = routed(search=results(7), releases=matching_release("Deep House"), beatport=CHALLENGE)
+    fetch = deep_house(beatport=CHALLENGE)
     images = Images()
     result = tag.tag_one(path, searcher=build(fetch), fetch_image=images)
     assert result.genre_written == discogs_tag("Deep House")
@@ -454,18 +405,15 @@ def test_a_refused_picture_ask_keeps_the_genre_and_says_beatport_went_unread(tmp
 
 def test_a_picture_ask_that_raises_never_fails_the_file(tmp_path, silence):
     path = a_file(tmp_path, silence)
-    fetch = routed(search=results(7), releases=matching_release("Deep House"))
+    fetch = deep_house()
 
     def exploding(hit: SearchHit) -> SearchHit:
         raise RuntimeError("the picture seam fell over")
-
     real = build(fetch)
 
     def searcher(artist: str, title: str) -> SearchHit | None:
         from dataclasses import replace
-
         return replace(real(artist, title), ask_picture=exploding)
-
     result = tag.tag_one(path, searcher=searcher, fetch_image=Images())
     assert result.genre_written == discogs_tag("Deep House")
     assert result.art_fetch == tag.ART_UNAVAILABLE
@@ -474,9 +422,7 @@ def test_a_picture_ask_that_raises_never_fails_the_file(tmp_path, silence):
 
 def test_tag_suggest_sends_beatport_nothing_after_a_discogs_match():
     from cratekit.tagging import suggest
-
-    seen: list[str] = []
-    fetch = _both_answer(seen)
+    fetch, seen = _both_answer()
     asked = suggest.catalogue_lookup(build(fetch))(ARTIST, TITLE, "")
     assert asked.source_genre == "Deep House"
     assert beatport_asked(seen) == 0
@@ -486,9 +432,7 @@ def test_tag_suggest_sends_beatport_nothing_after_a_discogs_match():
 
 
 def test_a_token_refused_on_its_shape_still_lets_beatport_decide_and_lend_its_cover():
-    seen: list[str] = []
-    fetch = routed(search=results(7), releases=matching_release("Deep House"),
-                   beatport=beatport_row(), seen=seen)
+    fetch, seen = _both_answer()
     hit = build(fetch, token="two words")(ARTIST, TITLE)
     assert (hit.source, hit.genre) == (searchers.BEATPORT, beatport_tag())
     assert hit.art_url == beatport_row_art()
@@ -515,8 +459,7 @@ def test_a_token_refused_beside_a_refused_beatport_is_still_the_runs_refusal():
 def test_a_401_is_sent_once_and_beatport_decides_every_file():
     seen: list[str] = []
     fetch = routed(
-        search=searchers.Fetched(note="HTTP 401", status=401), beatport=beatport_row(), seen=seen
-    )
+        search=searchers.Fetched(note="HTTP 401", status=401), beatport=beatport_row(), seen=seen)
     searcher = build(fetch)
     for _ in range(3):
         hit = searcher(ARTIST, TITLE)
@@ -528,8 +471,7 @@ def test_a_401_is_sent_once_and_beatport_decides_every_file():
 
 def test_a_tagged_file_still_gets_its_cover_when_the_token_is_refused(tmp_path, silence):
     path = a_file(tmp_path, silence, genre="Somebody's Own Word")
-    fetch = routed(search=results(7), releases=matching_release("Deep House"),
-                   beatport=beatport_row())
+    fetch = deep_house(beatport=beatport_row())
     result = tag.tag_one(path, searcher=build(fetch, token="two words"), fetch_image=Images())
     assert result.skipped == tag.HAS_GENRE
     assert result.art_fetch == tag.ART_EMBEDDED
@@ -550,19 +492,15 @@ def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propaga
     class Broken:
         def ask(self, artist, title, *, track=None):
             raise refuse("internal-error", "the asker broke", remedy=Remedy.REPORT_DEFECT)
-
     fetch = routed(search=results(), beatport=beatport_row())
     searcher = searchers.catalogue_searcher(
-        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=Broken()
-    )
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=Broken())
     with pytest.raises(CratekitError) as raised:
         searcher(ARTIST, TITLE)
     assert raised.value.cause.reason == "internal-error"
 
 
-def test_the_no_token_count_leaves_out_files_whose_genre_was_their_own_or_their_labels(
-    monkeypatch,
-):
+def test_the_no_token_count_leaves_out_files_whose_genre_was_their_own_or_their_labels(monkeypatch):
     """With no token only files whose genre was owed to a catalogue count as not-asked."""
     from cratekit.tagging import artifacts
     from cratekit.tagging import cli as tag_cli
@@ -577,7 +515,6 @@ def test_the_no_token_count_leaves_out_files_whose_genre_was_their_own_or_their_
             ],
             **fields,
         }
-
     reports = [
         record(item="owed.flac", genre_written="House", source=searchers.BEATPORT),
         record(item="own.flac", skipped=tag.HAS_GENRE),

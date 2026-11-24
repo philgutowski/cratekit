@@ -26,28 +26,18 @@ BATCH = "2026-08-24 Tidal playlists"
 
 
 def _intake_record(
-    cfg: config.Config,
-    landed: date,
-    entries: list[dict],
-    *,
-    imported: bool = True,
-    tag: str = "landing",
-) -> None:
+        cfg: config.Config, landed: date, entries: list[dict], *, imported: bool = True,
+        tag: str = "landing") -> None:
     """An intake file's session record naming account playlists, imported or not."""
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
     detail: dict = {ingest.INBOX_PLAYLISTS_KEY: entries}
     if imported:
         detail[session.IMPORT_VERIFIED_KEY] = {"at": started.isoformat(), "evidence": "a test"}
-    session.write_record(
-        session.SessionRecord(
-            session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-{tag}",
-            workflow=native.WORKFLOW,
-            started=started.isoformat(),
-            state=session.SessionState.OPEN if imported else session.SessionState.AWAITING_IMPORT,
-            detail=detail,
-        ),
-        cfg,
-    )
+    state = session.SessionState.OPEN if imported else session.SessionState.AWAITING_IMPORT
+    record = session.SessionRecord(
+        session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-{tag}", workflow=native.WORKFLOW,
+        started=started.isoformat(), state=state, detail=detail)
+    session.write_record(record, cfg)
 
 
 def _batch_folder(cfg: config.Config, name: str = BATCH) -> None:
@@ -62,8 +52,7 @@ def _shown(plan: rotate.RotationPlan) -> dict[str, object]:
 
 
 def test_an_intake_files_playlist_is_recognised_by_its_recorded_name_and_aged_from_it(
-    native_library,
-):
+        native_library):
     cfg, root_id = native_library
     # Imported today, so the row's own date says nothing about when it landed.
     _node(cfg, "Sunset Warmup", under=root_id, age=0)
@@ -87,22 +76,16 @@ def test_an_intake_files_playlist_is_recognised_by_its_recorded_name_and_aged_fr
         # of the same name a person made is not the landing's.
         (True, True, {"id": "999999"}),
     ],
-    ids=["batch-folder-gone", "never-imported", "entry-by-identifier"],
-)
+    ids=["batch-folder-gone", "never-imported", "entry-by-identifier"])
 def test_a_recorded_name_whose_batch_folder_is_gone_is_left_alone(
-    native_library, folder, imported, entry
-):
+        native_library, folder, imported, entry):
     """Nor is an intake file nobody imported, nor an entry with an identifier, read by its name."""
     cfg, root_id = native_library
     _node(cfg, "Sunset Warmup", under=root_id, age=0)
     if folder:
         _batch_folder(cfg)
-    _intake_record(
-        cfg,
-        TODAY - timedelta(days=40),
-        [{**entry, "name": "Sunset Warmup", "batch": BATCH}],
-        imported=imported,
-    )
+    entries = [{**entry, "name": "Sunset Warmup", "batch": BATCH}]
+    _intake_record(cfg, TODAY - timedelta(days=40), entries, imported=imported)
     left = _shown(_plan(cfg))["Sunset Warmup"]
     assert isinstance(left, rotate.Left)
     assert left.kind == "playlist"
@@ -115,11 +98,9 @@ def test_the_latest_landing_of_a_name_is_the_one_it_is_aged_by(native_library):
     later = "2026-09-23 Tidal playlists"
     _batch_folder(cfg, later)
     _intake_record(
-        cfg, TODAY - timedelta(days=40), [{"name": "Sunset Warmup", "batch": BATCH}], tag="a"
-    )
+        cfg, TODAY - timedelta(days=40), [{"name": "Sunset Warmup", "batch": BATCH}], tag="a")
     _intake_record(
-        cfg, TODAY - timedelta(days=10), [{"name": "Sunset Warmup", "batch": later}], tag="b"
-    )
+        cfg, TODAY - timedelta(days=10), [{"name": "Sunset Warmup", "batch": later}], tag="b")
     batch = _shown(_plan(cfg))["Sunset Warmup"]
     assert isinstance(batch, rotate.Batch)
     assert batch.age_days == 10

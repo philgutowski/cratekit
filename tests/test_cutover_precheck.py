@@ -42,18 +42,12 @@ def _export(cfg: config.Config) -> Path:
 
 
 def _snapshot(cfg: config.Config) -> Path:
-    store = snapshot.store_root(cfg)
-    capture = store / "2026-08-01T000000Z-deadbeefcafebabe"
+    capture = snapshot.store_root(cfg) / "2026-08-01T000000Z-deadbeefcafebabe"
     capture.mkdir(parents=True)
     record = snapshot.Capture(
-        stamp=capture.name,
-        root=capture,
-        database=capture / "master.db",
-        integrity_verified=True,
-    )
-    (capture / snapshot.MANIFEST_NAME).write_text(
-        json.dumps(record.to_json()) + "\n", encoding="utf-8"
-    )
+        stamp=capture.name, root=capture, database=capture / "master.db", integrity_verified=True)
+    manifest = json.dumps(record.to_json()) + "\n"
+    (capture / snapshot.MANIFEST_NAME).write_text(manifest, encoding="utf-8")
     return capture
 
 
@@ -62,25 +56,35 @@ def _ready(cfg: config.Config) -> Path:
     return _export(cfg)
 
 
+def _flip(cfg: config.Config, export: Path, *, tree=TREE_ID, root_id="root-1", on=CUTOVER_ON,
+          source=DERIVATION):
+    """The flip of ``tree`` onto ``root_id``, ``TREE_ID`` onto ``root-1`` unless told otherwise."""
+    return tree_registry.flip(cfg, tree, root_id=root_id, on=on, source=source, export=export)
+
+
 def _flip_refusal(cfg: config.Config, export: Path):
     """The cause the flip of ``TREE_ID`` onto ``root-1`` refuses with."""
     with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg, TREE_ID, root_id="root-1", on=CUTOVER_ON, source=DERIVATION, export=export
-        )
+        _flip(cfg, export)
     return excinfo.value.cause
 
 
+def _record(cfg: config.Config, session_id: str, *, workflow="tree-membership", started=None,
+            **fields) -> None:
+    """One session record, as a run of ``workflow`` started at ``started`` (or now) left it."""
+    started = output.timestamp() if started is None else started
+    record = session.SessionRecord(
+        session_id=session_id, workflow=workflow, started=started, **fields)
+    session.write_record(record, cfg)
+
+
+def _changed(**counts) -> session.ChangeSummary:
+    """What one run wrote to ``TREE_ID``, or to the tree ``counts`` names."""
+    return session.ChangeSummary((session.TreeChange(**{"tree": TREE_ID, **counts}),))
+
+
 def test_a_ready_library_flips_one_tree_and_leaves_the_rest_on_the_bridge(cfg):
-    export = _ready(cfg)
-    after = tree_registry.flip(
-        cfg,
-        TREE_ID,
-        root_id="root-1",
-        on=CUTOVER_ON,
-        source=DERIVATION,
-        export=export,
-    )
+    after = _flip(cfg, _ready(cfg))
     assert after.is_database_native(TREE_ID)
     assert after.is_on_the_bridge("inbox")
     record = after.record(TREE_ID)
@@ -91,15 +95,7 @@ def test_a_ready_library_flips_one_tree_and_leaves_the_rest_on_the_bridge(cfg):
 
 def test_an_open_run_blocks_the_flip(cfg):
     export = _ready(cfg)
-    session.write_record(
-        session.SessionRecord(
-            session_id="s-open",
-            workflow="deferred-routing",
-            started=output.timestamp(),
-            state=session.SessionState.OPEN,
-        ),
-        cfg,
-    )
+    _record(cfg, "s-open", workflow="deferred-routing", state=session.SessionState.OPEN)
     assert _flip_refusal(cfg, export).reason == "cutover-open-run"
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
 
@@ -137,30 +133,14 @@ def test_an_unverified_capture_does_not_count_as_a_snapshot(cfg):
 
 def test_the_intake_tree_flips_on_a_rebuildable_source_like_any_other(cfg):
     """The intake tree flips on a rebuildable source like any other (R-746)."""
-    export = _ready(cfg)
-    tree_registry.flip(
-        cfg,
-        "inbox",
-        root_id="root-inbox",
-        on=CUTOVER_ON,
-        source=DERIVATION,
-        export=export,
-    )
+    _flip(cfg, _ready(cfg), tree="inbox", root_id="root-inbox")
     recorded = tree_registry.read(cfg)
     assert recorded.is_database_native("inbox")
     assert recorded.record("inbox").root_id == "root-inbox"
 
 
 def test_a_revert_puts_the_tree_back_on_the_bridge(cfg):
-    export = _ready(cfg)
-    tree_registry.flip(
-        cfg,
-        TREE_ID,
-        root_id="root-1",
-        on=CUTOVER_ON,
-        source=DERIVATION,
-        export=export,
-    )
+    _flip(cfg, _ready(cfg))
     after = tree_registry.revert_cutover(cfg, TREE_ID)
     assert after.is_on_the_bridge(TREE_ID)
     assert tree_registry.read(cfg).is_on_the_bridge(TREE_ID)
@@ -169,14 +149,8 @@ def test_a_revert_puts_the_tree_back_on_the_bridge(cfg):
 def test_a_hand_curated_tree_still_cannot_flip(cfg):
     export = _ready(cfg)
     with pytest.raises(tree_registry.TreeModeRefused):
-        tree_registry.flip(
-            cfg,
-            "record_labels",
-            root_id="root-2",
-            on=CUTOVER_ON,
-            source=tree_registry.DerivationSource.CURATED,
-            export=export,
-        )
+        curated = tree_registry.DerivationSource.CURATED
+        _flip(cfg, export, tree="record_labels", root_id="root-2", source=curated)
     assert tree_registry.read(cfg).is_on_the_bridge("record_labels")
 
 
@@ -186,20 +160,14 @@ def test_a_hand_curated_tree_still_cannot_flip(cfg):
 def test_the_report_names_every_check_in_the_order_the_assertion_refuses(cfg):
     export = _ready(cfg)
     results = tree_registry.cutover_precheck(cfg, export=export)
-    assert [result.check for result in results] == [
-        "no-open-run",
-        "no-pending-intake-xml",
-        "fresh-export",
-        "verified-snapshot",
-    ]
+    checks = [result.check for result in results]
+    assert checks == ["no-open-run", "no-pending-intake-xml", "fresh-export", "verified-snapshot"]
     assert all(result.passed for result in results)
 
 
 def test_the_report_carries_each_refusal_and_does_not_stop_at_the_first(cfg):
     """Nothing is ready here, and the two checks that can fail both say so."""
-    results = tree_registry.cutover_precheck(
-        cfg, export=Path(cfg.library.root) / "nope.xml"
-    )
+    results = tree_registry.cutover_precheck(cfg, export=Path(cfg.library.root) / "nope.xml")
     failed = {result.check: result.cause.reason for result in results if not result.passed}
     assert failed == {
         "fresh-export": "cutover-export-missing",
@@ -209,38 +177,20 @@ def test_the_report_carries_each_refusal_and_does_not_stop_at_the_first(cfg):
 
 def test_the_report_and_the_assertion_refuse_with_one_cause(cfg):
     export = _export(cfg)
-    (failing,) = [
-        result
-        for result in tree_registry.cutover_precheck(cfg, export=export)
-        if not result.passed
-    ]
+    results = tree_registry.cutover_precheck(cfg, export=export)
+    (failing,) = [result for result in results if not result.passed]
     with pytest.raises(CratekitError) as excinfo:
         tree_registry.assert_cutover_ready(cfg, export=export)
     assert excinfo.value.cause == failing.cause
 
 
 def _native_write(cfg: config.Config, *, tree: str = TREE_ID, created: int = 1) -> None:
-    session.write_record(
-        session.SessionRecord(
-            session_id=f"s-write-{tree}-{created}",
-            workflow="tree-membership",
-            started=output.timestamp(),
-            state=session.SessionState.CLOSED,
-            change=session.ChangeSummary((session.TreeChange(tree=tree, created=created),)),
-        ),
-        cfg,
-    )
+    change = _changed(tree=tree, created=created)
+    _record(cfg, f"s-write-{tree}-{created}", state=session.SessionState.CLOSED, change=change)
 
 
 def _flipped(cfg: config.Config) -> None:
-    tree_registry.flip(
-        cfg,
-        TREE_ID,
-        root_id="root-1",
-        on=CUTOVER_ON,
-        source=DERIVATION,
-        export=_ready(cfg),
-    )
+    _flip(cfg, _ready(cfg))
 
 
 def test_a_revert_after_a_native_write_is_refused_by_the_library_itself(cfg):
@@ -255,16 +205,7 @@ def test_a_revert_after_a_native_write_is_refused_by_the_library_itself(cfg):
 
 def test_an_update_counts_as_a_native_write_as_a_creation_does(cfg):
     _flipped(cfg)
-    session.write_record(
-        session.SessionRecord(
-            session_id="s-update",
-            workflow="tree-membership",
-            started=output.timestamp(),
-            state=session.SessionState.CLOSED,
-            change=session.ChangeSummary((session.TreeChange(tree=TREE_ID, updated=3),)),
-        ),
-        cfg,
-    )
+    _record(cfg, "s-update", state=session.SessionState.CLOSED, change=_changed(updated=3))
     assert tree_registry.native_writes(cfg, TREE_ID) == ("s-update",)
     with pytest.raises(CratekitError):
         tree_registry.assert_revertible(cfg, TREE_ID)
@@ -276,9 +217,6 @@ def test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open(cfg):
     _native_write(cfg, created=0)
     assert tree_registry.native_writes(cfg, TREE_ID) == ()
     assert tree_registry.revert_cutover(cfg, TREE_ID).is_on_the_bridge(TREE_ID)
-
-
-# ═══ Edge cases of the report and the revert guard ══════════════════════════
 
 
 def _unreadable_record(cfg: config.Config) -> Path:
@@ -308,15 +246,7 @@ def test_a_record_nobody_can_read_refuses_the_flip_rather_than_reading_as_no_ope
 
 def test_an_open_run_refuses_the_revert_because_it_may_have_written(cfg):
     _flipped(cfg)
-    session.write_record(
-        session.SessionRecord(
-            session_id="s-killed",
-            workflow="tree-membership",
-            started=output.timestamp(),
-            state=session.SessionState.OPEN,
-        ),
-        cfg,
-    )
+    _record(cfg, "s-killed", state=session.SessionState.OPEN)
     with pytest.raises(CratekitError) as excinfo:
         tree_registry.revert_cutover(cfg, TREE_ID)
     assert excinfo.value.cause.reason == "cutover-open-run"
@@ -325,16 +255,8 @@ def test_an_open_run_refuses_the_revert_because_it_may_have_written(cfg):
 
 
 def _write_started(cfg: config.Config, session_id: str, started: str) -> None:
-    session.write_record(
-        session.SessionRecord(
-            session_id=session_id,
-            workflow="tree-membership",
-            started=started,
-            state=session.SessionState.CLOSED,
-            change=session.ChangeSummary((session.TreeChange(tree=TREE_ID, created=2),)),
-        ),
-        cfg,
-    )
+    closed = session.SessionState.CLOSED
+    _record(cfg, session_id, started=started, state=closed, change=_changed(created=2))
 
 
 def test_a_write_under_an_earlier_cutover_does_not_close_this_ones_door(cfg):
@@ -346,25 +268,20 @@ def test_a_write_under_an_earlier_cutover_does_not_close_this_ones_door(cfg):
 
 
 @pytest.mark.parametrize(
-    "started",
-    [
+    ("session_id", "started", "counted"), [
         # The cutover day and the day before: a start is UTC, the day is the local date.
-        "2026-08-01T00:05:00Z",
-        "2026-07-31T23:50:00Z",
+        pytest.param("s-near", "2026-08-01T00:05:00Z", ("s-near",), id="the-cutover-day"),
+        pytest.param("s-near", "2026-07-31T23:50:00Z", ("s-near",), id="the-day-before"),
         # A start nothing can place counts, because it cannot be shown to predate.
-        "not a timestamp",
-    ],
-)
-def test_a_write_that_cannot_be_shown_to_predate_the_cutover_counts(cfg, started):
-    _write_started(cfg, "s-near", started)
+        pytest.param("s-near", "not a timestamp", ("s-near",), id="a-start-nothing-can-place"),
+        # The day before the margin is the first day left out.
+        pytest.param("s-two-days", "2026-07-30T23:59:59Z", (), id="the-day-before-the-margin"),
+    ])
+def test_a_write_counts_unless_it_can_be_shown_to_predate_the_cutover(
+        cfg, session_id, started, counted):
+    _write_started(cfg, session_id, started)
     _flipped(cfg)
-    assert tree_registry.native_writes(cfg, TREE_ID) == ("s-near",)
-
-
-def test_the_day_before_the_margin_is_the_first_day_left_out(cfg):
-    _write_started(cfg, "s-two-days", "2026-07-30T23:59:59Z")
-    _flipped(cfg)
-    assert tree_registry.native_writes(cfg, TREE_ID) == ()
+    assert tree_registry.native_writes(cfg, TREE_ID) == counted
 
 
 def test_a_tree_already_recorded_is_not_recorded_again(cfg):
@@ -373,14 +290,7 @@ def test_a_tree_already_recorded_is_not_recorded_again(cfg):
     export = _export(cfg)
     before = tree_registry.path_for(cfg).read_bytes()
     with pytest.raises(CratekitError) as excinfo:
-        tree_registry.flip(
-            cfg,
-            TREE_ID,
-            root_id="root-2",
-            on=date(2026, 9, 1),
-            source=DERIVATION,
-            export=export,
-        )
+        _flip(cfg, export, root_id="root-2", on=date(2026, 9, 1))
     assert excinfo.value.cause.reason == "cutover-already-recorded"
     assert excinfo.value.cause.detail["root_id"] == "root-1"
     assert tree_registry.path_for(cfg).read_bytes() == before
@@ -390,9 +300,7 @@ def test_a_reverted_tree_can_cut_over_again(cfg):
     _flipped(cfg)
     export = _export(cfg)
     tree_registry.revert_cutover(cfg, TREE_ID)
-    after = tree_registry.flip(
-        cfg, TREE_ID, root_id="root-2", on=CUTOVER_ON, source=DERIVATION, export=export
-    )
+    after = _flip(cfg, export, root_id="root-2")
     assert after.record(TREE_ID).root_id == "root-2"
 
 
@@ -405,7 +313,6 @@ def test_the_revert_holds_the_session_lock_while_it_asks_and_writes(cfg, monkeyp
     def watching(config_in_hand, tree_id):
         held_during.append(bool(session._HELD))
         return real(config_in_hand, tree_id)
-
     monkeypatch.setattr(tree_registry, "assert_revertible", watching)
     tree_registry.revert_cutover(cfg, TREE_ID)
     assert held_during == [True]
