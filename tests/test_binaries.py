@@ -134,7 +134,9 @@ def test_a_missing_platform_binary_does_not_tell_the_user_to_install_it(
 
 def test_the_binary_failures_carry_four_different_remedies(monkeypatch, tmp_path):
     """KTD25: a broken override, a platform binary, a placeable and an unplaceable
-    install need four sentences from the CLI, separable by more than message text."""
+    install need four sentences from the CLI, separable by more than message text.
+    The platform binary and the unplaceable one carry no hint, so the remedy alone
+    tells them apart."""
     monkeypatch.setenv(binaries.env_var("ffmpeg"), str(tmp_path / "missing"))
     with pytest.raises(binaries.BinaryNotFound) as excinfo:
         binaries.resolve("ffmpeg")
@@ -153,6 +155,7 @@ def test_the_binary_failures_carry_four_different_remedies(monkeypatch, tmp_path
     assert platform_owned.remedy is binaries.Remedy.UNSUPPORTED_PLATFORM
     assert installable.remedy is binaries.Remedy.INSTALL_BINARY
     assert unplaceable.remedy is binaries.Remedy.INSTALL_BINARY_SOURCE_UNKNOWN
+    assert platform_owned.hint is None and unplaceable.hint is None
 
     remedies = {
         broken_override.remedy,
@@ -169,18 +172,6 @@ def test_a_binary_remedy_is_a_token_and_not_the_command_a_user_types():
         assert " " not in remedy.value
         assert "crate " not in remedy.value
         assert not re.search(r"\b(?:brew|apt|pipx|pip|sudo)\b", remedy.value)
-
-
-def test_a_missing_binary_carries_a_remedy_even_when_it_carries_no_hint(
-    monkeypatch, tmp_path
-):
-    """Two failures carry no hint, a platform binary and an unplaceable one; the remedy tells them apart."""
-    platform_owned = _resolve_missing(
-        monkeypatch, tmp_path, sorted(binaries.PLATFORM_BINARIES)[0]
-    )
-    unplaceable = _unplaceable(monkeypatch, tmp_path)
-    assert platform_owned.hint is None and unplaceable.hint is None
-    assert platform_owned.remedy is not unplaceable.remedy
 
 
 def test_a_spawned_process_does_not_inherit_an_opted_in_credential(monkeypatch):
