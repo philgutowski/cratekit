@@ -788,26 +788,21 @@ def test_a_self_titled_tracks_dash_version_the_list_lacks_finds_its_own_row_only
     assert _written(tmp_path, silence, fetch, title=title) is None
 
 
-@pytest.mark.parametrize(
-    ("artist", "title", "own", "other"),
-    [
-        # The next part naming the artist keeps a self titled first part the title.
-        (ARTIST, f"08A - 124 - {ARTIST} - {ARTIST} - Sun Path", ARTIST, "Sun Path"),
-        # A tag crediting two names, or a feature, knows the name alone.
-        (f"{ARTIST} & Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
-        (f"{ARTIST} feat. Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
-        # A number outside a tempo's range before anything else is a title.
-        (ARTIST, f"909 - {ARTIST} - Sun Path", "909", "Sun Path"),
-        # A number after a key is its tempo whatever its value.
-        (ARTIST, "08A - 300 - Sun Path - Tide", "Sun Path", "Tide"),
-        # The part before a track numbered title is its album, never read alone.
-        (ARTIST, "08A - 124 - Sun Path - 02 Tide", "Tide", "Sun Path"),
-        (ARTIST, f"{ARTIST} - Sun Path - 02 Tide Extended Mix", "Tide", "Sun Path"),
-    ],
-)
-def test_each_rule_of_the_title_start_holds(artist, title, own, other):
-    assert searchers._title_matches(title, own, artist=artist)
-    assert not searchers._title_matches(title, other, artist=artist)
+#: (artist tag, file title, its own row, another recording): each rule of the title's start.
+TITLE_START = [
+    # The next part naming the artist keeps a self titled first part the title.
+    (ARTIST, f"08A - 124 - {ARTIST} - {ARTIST} - Sun Path", ARTIST, "Sun Path"),
+    # A tag crediting two names, or a feature, knows the name alone.
+    (f"{ARTIST} & Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
+    (f"{ARTIST} feat. Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
+    # A number outside a tempo's range before anything else is a title.
+    (ARTIST, f"909 - {ARTIST} - Sun Path", "909", "Sun Path"),
+    # A number after a key is its tempo whatever its value.
+    (ARTIST, "08A - 300 - Sun Path - Tide", "Sun Path", "Tide"),
+    # The part before a track numbered title is its album, never read alone.
+    (ARTIST, "08A - 124 - Sun Path - 02 Tide", "Tide", "Sun Path"),
+    (ARTIST, f"{ARTIST} - Sun Path - 02 Tide Extended Mix", "Tide", "Sun Path"),
+]
 
 
 # H. R-1636, review round two: a title holding the artist's name, and both ways' end
@@ -837,7 +832,7 @@ ROUND_TWO = [
 ]
 
 
-@pytest.mark.parametrize(("artist", "title", "own", "other"), ROUND_TWO)
+@pytest.mark.parametrize(("artist", "title", "own", "other"), TITLE_START + ROUND_TWO)
 def test_round_two_a_title_keeps_its_own_row_and_takes_no_other(artist, title, own, other):
     assert searchers._title_matches(title, own, artist=artist)
     assert not searchers._title_matches(title, other, artist=artist)
@@ -857,44 +852,35 @@ def test_round_two_no_genre_is_written_off_another_recording(tmp_path, silence, 
     assert _written(tmp_path, silence, fetch, title=title, artist=artist) is None
 
 
-@pytest.mark.parametrize(
-    ("artist", "title", "own"),
-    [
-        # An initial stands for a word of a name of two words or more.
-        (ARTIST, "08A - 124 - B. Badie - Sun Path", "Sun Path"),
-        # "The" opens a name on either side.
-        ("The Black Madonna", "08A - 124 - Black Madonna - Sun Path", "Sun Path"),
-        # Every join a credit is written with.
-        (f"{ARTIST}; Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
-        (f"{ARTIST} + Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
-        (ARTIST, f"08A - 124 - {ARTIST} pres. Tide - Sun Path", "Sun Path"),
-        # A track number glued to the first part, or alone before it.
-        (ARTIST, f"01 {ARTIST} - Sun Path", "Sun Path"),
-        (ARTIST, f"01 - {ARTIST} - Sun Path", "Sun Path"),
-        # A part after a lone track number is the title, even the artist's name.
-        (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", ARTIST),
-        # Two parts crediting the artist read the second too.
-        (ARTIST, f"08A - 124 - Tide & {ARTIST} - {ARTIST}", ARTIST),
-    ],
-)
-def test_each_way_a_credit_is_written_is_known(artist, title, own):
-    assert searchers._title_matches(title, own, artist=artist)
+#: (artist tag, file title, its own row): each way a credit is written is known.
+CREDIT_WAYS = [
+    # An initial stands for a word of a name of two words or more.
+    (ARTIST, "08A - 124 - B. Badie - Sun Path", "Sun Path"),
+    # "The" opens a name on either side.
+    ("The Black Madonna", "08A - 124 - Black Madonna - Sun Path", "Sun Path"),
+    # Every join a credit is written with.
+    (f"{ARTIST}; Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
+    (f"{ARTIST} + Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST} pres. Tide - Sun Path", "Sun Path"),
+    # A track number glued to the first part, or alone before it.
+    (ARTIST, f"01 {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"01 - {ARTIST} - Sun Path", "Sun Path"),
+    # A part after a lone track number is the title, even the artist's name.
+    (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", ARTIST),
+    # Two parts crediting the artist read the second too.
+    (ARTIST, f"08A - 124 - Tide & {ARTIST} - {ARTIST}", ARTIST),
+]
 
-
-@pytest.mark.parametrize(
-    ("artist", "title", "other"),
-    [
-        (ARTIST, "08A - 124 - B. Badie - Sun Path", "B Badie"),
-        (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", "Sun Path"),
-        (ARTIST, "08A - 124 - Badie - Sun Path", "Sun Path"),
-        ("Tide", "08A - 124 - Love And Tides - Sun Path", "Sun Path"),
-        # "with" and "and" are in titles: a title is never taken for a credit.
-        (ARTIST, f"{ARTIST} - Dancing With {ARTIST}", ARTIST),
-        (ARTIST, f"08A - 124 - Love And {ARTIST} - Sun Path", "Sun Path"),
-    ],
-)
-def test_what_is_not_the_artists_credit_is_never_passed_over(artist, title, other):
-    assert not searchers._title_matches(title, other, artist=artist)
+#: (artist tag, file title, a row): what is not the artist's credit is never passed over.
+NOT_A_CREDIT = [
+    (ARTIST, "08A - 124 - B. Badie - Sun Path", "B Badie"),
+    (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", "Sun Path"),
+    (ARTIST, "08A - 124 - Badie - Sun Path", "Sun Path"),
+    ("Tide", "08A - 124 - Love And Tides - Sun Path", "Sun Path"),
+    # "with" and "and" are in titles: a title is never taken for a credit.
+    (ARTIST, f"{ARTIST} - Dancing With {ARTIST}", ARTIST),
+    (ARTIST, f"08A - 124 - Love And {ARTIST} - Sun Path", "Sun Path"),
+]
 
 
 # I. R-1646: "Artist - X" with X ending in a version is read neither way alone
@@ -1413,11 +1399,6 @@ WHOLE_NAME_STILL = [
 ]
 
 
-@pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_NOT)
-def test_a_whole_name_is_never_shed_across_its_dashes(artist, title, row):
-    assert not searchers._title_matches(title, row, artist=artist)
-
-
 def test_a_lossy_file_named_with_a_track_number_takes_no_self_titled_genre(tmp_path, silence):
     """F1: "[MP3] 01 - Artist - (Intro)" read past the marker left the artist's name."""
     rendered = render_all(NameSpec(stem=f"01 - {ARTIST} - (Intro)", suffix=".flac", lossy=True), template=_TEMPLATE)
@@ -1438,9 +1419,9 @@ def test_beatport_ranks_no_row_by_brackets_shed_across_a_dash(title):
     assert _beatport_answer(_beatport_hit(title, rows[:1])) == "miss"
 
 
-@pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_STILL)
-def test_what_the_whole_name_found_the_parse_still_reads(artist, title, row):
-    assert searchers._title_matches(title, row, artist=artist)
+@pytest.mark.parametrize(("artist", "title", "own"), CREDIT_WAYS + WHOLE_NAME_STILL)
+def test_each_way_a_credit_is_written_is_known(artist, title, own):
+    assert searchers._title_matches(title, own, artist=artist)
 
 
 # U324. A credit spelled with a letter accent stripping leaves alone
@@ -1475,20 +1456,22 @@ def test_a_credit_spelled_with_a_letter_nfkd_leaves_is_the_artists(artist, title
     assert titles.question(title, artist).title == asked
 
 
-@pytest.mark.parametrize(
-    ("artist", "title", "other"),
-    [
-        # "o" is not "oe": a fold reads a letter one way only.
-        ("Trentemøller", "08A - 124 - Trentemoeller - Sun Path", "Sun Path"),
-        ("Straße Bloom", "08A - 124 - Strase Bloom - Sun Path", "Sun Path"),
-        # An initial stands only for a word it opens (the mutation table's F20).
-        ("Þórður Badie", "08A - 124 - Æ. Badie - Sun Path", "Sun Path"),
-        ("Bernard Badie", "08A - 124 - C. Badie - Sun Path", "Sun Path"),
-        # A word outside the table folding to two letters is no initial, as on main.
-        ("Ijsbrand Badie", "08A - 124 - Ĳ. Badie - Sun Path", "Sun Path"),
-        # A title holding the folded name is still a title.
-        ("Trentemøller", "08A - 124 - Trentemoller Theme - Sun Path", "Sun Path"),
-    ],
-)
-def test_a_folded_name_is_no_wider_than_its_letters(artist, title, other):
-    assert not searchers._title_matches(title, other, artist=artist)
+#: (artist tag, file title, a row): a folded name is no wider than its letters.
+NOT_FOLDED = [
+    # "o" is not "oe": a fold reads a letter one way only.
+    ("Trentemøller", "08A - 124 - Trentemoeller - Sun Path", "Sun Path"),
+    ("Straße Bloom", "08A - 124 - Strase Bloom - Sun Path", "Sun Path"),
+    # An initial stands only for a word it opens (the mutation table's F20).
+    ("Þórður Badie", "08A - 124 - Æ. Badie - Sun Path", "Sun Path"),
+    ("Bernard Badie", "08A - 124 - C. Badie - Sun Path", "Sun Path"),
+    # A word outside the table folding to two letters is no initial, as on main.
+    ("Ijsbrand Badie", "08A - 124 - Ĳ. Badie - Sun Path", "Sun Path"),
+    # A title holding the folded name is still a title.
+    ("Trentemøller", "08A - 124 - Trentemoller Theme - Sun Path", "Sun Path"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "row"), NOT_A_CREDIT + WHOLE_NAME_NOT + NOT_FOLDED)
+def test_a_whole_name_is_never_shed_across_its_dashes(artist, title, row):
+    """Not the artist's credit, never shed across its dashes, nor wider than its letters."""
+    assert not searchers._title_matches(title, row, artist=artist)
