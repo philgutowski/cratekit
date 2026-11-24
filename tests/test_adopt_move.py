@@ -1,10 +1,8 @@
 """R-758: a track is moved from the competing sub it holds to the one its file names.
 
 ``crate adopt move`` acts on the list adoption withholds, and is the first verb
-that removes a membership. The pure plan is held first, then the verb through
-the real dispatcher against a disposable library with real tags, then the
-writer's own guards. Every expected identifier is derived from the shipped
-taxonomy's declarations rather than spelled.
+that removes a membership. Every expected identifier is derived from the
+shipped taxonomy's declarations rather than spelled.
 
 The shared library builder, :func:`seed_library`, and the plan helpers serve
 the other move suites too (former place, split place, jazz folder).
@@ -749,13 +747,10 @@ _SEEDED_LIBRARIES: dict[tuple, tuple[Path, str]] = {}
 
 
 def seed_library(cfg, silence: Path, tracks, places, *, on: date, outside=()) -> None:  # noqa: F811
-    """A cut over library holding ``tracks`` with real tags, filed in ``places``.
-
-    ``tracks`` is (content id, genre, energy tag or None) and ``places`` (folder,
-    playlist, content id), the folder under the tree's root unless in
-    ``outside``. Real tags, since a move is a file's tag disagreeing with its
-    sub. Built once per module and copied in, each location rewritten to it.
-    """
+    """``tracks`` is (content id, genre, energy tag or None) and ``places`` (folder,
+    playlist, content id), the folder under the tree's root unless in ``outside``.
+    Real tags, since a move is a file's tag disagreeing with its sub. Built once per
+    module and copied in, each location rewritten to it."""
     from cratekit.core import tags
 
     tracks, places = tuple(tracks), tuple(places)

@@ -133,6 +133,13 @@ FOUR_OUTCOME_REQUESTS = (
 )
 
 
+def _four_outcomes(adapter_name: str, settings: AdapterSettings) -> InvocationResult:
+    """The named adapter's run over the four outcome script."""
+    return registry.build(adapter_name, settings, source=four_outcome_source()).acquire(
+        FOUR_OUTCOME_REQUESTS
+    )
+
+
 @pytest.fixture(params=sorted(registry.ADAPTERS))
 def adapter_name(request) -> str:
     """Every registered adapter, derived from the registry, which makes this a contract suite."""
@@ -223,8 +230,7 @@ def test_an_adapter_with_no_declared_name_refuses_to_construct(settings):
 
 def test_one_run_produces_all_four_per_track_outcomes(adapter_name, settings, stored_session):
     """The distinction the source system cannot currently make, made in one run."""
-    adapter = registry.build(adapter_name, settings, source=four_outcome_source())
-    result = adapter.acquire(FOUR_OUTCOME_REQUESTS)
+    result = _four_outcomes(adapter_name, settings)
 
     assert result.outcome is InvocationOutcome.OK
     assert {r.key: r.outcome for r in result.results} == {
@@ -239,8 +245,7 @@ def test_one_run_produces_all_four_per_track_outcomes(adapter_name, settings, st
 
 def test_each_outcome_reaches_its_own_handler(adapter_name, settings, stored_session):
     """"Handled distinctly" means four handlers, each firing exactly once."""
-    adapter = registry.build(adapter_name, settings, source=four_outcome_source())
-    result = adapter.acquire(FOUR_OUTCOME_REQUESTS)
+    result = _four_outcomes(adapter_name, settings)
 
     seen: dict[TrackOutcome, list[str]] = {outcome: [] for outcome in TrackOutcome}
     dispatch(
@@ -397,16 +402,13 @@ def test_a_value_the_contract_forbids_cannot_be_constructed(case):
 
 def test_the_report_names_everything_that_was_requested(adapter_name, settings, stored_session):
     """The queue is answerable from the result alone, on success or failure."""
-    result = registry.build(adapter_name, settings, source=four_outcome_source()).acquire(
-        FOUR_OUTCOME_REQUESTS
-    )
+    result = _four_outcomes(adapter_name, settings)
     assert result.requested == tuple(r.key for r in FOUR_OUTCOME_REQUESTS)
 
 
 def test_an_absent_credential_reports_as_an_adapter_failure(adapter_name, settings):
     """No session recorded at all, on both adapters, with the keychain working."""
-    adapter = registry.build(adapter_name, settings, source=four_outcome_source())
-    result = adapter.acquire(FOUR_OUTCOME_REQUESTS)
+    result = _four_outcomes(adapter_name, settings)
 
     assert result.outcome is InvocationOutcome.AUTH_FAILED
     assert result.remedy is Remedy.REAUTHENTICATE_PROVIDER
@@ -422,9 +424,7 @@ def test_a_keychain_with_no_backend_is_a_broken_adapter_not_a_stale_session(
         raise secrets.CredentialBackendUnavailable("no keychain backend is reachable")
 
     monkeypatch.setattr(secrets, "get_json", unavailable)
-    result = registry.build(adapter_name, settings, source=four_outcome_source()).acquire(
-        FOUR_OUTCOME_REQUESTS
-    )
+    result = _four_outcomes(adapter_name, settings)
 
     assert result.outcome is InvocationOutcome.ADAPTER_BROKEN
     assert result.remedy is Remedy.REPAIR_CREDENTIAL_STORE
@@ -488,8 +488,7 @@ def test_a_transient_marker_wins_over_a_status_code():
 def test_a_transient_track_is_requeueable_and_a_permanent_one_is_quarantined(
     adapter_name, settings, stored_session
 ):
-    adapter = registry.build(adapter_name, settings, source=four_outcome_source())
-    result = adapter.acquire(FOUR_OUTCOME_REQUESTS)
+    result = _four_outcomes(adapter_name, settings)
 
     assert result.quarantine_keys() == ("delisted",)
     assert "flaky" in result.requeue_keys()
@@ -1620,8 +1619,7 @@ def test_an_injected_session_still_has_this_runs_settings_pushed_and_verified(se
 
 
 def test_no_token_file_survives_a_run(adapter_name, settings, stored_session, watched_scopes):
-    adapter = registry.build(adapter_name, settings, source=four_outcome_source())
-    adapter.acquire(FOUR_OUTCOME_REQUESTS)
+    _four_outcomes(adapter_name, settings)
 
     assert watched_scopes, "the adapter never materialised a provider session"
     for record in watched_scopes:
@@ -1634,9 +1632,7 @@ def test_the_token_and_its_directory_are_both_private(
     adapter_name, settings, stored_session, watched_scopes
 ):
     """P1: a 0600 file in a world-writable directory can be replaced by any account."""
-    registry.build(adapter_name, settings, source=four_outcome_source()).acquire(
-        FOUR_OUTCOME_REQUESTS
-    )
+    _four_outcomes(adapter_name, settings)
     for record in watched_scopes:
         assert record.file_mode == 0o600
         assert record.dir_mode == 0o700
@@ -1662,9 +1658,7 @@ def test_no_session_file_is_left_anywhere_under_the_state_roots(
     adapter_name, settings, stored_session, _isolate_state_roots
 ):
     """Walked rather than enumerated (P3), since the risk is a file somebody forgot."""
-    registry.build(adapter_name, settings, source=four_outcome_source()).acquire(
-        FOUR_OUTCOME_REQUESTS
-    )
+    _four_outcomes(adapter_name, settings)
     leaked = [
         path
         for path in _isolate_state_roots.rglob("*")
@@ -1739,9 +1733,7 @@ def test_two_adapters_given_the_same_answers_produce_the_same_report(settings, s
     """Only the adapter identity and its replacements may differ between adapters."""
     reports = {}
     for name in registry.ADAPTERS:
-        result = registry.build(name, settings, source=four_outcome_source()).acquire(
-            FOUR_OUTCOME_REQUESTS
-        )
+        result = _four_outcomes(name, settings)
         reports[name] = [
             (r.key, r.outcome, r.lossless, r.requires_lossy_marker, r.remedy)
             for r in result.results
