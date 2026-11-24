@@ -31,6 +31,13 @@ SRC_ROOT = REPO_ROOT / "src"
 UTC = timezone.utc
 
 
+def _imported(relative: str) -> set[str]:
+    """Every module a file under ``src/cratekit`` imports, in either import form."""
+    tree = ast.parse((SRC_ROOT / "cratekit" / relative).read_text())
+    plain = {a.name for node in ast.walk(tree) if isinstance(node, ast.Import) for a in node.names}
+    return plain | {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+
+
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -134,14 +141,12 @@ def _restore(cfg, **kwargs):
 
 
 def _restore_refused(cfg, **kwargs) -> backup.BackupRefused:
-    """The ``BackupRefused`` a ``_restore`` raises."""
     with pytest.raises(backup.BackupRefused) as excinfo:
         _restore(cfg, **kwargs)
     return excinfo.value
 
 
 def _record(cfg, portion: str, completed_at, destination):
-    """One completed portion on record, through ``backup_facts.record``."""
     portion = getattr(backup_facts.Portion, portion)
     return backup_facts.record(cfg, portion, completed_at=completed_at, destination=destination)
 
@@ -200,12 +205,7 @@ def test_the_verb_table_holds_no_imported_object():
     """KTD7: the registry entries stay inert so the import stays lazy."""
     for spec in tools.VERBS:
         assert isinstance(spec.module, str)
-    source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "__init__.py").read_text()
-    imported = {
-        node.module
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.ImportFrom) and node.module
-    }
+    imported = _imported("modules/tools/__init__.py")
     assert not any(m.startswith("cratekit.modules.tools.") for m in imported), "not lazy"
 
 
@@ -396,11 +396,9 @@ def test_the_vocal_threshold_is_a_parameter_and_never_imported():
     # The clash the signal exists to avoid: two lead vocals at once.
     assert setbuilder.vocal_score(8, 8, threshold=5) < setbuilder.vocal_score(8, 2, threshold=5)
 
-    source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "setbuilder.py").read_text()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            assert "analysis" not in node.module
-            assert "vocal" not in node.module
+    for module in _imported("modules/tools/setbuilder.py"):
+        assert "analysis" not in module
+        assert "vocal" not in module
 
 
 def test_genre_affinity_comes_from_the_declared_taxonomy(snapshot_index):
@@ -463,21 +461,18 @@ def test_the_index_reads_the_key_and_tempo_out_of_the_declared_head():
     assert entry.title == "Real Title"
 
 
-def test_a_marked_lossy_title_loses_its_marker_along_with_the_head():
-    """The defect the private regular expression carried."""
-    entry = setbuilder.parse_entry(
-        {"title": "08A - 124 - [MP3] Real Title", "artist": "Alder"}, template=TEMPLATE
-    )
-    assert entry.title == "Real Title"
-
-
-def test_the_initialkey_tag_wins_over_the_head():
-    """The tag is what ``analyze adopt`` writes beside the head, and the tag is read first."""
-    entry = setbuilder.parse_entry(
-        {"title": "08A - 124 - Title", "artist": "A", "initialkey": "3B"},
-        template=TEMPLATE,
-    )
-    assert entry.key == "3B"
+@pytest.mark.parametrize(
+    ("raw", "field", "expected"),
+    [
+        # The defect the private regular expression carried.
+        ({"title": "08A - 124 - [MP3] Real Title", "artist": "Alder"}, "title", "Real Title"),
+        # ``analyze adopt`` writes the tag beside the head, and the tag is read first.
+        ({"title": "08A - 124 - Title", "artist": "A", "initialkey": "3B"}, "key", "3B"),
+    ],
+    ids=["lossy-marker-goes-with-the-head", "initialkey-wins-over-the-head"],
+)
+def test_a_parsed_head_yields_the_field_the_template_declares(raw, field, expected):
+    assert getattr(setbuilder.parse_entry(raw, template=TEMPLATE), field) == expected
 
 
 def test_a_headless_title_takes_the_key_adopt_writes_and_no_tempo():
@@ -488,13 +483,8 @@ def test_a_headless_title_takes_the_key_adopt_writes_and_no_tempo():
         template=TEMPLATE,
     )
     assert (entry.key, entry.bpm, entry.title, entry.energy) == ("6A", None, "Bare Title", 5)
+    # With no key it cannot be placed on the wheel, so it is left out of the index.
     assert setbuilder.parse_entry({"title": "Bare Title", "artist": "A"}, template=TEMPLATE) is None
-
-
-def test_a_track_with_no_usable_key_is_left_out_of_the_index():
-    """It cannot be placed on the wheel, so it cannot be compared to anything."""
-    keyless = {"title": "Just A Title", "artist": "A"}
-    assert setbuilder.parse_entry(keyless, template=TEMPLATE) is None
 
 
 def test_the_index_collapses_duplicate_works(tmp_path):
@@ -710,13 +700,8 @@ def test_the_index_cache_has_a_declared_home_in_the_state_inventory(cfg):
 
 def test_the_index_reads_tags_only_through_the_shared_container_reader():
     """S5: one reader, one container classification, no second opinion."""
-    source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "setbuilder.py").read_text()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert not alias.name.startswith("mutagen")
-        if isinstance(node, ast.ImportFrom) and node.module:
-            assert not node.module.startswith("mutagen")
+    for module in _imported("modules/tools/setbuilder.py"):
+        assert not module.startswith("mutagen")
 
 
 def test_the_index_reads_a_real_file_through_the_real_reader(tmp_path):
@@ -1251,7 +1236,6 @@ def test_the_prune_runs_only_after_the_mirror_succeeded(cfg, db_file, rclone):
 
 
 def _run_backup(cfg, runner, **kwargs):
-    """``run_backup`` over a fresh plan, with nothing running."""
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     return backup.run_backup(cfg, plan, runner=runner, **kwargs)
 
@@ -1555,13 +1539,8 @@ def test_backup_age_is_readable_from_library_scoped_state(cfg, db_file, rclone):
 
 def test_the_core_reader_does_not_import_the_backup_module(cfg):
     """The whole point of publishing a FACT instead of exposing a function."""
-    source = (SRC_ROOT / "cratekit" / "core" / "backup_facts.py").read_text()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                assert not alias.name.startswith("cratekit.modules")
-        if isinstance(node, ast.ImportFrom) and node.module:
-            assert not node.module.startswith("cratekit.modules")
+    for module in _imported("core/backup_facts.py"):
+        assert not module.startswith("cratekit.modules")
 
     # And it answers on a machine where the module was never installed at all.
     assert backup_facts.read_facts(cfg) == {}
@@ -1670,18 +1649,20 @@ def test_the_fact_file_is_written_owner_only_under_any_umask(cfg, monkeypatch):
 # ── Scenario 5: restore clears stale sidecars BEFORE copying ─────────────────
 
 
-def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone):
-    """The plan's fifth scenario, asserted on the ORDER rather than the outcome."""
+def _with_sidecars(cfg, tmp_path, database: bytes, sidecar: bytes):
+    """A scratch target holding ``database`` and every declared sidecar beside it."""
     target = tmp_path / "scratch"
-    database = backup.database_target_for(cfg, target)
-    database.parent.mkdir(parents=True, exist_ok=True)
-    database.write_bytes(b"old database")
-    stale = []
-    for sidecar in config.SQLITE_SIDECARS:
-        path = database.with_name(database.name + sidecar.suffix)
-        path.write_bytes(b"stale")
-        stale.append(path)
+    path = backup.database_target_for(cfg, target)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(database)
+    sidecars = [path.with_name(path.name + s.suffix) for s in config.SQLITE_SIDECARS]
+    for one in sidecars:
+        one.write_bytes(sidecar)
+    return target, sidecars
 
+
+def _observing(cfg, stale):
+    """A runner recording, per transfer, which of ``stale`` still existed when it ran."""
     observed = []
 
     def runner(command):
@@ -1691,6 +1672,13 @@ def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone):
             return backup.CommandResult(returncode=0, stdout=snapshot_listing(cfg))
         return backup.CommandResult(returncode=0)
 
+    return runner, observed
+
+
+def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone):
+    """The plan's fifth scenario, asserted on the ORDER rather than the outcome."""
+    target, stale = _with_sidecars(cfg, tmp_path, b"old database", b"stale")
+    runner, observed = _observing(cfg, stale)
     plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=runner)
     assert set(plan.clears) == set(stale)
 
@@ -1706,16 +1694,7 @@ def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone):
 
 def test_a_rehearsed_restore_does_not_clear_the_live_sidecars(cfg, tmp_path, rclone):
     """Clearing is itself destructive, so a preview must not do it."""
-    target = tmp_path / "scratch"
-    database = backup.database_target_for(cfg, target)
-    database.parent.mkdir(parents=True, exist_ok=True)
-    database.write_bytes(b"live database")
-    sidecars = []
-    for sidecar in config.SQLITE_SIDECARS:
-        path = database.with_name(database.name + sidecar.suffix)
-        path.write_bytes(b"live log")
-        sidecars.append(path)
-
+    target, sidecars = _with_sidecars(cfg, tmp_path, b"live database", b"live log")
     recorder = _listing(cfg)
     plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     backup.run_restore(plan, cfg, runner=recorder, dry_run=True, gates=open_gates)
@@ -1756,8 +1735,13 @@ def test_the_file_half_of_a_restore_copies_and_never_syncs(cfg, tmp_path, rclone
     assert backup.RESTORE_MIRROR not in [c.label for c in plan.commands]
 
 
-def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_sidecar(
-    cfg, tmp_path, rclone
+@pytest.mark.parametrize(
+    ("held", "absent"),
+    [((), ("-wal",)), (("-wal",), ())],
+    ids=["only-the-database-skips-the-absent-sidecar", "holding-the-log-copies-it"],
+)
+def test_a_restore_copies_the_log_only_when_the_snapshot_holds_it(
+    cfg, tmp_path, rclone, held, absent
 ):
     """The residual
     "A restore from a snapshot taken with rekordbox closed always reports failure":
@@ -1765,26 +1749,12 @@ def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_si
     """
     target = _scratch(cfg, tmp_path)
     database = backup.database_target_for(cfg, target).name
-    recorder = _listing(cfg)
+    recorder = _listing(cfg, *held)
     plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
     assert any(source.endswith(database) for source in sources)
-    assert not any(source.endswith(database + "-wal") for source in sources)
-    assert plan.absent_sidecars == ("-wal",)
-    results = backup.run_restore(plan, cfg, runner=recorder, gates=open_gates)
-    assert results and all(result.returncode == 0 for result in results)
-
-
-def test_a_restore_from_a_snapshot_holding_the_log_copies_it(cfg, tmp_path, rclone):
-    """The other shape: a snapshot taken while the database still had a log."""
-    target = _scratch(cfg, tmp_path)
-    database = backup.database_target_for(cfg, target).name
-    recorder = _listing(cfg, "-wal")
-    plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
-    sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
-    assert any(source.endswith(database) for source in sources)
-    assert any(source.endswith(database + "-wal") for source in sources)
-    assert plan.absent_sidecars == ()
+    assert any(source.endswith(database + "-wal") for source in sources) is bool(held)
+    assert plan.absent_sidecars == absent
     results = backup.run_restore(plan, cfg, runner=recorder, gates=open_gates)
     assert results and all(result.returncode == 0 for result in results)
 
@@ -1826,31 +1796,14 @@ def test_the_snapshot_listing_is_of_the_database_folder(cfg, tmp_path, rclone):
 
 def test_the_sidecars_are_cleared_before_the_mirror_too(cfg, tmp_path, rclone):
     """The invariant at its strongest."""
-    target = tmp_path / "scratch"
-    database = backup.database_target_for(cfg, target)
-    database.parent.mkdir(parents=True, exist_ok=True)
-    database.write_bytes(b"old")
-    stale = []
-    for sidecar in config.SQLITE_SIDECARS:
-        path = database.with_name(database.name + sidecar.suffix)
-        path.write_bytes(b"stale")
-        stale.append(path)
-
-    observed = []
-
-    def runner(command):
-        if command.label in backup.TRANSFERRING_LABELS:
-            observed.append((command.label, any(p.exists() for p in stale)))
-        if command.label == backup.LIST_SNAPSHOT_CONTENTS:
-            return backup.CommandResult(returncode=0, stdout=snapshot_listing(cfg))
-        return backup.CommandResult(returncode=0)
-
+    target, stale = _with_sidecars(cfg, tmp_path, b"old", b"stale")
+    runner, observed = _observing(cfg, stale)
     plan = _restore(
         cfg, target=target, snapshot="2026-08-01T000000Z", include_mirror=True, runner=runner,
     )
     backup.run_restore(plan, cfg, runner=runner, gates=open_gates)
     assert observed[0][0] == backup.RESTORE_MIRROR
-    assert all(present is False for _, present in observed)
+    assert all(any(present) is False for _, present in observed)
 
 
 def test_restore_is_a_named_decision_and_never_a_prompt(cfg, tmp_path, rclone):
@@ -1890,12 +1843,17 @@ def test_a_restore_with_no_snapshot_available_refuses_by_name(cfg, tmp_path, rcl
     assert refused.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
 
 
-def test_the_latest_snapshot_is_the_newest_by_sortable_stamp(cfg, tmp_path, rclone):
-    recorder = Recorder(
-        stdout_for={
-            backup.LIST_SNAPSHOTS: "2026-01-01T000000Z/\n2026-03-01T000000Z/\n2026-02-01T000000Z/\n"
-        }
-    )
+@pytest.mark.parametrize(
+    "listed",
+    [
+        "2026-01-01T000000Z/\n2026-03-01T000000Z/\n2026-02-01T000000Z/\n",
+        # The same shape one function over. A stray folder sorts after every stamp.
+        "2026-01-01T000000Z/\nold/\n2026-03-01T000000Z/\nzz-scratch/\n",
+    ],
+    ids=["newest-by-sortable-stamp", "ignores-folders-that-are-not-stamps"],
+)
+def test_the_latest_snapshot_is_the_newest_stamp(cfg, tmp_path, rclone, listed):
+    recorder = Recorder(stdout_for={backup.LIST_SNAPSHOTS: listed})
     assert backup.latest_snapshot(cfg, runner=recorder) == "2026-03-01T000000Z"
 
 
@@ -2105,16 +2063,6 @@ def test_a_replaced_drive_restores_the_old_volumes_snapshot_by_naming_it(cfg, tm
             cfg, target=tmp_path, snapshot=STAMP, snapshot_volume="0000-AAAA", runner=recorder,
         )
         assert refused.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
-
-
-def test_the_newest_snapshot_ignores_folders_that_are_not_stamps(cfg, rclone):
-    """The same shape one function over. A stray folder sorts after every stamp."""
-    recorder = Recorder(
-        stdout_for={
-            backup.LIST_SNAPSHOTS: "2026-01-01T000000Z/\nold/\n2026-03-01T000000Z/\nzz-scratch/\n"
-        }
-    )
-    assert backup.latest_snapshot(cfg, runner=recorder) == "2026-03-01T000000Z"
 
 
 def test_the_capture_marks_the_snapshot_after_the_database_and_never_before_it(

@@ -77,6 +77,13 @@ def _view(tracks, *children) -> export.LibraryView:
     )
 
 
+def _genre(display: str, *playlists: list[str]) -> tuple[str, ...]:
+    """The governed tree holding one genre folder ``display`` over ``playlists``."""
+    inner = [line for playlist in playlists for line in playlist]
+    return (_folder(TREE.display, 1, 1), _folder(display, len(playlists), 2), *inner, _close(2),
+            _close(1))
+
+
 def _stats(view: export.LibraryView) -> library_report.LibraryStatistics:
     return library_report.statistics(view, declared=default_taxonomy(), template=TEMPLATE)
 
@@ -128,9 +135,7 @@ def test_a_tree_the_export_does_not_hold_refuses_rather_than_reporting_everythin
 
 def test_a_tree_that_is_present_and_empty_reports_rather_than_refuses():
     """A present, empty tree is an unswept library: every entry is uncovered."""
-    report = coverage.survey(
-        _view([(1, "08A - 124 - A", "B", "file://localhost/a.flac")], *EMPTY_TREE), tree=TREE
-    )
+    report = coverage.survey(_view(ONE, *EMPTY_TREE), tree=TREE)
     assert len(report.uncovered) == 1
     assert report.covered == ()
     assert report.folders == ()
@@ -189,14 +194,7 @@ def test_a_folder_count_never_exceeds_what_the_collection_can_account_for():
     """A playlist may reference a track the collection lacks; the folder rows
     must still sum to the placement count printed beside them.
     """
-    orphaned = _view(
-        ONE,
-        _folder(TREE.display, 1, 1),
-        _folder(DEEP.display, 1, 2),
-        *_playlist("High", [1, 999], 3),
-        _close(2),
-        _close(1),
-    )
+    orphaned = _view(ONE, *_genre(DEEP.display, _playlist("High", [1, 999], 3)))
     report = coverage.survey(orphaned, tree=TREE)
     assert sum(held for _path, held in report.folders) == report.placements
     assert report.folders == ((("BY GENRE + ENERGY", "Deep House", "High"), 1),)
@@ -234,12 +232,7 @@ def test_a_genre_counts_distinct_tracks_rather_than_summing_its_playlists():
             (1, "08A - 124 - A", "X", "file://localhost/a.flac"),
             (2, "05B - 120 - B", "Y", "file://localhost/b.flac"),
         ],
-        _folder(TREE.display, 1, 1),
-        _folder(DEEP.display, 2, 2),
-        *_playlist("High", [1, 2], 3),
-        *_playlist("Med", [1], 3),
-        _close(2),
-        _close(1),
+        *_genre(DEEP.display, _playlist("High", [1, 2], 3), _playlist("Med", [1], 3)),
     )
     row = next(one for one in _stats(doubled).genres if one.display == DEEP.display)
     assert row.tracks == 2, "the two playlists hold three memberships and two tracks"
@@ -248,14 +241,7 @@ def test_a_genre_counts_distinct_tracks_rather_than_summing_its_playlists():
 
 def test_a_folder_the_taxonomy_does_not_declare_is_reported_and_not_refused():
     """Its row carries no bucket id, which puts it in ``gaps.undeclared_folders``."""
-    undeclared = _view(
-        ONE,
-        _folder(TREE.display, 1, 1),
-        _folder("Bootlegs", 1, 2),
-        *_playlist("High", [1], 3),
-        _close(2),
-        _close(1),
-    )
+    undeclared = _view(ONE, *_genre("Bootlegs", _playlist("High", [1], 3)))
     stats = _stats(undeclared)
     assert [row.display for row in stats.genres] == ["Bootlegs"]
     assert stats.genres[0].bucket_id is None
