@@ -7,7 +7,6 @@ scenarios live in ``tests/test_sync_pair_back.py``.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -21,26 +20,17 @@ from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, pair_discover
 from tests import outbound_fakes
 from tests._sync_builders import exited
-from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
-from tests.test_rb_writer_db import _build_disposable_database
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-
-VERB = ["sync", "pair"]
-#: Content rows one through nine, each carrying the ISRC its account track has.
-ROWS = tuple(str(index) for index in range(1, 10))
+from tests.test_sync_pair import ROWS, VERB, _codes, _sql, remote, rows_database, sync, writing
 
 
 def isrc(index: str) -> str:
     return f"USBBB26{int(index):05d}"
-
-
-def remote(index: str) -> str:
-    return f"t{index}"
 
 
 class Listed:
@@ -116,35 +106,24 @@ class World:
         return rb_writer.open_db(Path(self.cfg.library.db_path), unlock=False, cfg=self.cfg)
 
     def folder(self, name: str, under: str | None = None) -> str:
-        handle = self.open()
-        try:
+        with writing(self) as handle:
             parent = None if under is None else handle.get_playlist(ID=under)
-            row = handle.create_playlist_folder(name, parent=parent)
-            handle.session.commit()
-            return str(row.ID)
-        finally:
-            rb_writer.close_db(handle)
+            return str(handle.create_playlist_folder(name, parent=parent).ID)
 
     def playlist(self, name: str, *content_ids: str, under: str | None = None) -> str:
-        handle = self.open()
-        try:
+        with writing(self) as handle:
             parent = None if under is None else handle.get_playlist(ID=under)
             row = handle.create_playlist(name, parent=parent)
             for content_id in content_ids:
                 handle.add_to_playlist(row, content_id)
-            handle.session.commit()
             return str(row.ID)
-        finally:
-            rb_writer.close_db(handle)
 
     def sql(self, statement: str, *args) -> list[tuple]:
-        conn = sqlite3.connect(self.cfg.library.db_path)
-        try:
-            rows = conn.execute(statement, args).fetchall()
-            conn.commit()
-            return rows
-        finally:
-            conn.close()
+        return _sql(self.cfg.library.db_path, statement, *args)
+
+    def in_gig_ready(self, name: str, *content_ids: str) -> str:
+        """A playlist made inside a GIG READY folder made for it: the playlist."""
+        return self.playlist(name, *content_ids, under=self.folder("GIG READY"))
 
     def held(self, playlist_id: str) -> list[str]:
         return [
@@ -157,14 +136,10 @@ class World:
         ]
 
     def rekordbox_add(self, playlist_id: str, *content_ids: str) -> None:
-        handle = self.open()
-        try:
+        with writing(self) as handle:
             row = handle.get_playlist(ID=playlist_id)
             for content_id in content_ids:
                 handle.add_to_playlist(row, content_id)
-            handle.session.commit()
-        finally:
-            rb_writer.close_db(handle)
 
     def rekordbox_remove(self, playlist_id: str, *content_ids: str) -> None:
         for content_id in content_ids:
@@ -191,21 +166,6 @@ class World:
         return {name: pid for pid, name in self.account.folder_playlists(ids[0]).items()}
 
 
-def sync(args: list[str] = VERB, *, rekordbox: str = "apply", account: str = "apply"):
-    """Drive the verb through both explicit gates, answering each as asked."""
-    answers = {pair_cli.REKORDBOX_GATE: rekordbox, pair_cli.ACCOUNT_GATE: account}
-    run_id = None
-    for _ in range(3):
-        resume = ["--run", run_id] if run_id else []
-        code, envelope = drive([*resume, *args])
-        if code != int(ExitCode.DECISION_REQUIRED):
-            return code, envelope
-        run_id = envelope["run_id"]
-        gate = envelope["cause"]["detail"]["gate"]
-        exited(drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"]))
-    raise AssertionError("the verb kept asking after both gates were answered")
-
-
 def plan_only(args: list[str] = VERB):
     """The plan both gates show, both answered skip, so nothing is written."""
     envelope = exited(sync(args, rekordbox="skip", account="skip"))
@@ -215,40 +175,12 @@ def plan_only(args: list[str] = VERB):
 @pytest.fixture
 def db(cfg, monkeypatch):
     """A disposable database holding nine content rows, each with its ISRC."""
-    path = Path(cfg.library.db_path)
-    _build_disposable_database(path)
-    conn = sqlite3.connect(path)
-    try:
-        for content_id in ROWS:
-            conn.execute(
-                "INSERT OR IGNORE INTO djmdContent (ID, Title, rb_local_deleted, created_at, "
-                "updated_at) VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
-                (content_id, f"Title {remote(content_id)}"),
-            )
-            conn.execute(
-                "UPDATE djmdContent SET FolderPath = ?, ISRC = ?, rb_local_deleted = 0 "
-                "WHERE ID = ?",
-                (f"{cfg.library.root}/Music/{content_id}.flac", isrc(content_id), content_id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer,
-        "integrity_ok",
-        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
-    )
-    return path
+    return rows_database(cfg, monkeypatch, isrc)
 
 
 @pytest.fixture
 def world(cfg, gates_pass, db, monkeypatch) -> World:
     return World(cfg, monkeypatch)
-
-
-def _codes(envelope) -> set[str]:
-    return {warning["code"] for warning in envelope.get("warnings") or ()}
 
 
 def _said(envelope, code: str) -> str:
@@ -263,8 +195,7 @@ def _items(plan, side: str, action: str) -> list[dict]:
 
 
 def test_a_gig_ready_playlist_is_made_on_the_account_in_its_folder_and_filled(world, cfg):
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", under=gig)
+    opener = world.in_gig_ready("Opener", "1", "2", "3")
     envelope = exited(sync())
     inside = world.in_folder("GIG READY")
     assert list(inside) == ["GIG READY Opener"]
@@ -288,8 +219,7 @@ def test_a_playlist_deleted_in_rekordbox_is_never_found(world):
 
 
 def test_a_second_run_plans_nothing(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", "2", under=gig)
+    world.in_gig_ready("Opener", "1", "2")
     assert sync()[0] == int(ExitCode.OK)
     created = list(world.account.created)
     asked = len(world.account.matches)
@@ -312,8 +242,7 @@ def test_a_playlist_in_a_subfolder_takes_its_path_and_one_at_the_root_goes_in_pl
 def test_an_archive_playlist_is_listed_and_never_written(world):
     archive = world.folder("ARCHIVE")
     world.playlist("Old", "1", under=archive)
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "2", under=gig)
+    world.in_gig_ready("Opener", "2")
     plan = plan_only()
     skipped = _items(plan, "discovery", pair_discover.SKIPPED)
     assert [item["where"] for item in skipped] == ["ARCHIVE / Old"]
@@ -401,8 +330,7 @@ def test_an_existing_root_folder_of_the_name_is_reused_and_a_persons_title_is_le
 def test_two_root_folders_of_the_name_leave_that_folder_out(world):
     world.account.create_folder("GIG READY")
     world.account.create_folder("GIG READY")
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     world.playlist("Loose", "2")
     envelope = exited(sync())
     assert sorted(world.account.titles.values()) == ["Playlists Loose"]
@@ -414,24 +342,21 @@ def test_a_root_folder_another_list_of_cratekits_keeps_is_not_adopted(world, cfg
 
     folder_id = world.account.create_folder("GIG READY")
     ledger.reserve_mirror_folder(cfg, "GIG READY", lambda: "unused", adopt=folder_id)
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     envelope = exited(sync())
     assert world.account.created == []
     assert "another list" in _said(envelope, pair_cli.NOT_DISCOVERED)
 
 
 def test_skipping_the_account_gate_makes_and_marks_nothing(world, cfg):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     exited(sync(account="skip"))
     assert world.account.created == []
     assert pairs.PairStore(cfg).all() == {}
 
 
 def test_skipping_rekordbox_makes_the_account_side_and_the_next_sync_finishes(world, cfg):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", "2", under=gig)
+    world.in_gig_ready("Opener", "1", "2")
     assert sync(rekordbox="skip")[0] == int(ExitCode.OK)
     made = world.titled("GIG READY Opener")
     assert world.account.playlists[made] == ["t1", "t2"]
@@ -445,8 +370,7 @@ def test_skipping_rekordbox_makes_the_account_side_and_the_next_sync_finishes(wo
 def test_a_made_playlist_is_never_offered_by_sync_all(world, cfg):
     from cratekit.sync import playlists
 
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     assert sync()[0] == int(ExitCode.OK)
     made = world.titled("GIG READY Opener")
     listed = AccountPlaylist(playlist_id=made, name="GIG READY Opener", tracks=1)
@@ -462,8 +386,7 @@ def test_a_made_playlist_is_never_offered_by_sync_all(world, cfg):
 
 
 def _made_pair(world) -> tuple[str, str]:
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", under=gig)
+    opener = world.in_gig_ready("Opener", "1", "2")
     assert sync()[0] == int(ExitCode.OK)
     return opener, world.titled("GIG READY Opener")
 
@@ -558,8 +481,7 @@ def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again
     world.sql("UPDATE djmdContent SET ISRC = '' WHERE ID = '2'")
     del world.account.catalog["3"]
     world.account.reasons["3"] = "the provider has no track under this ISRC"
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", under=gig)
+    opener = world.in_gig_ready("Opener", "1", "2", "3")
     envelope = exited(sync())
     made = world.titled("GIG READY Opener")
     assert world.account.playlists[made] == ["t1"]
@@ -576,16 +498,13 @@ def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again
     assert third["data"]["totals"]["unmatched"] == 2
 
 
-def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remembered_miss(
-    world, cfg
-):
+def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remembered_miss(world):
     """U207. Every code the plan will ask is screened in batches before any is
     asked; a row with no code, a linked row and a remembered miss are not asked."""
     world.sql("UPDATE djmdContent SET ISRC = '' WHERE ID = '2'")
     del world.account.catalog["3"]
     world.account.reasons["3"] = "the provider has no track under this ISRC"
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    world.in_gig_ready("Opener", "1", "2", "3", "4")
 
     assert sync()[0] == int(ExitCode.OK)
     first = list(world.account.screened)
@@ -600,8 +519,7 @@ def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remem
 
 def test_a_code_the_account_playlist_already_holds_is_never_screened(world, cfg):
     """U207. A code one track of the account playlist carries needs no lookup or screen."""
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", under=gig)
+    opener = world.in_gig_ready("Opener", "1", "2")
     assert sync()[0] == int(ExitCode.OK)
     made = world.titled("GIG READY Opener")
     # Row 4's track is added on the account by hand, so the playlist holds its code.
@@ -618,8 +536,7 @@ def test_a_code_the_account_playlist_already_holds_is_never_screened(world, cfg)
 
 def test_a_remembered_miss_is_asked_again_when_the_rows_isrc_changes(world, cfg):
     del world.account.catalog["3"]
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "3", under=gig)
+    world.in_gig_ready("Opener", "3")
     assert sync()[0] == int(ExitCode.OK)
     assert [one["identity"] for one in world.account.matches].count("3") == 1
     world.sql("UPDATE djmdContent SET ISRC = 'USBBB2600333' WHERE ID = '3'")
@@ -635,8 +552,7 @@ def test_an_unreadable_candidate_is_never_remembered(world, cfg):
 
     del world.account.catalog["3"]
     world.account.reasons["3"] = f"a candidate {UNREADABLE_CANDIDATE}"
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "3", under=gig)
+    world.in_gig_ready("Opener", "3")
     assert sync()[0] == int(ExitCode.OK)
     assert "3" not in pairs.PairStore(cfg).misses()
 
@@ -760,8 +676,7 @@ def test_a_tie_is_never_remembered_and_is_asked_again(world, cfg):
 
     del world.account.catalog["3"]
     world.account.reasons["3"] = f"2 {AGREEING_RELEASES}"
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "3", under=gig)
+    world.in_gig_ready("Opener", "3")
     assert sync()[0] == int(ExitCode.OK)
     assert "3" not in pairs.PairStore(cfg).misses()
     world.account.catalog["3"] = "t3"
@@ -815,9 +730,7 @@ def test_a_version_one_document_is_read_and_written_as_version_two(world, cfg):
 
 
 @pytest.mark.parametrize("where", ["foreign", "favorites"])
-def test_a_made_pair_moved_into_another_apps_or_the_favorites_folder_is_let_go(
-    world, cfg, where
-):
+def test_a_made_pair_moved_into_another_apps_or_the_favorites_folder_is_let_go(world, cfg, where):
     from cratekit.core import foreign_tree
 
     opener, made = _made_pair(world)

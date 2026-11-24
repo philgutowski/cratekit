@@ -1,13 +1,9 @@
 """The helpers every package used to write for itself, tested once at their home (U298).
 
-Functions once written in dozens of files each got one home (U290's survey),
-and what each does is pinned here, so a change to one is one failing test.
-
-Sections: 1. ``cli.output``, the plumbing a verb's shell needs. 2. ``core.jobs``,
-the report base. 3. ``core.private_store``. 4. ``core.config``'s locks and its
-state document read. 5. Small shared readers. 6. ``core.jobs``, the tail of every
-resume. 7. ``write``: rollback, membership columns, the commit. 8. What two
-modules of one feature each wrote.
+Each got one home (U290's survey), so a change to one is one failing test. Sections:
+1. ``cli.output``. 2. ``core.jobs``, the report base. 3. ``core.private_store``.
+4. ``core.config``'s locks and state reads. 5. Small shared readers. 6. ``core.jobs``,
+the tail of every resume. 7. ``write``. 8. What two modules of one feature each wrote.
 """
 
 from __future__ import annotations
@@ -161,17 +157,13 @@ def test_a_missing_gate_is_a_typed_refusal_for_the_verbs_that_ask_before_they_wr
 def test_the_approving_actor_is_read_off_the_recorded_decision():
     """Not off the shell's default actor, which reads ``cli`` for a run nobody decided."""
     spec = SimpleNamespace(name="approve-plan")
-    decided = SimpleNamespace(
-        run=SimpleNamespace(decisions={"approve-plan": SimpleNamespace(actor="session")}),
-        gate=SimpleNamespace(actor="cli"),
-    )
-    undecided = SimpleNamespace(
-        run=SimpleNamespace(decisions={"another-gate": SimpleNamespace(actor="phillip")}),
-        gate=SimpleNamespace(actor="cli"),
-    )
 
-    assert output.approving_actor(decided, spec) == "session"
-    assert output.approving_actor(undecided, spec) == ""
+    def run(gate: str, actor: str):
+        decided = SimpleNamespace(decisions={gate: SimpleNamespace(actor=actor)})
+        return SimpleNamespace(run=decided, gate=SimpleNamespace(actor="cli"))
+
+    assert output.approving_actor(run("approve-plan", "session"), spec) == "session"
+    assert output.approving_actor(run("another-gate", "phillip"), spec) == ""
 
 
 def test_a_run_that_queued_nothing_reports_an_empty_string_for_its_job():
@@ -237,9 +229,8 @@ def test_analysis_takes_its_final_path_from_the_base_and_keeps_its_own_staging(c
     """Its staging directory keeps an interrupted rename's evidence, so it is not the base's."""
     root = jobs.store_dir(cfg)
 
-    assert analysis_artifacts.final_path(cfg, "job-9", 3) == (
-        root / "analysis-artifacts" / "job-9" / "0003.json"
-    )
+    final = analysis_artifacts.final_path(cfg, "job-9", 3)
+    assert final == root / "analysis-artifacts" / "job-9" / "0003.json"
     staged = analysis_artifacts.staged_path(cfg, "job-9", 3)
     assert staged == root / "analysis-staging" / "job-9" / "3" / "0003.json"
     intent = staged.parent / analysis_artifacts.RENAME_INTENT_FILENAME
@@ -346,13 +337,10 @@ def test_each_feature_orders_its_committed_reports_as_it_did_before_the_base(cfg
     assert numbered == [2, 9999, 10000]
     assert named == [2, 10000, 9999]
 
-    (outbound_artifacts.final_path(cfg, "job-1", 0).parent / "notes.json").write_text(
-        '{"stray": true}', encoding="utf-8"
-    )
+    for module in (outbound_artifacts, adopt_artifacts):
+        stray = module.final_path(cfg, "job-1", 0).parent / "notes.json"
+        stray.write_text('{"stray": true}', encoding="utf-8")
     assert {"stray": True} in outbound_artifacts.committed(cfg, "job-1")
-    (adopt_artifacts.final_path(cfg, "job-1", 0).parent / "notes.json").write_text(
-        '{"stray": true}', encoding="utf-8"
-    )
     with pytest.raises(ValueError):
         adopt_artifacts.committed(cfg, "job-1")
 
@@ -717,28 +705,31 @@ def test_an_absent_document_is_not_a_document_that_holds_null(tmp_path):
     assert config.read_json(path, StoreRefused) == (True, {"since": "2026-11-21", "count": 2})
 
 
-@pytest.mark.parametrize("content", [b"{not json", b"", b"\xff\xfe\x00"])
-def test_a_document_that_does_not_parse_is_refused_and_never_read_as_empty(tmp_path, content):
-    """Bytes that are not UTF-8 are told as not JSON as well, in the store's own refusal."""
+@pytest.mark.parametrize(
+    ("content", "said", "cause"),
+    [
+        (b"{not json", "it is not JSON", ValueError),
+        (b"", "it is not JSON", ValueError),
+        (b"\xff\xfe\x00", "it is not JSON", ValueError),
+        (None, "it could not be opened", OSError),
+    ],
+    ids=["not-json", "empty", "not-utf-8", "a-directory"],
+)
+def test_a_document_that_cannot_be_read_is_refused_and_never_read_as_empty(
+    tmp_path, content, said, cause
+):
+    """Bytes that are not UTF-8 are told as not JSON as well; a directory cannot be opened."""
     path = tmp_path / "document.json"
-    path.write_bytes(content)
+    if content is None:
+        path.mkdir()
+    else:
+        path.write_bytes(content)
 
     with pytest.raises(StoreRefused) as raised:
         config.read_json(path, StoreRefused)
 
-    assert raised.value.args == ("it is not JSON",)
-    assert isinstance(raised.value.__cause__, ValueError)
-
-
-def test_a_document_that_cannot_be_opened_is_refused_and_never_read_as_empty(tmp_path):
-    path = tmp_path / "document.json"
-    path.mkdir()
-
-    with pytest.raises(StoreRefused) as raised:
-        config.read_json(path, StoreRefused)
-
-    assert raised.value.args == ("it could not be opened",)
-    assert isinstance(raised.value.__cause__, OSError)
+    assert raised.value.args == (said,)
+    assert isinstance(raised.value.__cause__, cause)
 
 
 def test_a_document_read_as_a_map_is_none_when_absent_and_the_map_when_it_is_one(tmp_path):
@@ -880,11 +871,8 @@ def test_a_path_nothing_can_be_read_above_has_no_device(monkeypatch):
 
 
 def test_a_registry_entry_is_found_by_its_tree_identifier_and_the_first_recorded_wins():
-    entries = [
-        SimpleNamespace(tree_id="genres", name="first"),
-        SimpleNamespace(tree_id="labels", name="second"),
-        SimpleNamespace(tree_id="genres", name="third"),
-    ]
+    ids = [("genres", "first"), ("labels", "second"), ("genres", "third")]
+    entries = [SimpleNamespace(tree_id=tree_id, name=name) for tree_id, name in ids]
 
     assert tree_registry.by_tree_id(entries, "genres").name == "first"
     assert tree_registry.by_tree_id(entries, "labels").name == "second"
@@ -917,9 +905,7 @@ def test_a_job_still_open_is_driven_once_and_read_again_before_it_is_judged(monk
 
     assert jobs.resumed(SimpleNamespace(run_job=run_job), "the store", queued) == (ended, warnings)
     assert calls == [
-        ("drive", "the store", queued),
-        ("read", "the store", "job-1"),
-        ("judge", ended),
+        ("drive", "the store", queued), ("read", "the store", "job-1"), ("judge", ended)
     ]
 
 
@@ -1017,14 +1003,8 @@ def test_a_row_write_records_its_commit_under_its_key_as_rows_updated(monkeypatc
 
     row_defaults.record_commit("the record", "genre", 3, "the config")
 
-    assert recorded == [
-        (
-            "the record",
-            "genre",
-            session.ChangeSummary((session.TreeChange(tree="genre", updated=3),)),
-            "the config",
-        )
-    ]
+    summary = session.ChangeSummary((session.TreeChange(tree="genre", updated=3),))
+    assert recorded == [("the record", "genre", summary, "the config")]
 
 
 def test_the_two_row_writes_report_through_one_shape_and_one_adds_what_it_renumbered():
@@ -1033,17 +1013,12 @@ def test_the_two_row_writes_report_through_one_shape_and_one_adds_what_it_renumb
     genres = tagging_rows.Written(session_id="s-1", written=2, read_back=2)
 
     assert (base.wrong, base.moved) == ((), ())
-    assert [one.name for one in dataclasses.fields(base)] == [
-        "session_id",
-        "written",
-        "read_back",
-        "wrong",
-        "moved",
-    ]
-    assert [one.name for one in dataclasses.fields(genres)] == [
-        one.name for one in dataclasses.fields(base)
-    ]
-    assert [one.name for one in dataclasses.fields(defaults)][-1] == "renumbered"
+    def names(written) -> list[str]:
+        return [one.name for one in dataclasses.fields(written)]
+
+    assert names(base) == ["session_id", "written", "read_back", "wrong", "moved"]
+    assert names(genres) == names(base)
+    assert names(defaults)[-1] == "renumbered"
     assert isinstance(defaults, row_defaults.RowsWritten)
     assert isinstance(genres, row_defaults.RowsWritten)
     assert not isinstance(genres, row_defaults.Written)
@@ -1065,14 +1040,9 @@ def test_a_module_this_build_can_import_is_importable_and_one_it_cannot_is_not(t
 
 
 def test_a_marks_refusal_carries_the_verbs_own_origin_its_steps_and_its_detail():
-    refusal = marks.blocked(
-        ("sync", "cli", "mark"),
-        "the account's marks cannot be read",
-        "log in again",
-        "run crate sync mark again",
-        playlist="Inbox",
-        tracks=3,
-    )
+    said = "the account's marks cannot be read"
+    steps = ("log in again", "run crate sync mark again")
+    refusal = marks.blocked(("sync", "cli", "mark"), said, *steps, playlist="Inbox", tracks=3)
 
     cause = refusal.cause
     assert (cause.reason, cause.message) == ("sync-marks-blocked", "the account's marks cannot be read")
@@ -1093,11 +1063,8 @@ def test_the_first_few_of_a_list_are_named_and_the_rest_are_counted():
 def test_a_review_question_is_addressed_by_the_three_fields_the_exact_test_compares():
     typed = match.Wanted(artist="Beyoncé", title="Halo (Remastered)", version="Extended Mix")
 
-    assert typed.folded_row() == {
-        "artist": "beyonce",
-        "title": "halo remastered",
-        "version": "extended mix",
-    }
+    folded = {"artist": "beyonce", "title": "halo remastered", "version": "extended mix"}
+    assert typed.folded_row() == folded
 
 
 def test_a_screen_leaves_out_every_code_the_cache_already_answers(monkeypatch):
@@ -1107,11 +1074,11 @@ def test_a_screen_leaves_out_every_code_the_cache_already_answers(monkeypatch):
     cache = SimpleNamespace(holds=lambda code, country: (code, country) in held)
     screen = isrc_screen.Screen.__new__(isrc_screen.Screen)
     monkeypatch.setattr(isrc_screen.isrc_cache, "country_of", lambda client: "US")
-    monkeypatch.setattr(
-        isrc_screen.Screen,
-        "screen",
-        lambda self, client, codes: asked.append((client, list(codes))) or len(asked[-1][1]),
-    )
+    def screen_all(self, client, codes):
+        asked.append((client, list(codes)))
+        return len(asked[-1][1])
+
+    monkeypatch.setattr(isrc_screen.Screen, "screen", screen_all)
 
     sent = screen.screen_uncached("the client", cache, ["GBAYE0000001", "GBAYE0000002", None, "USRC10000003"])
 

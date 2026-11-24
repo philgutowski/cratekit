@@ -1,8 +1,7 @@
 """U272: a capture's copy is on the disk before its manifest says it is verified.
 
-Every file, directory and the store are flushed before the manifest's sync, a
-failing flush is never recorded verified, and the full flush is asked for where
-the platform has one (macOS)."""
+Every file, directory and the store are flushed before the manifest's sync, a failing
+flush is never recorded verified, and the full flush is asked for where there is one."""
 
 # ruff: noqa: F811, the fixture below is imported from the capture suite by name
 
@@ -289,12 +288,21 @@ def _record_calls(monkeypatch, *, full_answers=None) -> list[tuple]:
     return calls
 
 
-def test_the_full_flush_is_asked_for_where_the_platform_offers_one(written, monkeypatch):
+@pytest.mark.parametrize(
+    ("full", "directory", "expected"),
+    [(51, False, [("full", 51)]), (None, False, [("sync",)]), (None, True, [("sync",)])],
+    ids=["full-flush-offered", "no-full-flush", "a-directory"],
+)
+def test_the_full_flush_is_asked_for_where_the_platform_offers_one(
+    written, monkeypatch, full, directory, expected
+):
+    """With no full flush the plain sync is the flush, and a directory takes the same call."""
     calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(config, "_FULL_FLUSH", full)
 
-    config.flush_to_disk(written)
+    config.flush_to_disk(written.parent if directory else written)
 
-    assert calls == [("full", 51)]
+    assert calls == expected
 
 
 @pytest.mark.parametrize(
@@ -322,15 +330,6 @@ def test_a_full_flush_that_fails_on_the_device_raises_rather_than_falling_back(
     assert calls == [("full", 51)]
 
 
-def test_where_no_full_flush_exists_the_plain_sync_is_the_flush(written, monkeypatch):
-    calls = _record_calls(monkeypatch)
-    monkeypatch.setattr(config, "_FULL_FLUSH", None)
-
-    config.flush_to_disk(written)
-
-    assert calls == [("sync",)]
-
-
 def test_a_plain_sync_that_fails_raises(written, monkeypatch):
     monkeypatch.setattr(config, "_FULL_FLUSH", None)
 
@@ -344,15 +343,6 @@ def test_a_plain_sync_that_fails_raises(written, monkeypatch):
 
     assert raised.value.errno == errno.EIO
     assert raised.value.filename == str(written), "the error does not say which file failed"
-
-
-def test_a_directory_is_flushed_through_the_same_call(tmp_path, monkeypatch):
-    calls = _record_calls(monkeypatch)
-    monkeypatch.setattr(config, "_FULL_FLUSH", None)
-
-    config.flush_to_disk(tmp_path)
-
-    assert calls == [("sync",)]
 
 
 def test_a_path_that_is_not_there_raises(tmp_path):

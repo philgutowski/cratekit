@@ -43,21 +43,27 @@ def test_the_lock_file_is_private():
     assert mode & 0o077 == 0
 
 
-def test_a_second_holder_refuses_naming_the_first():
-    path = staging_lock.lock_path()
+def _refused_beside(holder: str, **held) -> CratekitError:
+    """The refusal ``held`` meets beside a foreign holder that wrote ``holder``."""
     other = _foreign_hold()
     other.seek(0)
     other.truncate()
-    json.dump({"pid": 99, "verb": "crate sync night", "run_id": "night-run",
-               "started": "2026-11-22T03:00:00+00:00"}, other)
+    other.write(holder)
     other.flush()
     try:
         with pytest.raises(CratekitError) as caught:
-            with staging_lock.held("crate sync land", run_id="manual"):
+            with staging_lock.held("crate sync land", **held):
                 pytest.fail("the body ran beside another holder")
     finally:
         other.close()
-    cause = caught.value.cause
+    return caught.value
+
+
+def test_a_second_holder_refuses_naming_the_first():
+    path = staging_lock.lock_path()
+    holder = {"pid": 99, "verb": "crate sync night", "run_id": "night-run",
+              "started": "2026-11-22T03:00:00+00:00"}
+    cause = _refused_beside(json.dumps(holder), run_id="manual").cause
     assert cause.reason == staging_lock.HELD
     assert "crate sync night, pid 99, run night-run" in cause.message
     assert "crate sync land stages nothing" in cause.message
@@ -67,16 +73,7 @@ def test_a_second_holder_refuses_naming_the_first():
 
 
 def test_a_holder_that_cannot_be_read_still_refuses():
-    other = _foreign_hold()
-    other.write("not json")
-    other.flush()
-    try:
-        with pytest.raises(CratekitError) as caught:
-            with staging_lock.held("crate sync land"):
-                pass
-    finally:
-        other.close()
-    assert "a pass whose holder could not be read" in caught.value.cause.message
+    assert "a pass whose holder could not be read" in _refused_beside("not json").cause.message
 
 
 def test_one_process_holds_it_again_by_count_and_releases_at_the_outermost():

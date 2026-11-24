@@ -42,6 +42,11 @@ def track(artist, title, key, bpm=124.0, energy=5, vox=None, path=""):
     )
 
 
+#: The two versions of one work the anchor lookup tests tell apart, at their own paths.
+EXTENDED = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
+ORIGINAL = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
+
+
 def plan_of(anchor, index, **kwargs):
     return setbuild_cli.plan_for(anchor, index, declared=TAXONOMY, **kwargs)
 
@@ -75,9 +80,8 @@ def test_plan_for_composes_the_engine_exactly_as_build_set_does(index):
     assert [item["path"] for item in mine["items"] if item["position"] is not None] == [
         scored.track.path for scored in theirs.sequence
     ]
-    assert {item["path"] for item in mine["items"]} == {
-        scored.track.path for scored in theirs.pool
-    } | {scored.track.path for scored in theirs.sequence}
+    engine = {scored.track.path for scored in (*theirs.pool, *theirs.sequence)}
+    assert {item["path"] for item in mine["items"]} == engine
     assert mine["totals"]["sequence"] == len(theirs.sequence)
 
 
@@ -297,24 +301,20 @@ def test_the_vocal_signal_is_reachable_only_because_a_threshold_can_be_supplied(
 
 def test_an_exact_name_is_never_lost_to_a_longer_title_whichever_came_first():
     """R-187, DRIVEN ON THE SHAPE ITS ENTRY DROVE."""
-    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
-    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
 
-    for index in ((extended, original), (original, extended)):
-        assert setbuilder.find_in_index("Alder - Anchor Work", index) is original
-        assert setbuild_cli.named_anchor("Alder - Anchor Work", index) is original
-        assert setbuild_cli.named_anchor("Alder - Anchor Work (Extended Mix)", index) is extended
-    assert setbuild_cli.anchor_in_index(Path("/library/orig.flac"), (extended, original)) is original
+    for index in ((EXTENDED, ORIGINAL), (ORIGINAL, EXTENDED)):
+        assert setbuilder.find_in_index("Alder - Anchor Work", index) is ORIGINAL
+        assert setbuild_cli.named_anchor("Alder - Anchor Work", index) is ORIGINAL
+        assert setbuild_cli.named_anchor("Alder - Anchor Work (Extended Mix)", index) is EXTENDED
+    assert setbuild_cli.anchor_in_index(Path(ORIGINAL.path), (EXTENDED, ORIGINAL)) is ORIGINAL
 
 
 def test_a_name_that_reaches_two_versions_lists_both_and_picks_neither():
     """The refusal IS the feature, so its contents are asserted and not its slug alone."""
-    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
-    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
     other = track("Gum", "Wrong Key", "3B", path="/library/gum.flac")
 
     listings = []
-    for index in ((extended, original, other), (other, original, extended)):
+    for index in ((EXTENDED, ORIGINAL, other), (other, ORIGINAL, EXTENDED)):
         with pytest.raises(CratekitError) as caught:
             setbuild_cli.named_anchor("Anchor Work", index)
         cause = caught.value.cause
@@ -334,11 +334,10 @@ def test_a_name_that_reaches_two_versions_lists_both_and_picks_neither():
 
 def test_a_name_longer_than_the_owned_title_is_refused_and_not_shortened():
     """The subset score is 100 in BOTH directions, and this is the other one."""
-    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
-    index = (original, track("Gum", "Wrong Key", "3B"))
+    index = (ORIGINAL, track("Gum", "Wrong Key", "3B"))
 
     assert setbuilder.match_in_index("Alder - Anchor Work (Extended Mix)", index) == (
-        setbuilder.AnchorMatch(candidates=(original,), partial=True)
+        setbuilder.AnchorMatch(candidates=(ORIGINAL,), partial=True)
     )
     with pytest.raises(CratekitError) as caught:
         setbuild_cli.named_anchor("Alder - Anchor Work (Extended Mix)", index)
@@ -371,10 +370,8 @@ def test_one_differing_word_in_a_long_title_is_a_different_version():
 
 def test_the_one_title_holding_every_typed_word_wins_over_titles_holding_fewer():
     """Both titles score 100 on "anchor work", and only one holds "extended"."""
-    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
-    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
-    for index in ((extended, original), (original, extended)):
-        assert setbuild_cli.named_anchor("anchor work extended", index) is extended
+    for index in ((EXTENDED, ORIGINAL), (ORIGINAL, EXTENDED)):
+        assert setbuild_cli.named_anchor("anchor work extended", index) is EXTENDED
 
 
 def test_a_file_with_no_artist_tag_is_reachable_by_the_name_the_refusal_lists():
@@ -389,10 +386,9 @@ def test_a_file_with_no_artist_tag_is_reachable_by_the_name_the_refusal_lists():
 
 def test_a_name_typed_short_resolves_when_only_one_track_answers_to_it(index):
     """What fuzzy is FOR: a person types what they remember, which is less."""
-    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
-    library = (extended, *index[1:])
-    assert setbuild_cli.named_anchor("anchor work", library) is extended
-    assert setbuild_cli.named_anchor("Alder - Anchr Work Extended Mix", library) is extended
+    library = (EXTENDED, *index[1:])
+    assert setbuild_cli.named_anchor("anchor work", library) is EXTENDED
+    assert setbuild_cli.named_anchor("Alder - Anchr Work Extended Mix", library) is EXTENDED
 
 
 def test_a_name_nothing_answers_to_is_not_indexed_and_not_ambiguous(index):
@@ -432,9 +428,7 @@ def test_the_listing_is_capped_and_says_how_many_it_reached():
 
 def test_the_engine_says_ambiguous_and_never_not_in_your_library():
     """The same shape one file over: ``resolve_anchor`` and ``build_set``."""
-    extended = track("Alder", "Anchor Work (Extended Mix)", "8A", path="/library/ext.flac")
-    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
-    index = (extended, original)
+    index = (EXTENDED, ORIGINAL)
 
     for supplied in (None, "8A"):
         anchor = setbuilder.resolve_anchor("Anchor Work", index, key=supplied)
@@ -448,8 +442,7 @@ def test_the_engine_says_ambiguous_and_never_not_in_your_library():
 
 def test_a_remix_the_library_lacks_is_unowned_once_its_key_is_supplied():
     """Found by the built in review."""
-    original = track("Alder", "Anchor Work", "8A", path="/library/orig.flac")
-    index = (original, track("Birch", "Same Key Lower", "8A"))
+    index = (ORIGINAL, track("Birch", "Same Key Lower", "8A"))
     remix = "Alder - Anchor Work (Someone Remix)"
 
     bare = setbuilder.resolve_anchor(remix, index)
@@ -460,7 +453,7 @@ def test_a_remix_the_library_lacks_is_unowned_once_its_key_is_supplied():
     assert (keyed.key, keyed.owned, keyed.track, keyed.display) == ("8A", False, None, remix)
     assert keyed.key_needs_confirming is True and keyed.unresolved == ""
     plan = setbuilder.build_set(remix, index, taxonomy=TAXONOMY, key="8A")
-    assert original in [scored.track for scored in plan.pool]
+    assert ORIGINAL in [scored.track for scored in plan.pool]
 
 
 def test_an_anchor_spelled_through_a_symlink_still_resolves(tmp_path):
@@ -517,14 +510,11 @@ def library(tmp_path, monkeypatch) -> Path:
 @pytest.fixture
 def configured(library):
     """A set-up machine with NO DATABASE, which is all this verb may have."""
+    db_path = str(library / "db" / "master.db")
+    section = {"root": str(library), "volume_id": "F1E2-D3C4", "db_path": db_path}
     cfg = config.from_dict({
-        "schema_version": config.CURRENT_SCHEMA_VERSION,
-        "library": {
-            "root": str(library), "volume_id": "F1E2-D3C4",
-            "db_path": str(library / "db" / "master.db"),
-        },
-        "paths": {"download_staging": str(library.parent / "staging")},
-        "profile": {"name": "full"},
+        "schema_version": config.CURRENT_SCHEMA_VERSION, "library": section,
+        "paths": {"download_staging": str(library.parent / "staging")}, "profile": {"name": "full"},
     })
     config.save(cfg)
     config.reset_cache()
@@ -548,6 +538,13 @@ def place(library, silence):
     return put
 
 
+def _anchor_and_companion(place) -> Path:
+    """The anchor and the one same key companion most disk tests rank, and the anchor's path."""
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    return anchor
+
+
 def drive(argv: list[str]) -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)
@@ -564,8 +561,7 @@ def envelope_of(argv: list[str]) -> tuple[int, dict]:
 
 def test_the_verb_produces_a_compatible_sequence_over_a_real_library(configured, place):
     """The end-to-end scenario, asserted against the ENGINE'S declared windows."""
-    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
-    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    anchor = _anchor_and_companion(place)
     place("Cedar", "Neighbour Up", "09A", 125, energy=8)
     place("Deodar", "Relative Major", "08B", 123, energy=6)
     place("Gum", "Wrong Key", "03B", 124, energy=5)
@@ -618,8 +614,7 @@ def material(cfg) -> dict[Path, int]:
 
 def test_the_verb_writes_its_declared_cache_and_nothing_of_the_librarys(configured, place):
     """"No write to the library" as a structural assertion rather than a promise."""
-    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
-    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    anchor = _anchor_and_companion(place)
     cache = config.state_path("setbuilder_index_cache", configured)
     before = material(configured)
     assert not cache.exists()
@@ -643,9 +638,8 @@ def test_a_second_run_reads_no_tag_it_already_holds(configured, place, monkeypat
         return real(path)
 
     # ``build_index`` binds its reader as a default argument, so replace the default.
-    monkeypatch.setattr(setbuilder.build_index, "__kwdefaults__", {
-        **setbuilder.build_index.__kwdefaults__, "reader": counting,
-    })
+    defaults = {**setbuilder.build_index.__kwdefaults__, "reader": counting}
+    monkeypatch.setattr(setbuilder.build_index, "__kwdefaults__", defaults)
 
     first = envelope_of(["setbuild", str(anchor)])[1]["data"]
     assert sorted(reads) == sorted([anchor, other])
@@ -687,8 +681,7 @@ def test_the_first_run_opens_each_file_once_and_the_second_none(configured, plac
 
 def test_a_cache_that_cannot_be_written_does_not_cost_the_set(configured, place):
     """A performance feature must not become an outage."""
-    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
-    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    anchor = _anchor_and_companion(place)
     blocker = config.library_state_dir(configured)
     blocker.write_text("not a directory", encoding="utf-8")
 
@@ -779,8 +772,7 @@ REFUSALS = {
 
 @pytest.mark.parametrize("case", list(REFUSALS))
 def test_a_refused_invocation_is_a_precondition_with_its_own_reason(configured, place, case):
-    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
-    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    anchor = _anchor_and_companion(place)
     argv, reason = REFUSALS[case]
     library = Path(configured.library.root)
     argv = [str(anchor) if a == "ANCHOR" else str(library / a) if a.startswith("Music/") else a
@@ -823,8 +815,7 @@ def test_an_invocation_the_flags_cannot_take_is_the_parsers_verdict(
 
 def test_a_path_anchor_is_unchanged_by_the_unowned_form(configured, place):
     """The path form still reads owned, with the library's own key."""
-    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
-    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    anchor = _anchor_and_companion(place)
 
     document = exited(envelope_of(["setbuild", str(anchor)]))
     assert document["data"]["totals"]["anchor"]["owned"] is True
@@ -869,8 +860,7 @@ def test_an_empty_name_refuses_before_any_scan(configured, place):
 
 
 def test_the_role_flag_reaches_the_engine(configured, place):
-    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
-    place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    anchor = _anchor_and_companion(place)
     place("Cedar", "Neighbour Up", "09A", 125, energy=8)
 
     _, document = envelope_of(["setbuild", str(anchor), "--role", "before"])

@@ -16,6 +16,7 @@ from cratekit.core import jobs
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, release_cli, twins, twins_cli
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -31,6 +32,8 @@ OTHER_NAME = "DOWNLOADED Other 10-01-26"
 RELEASE = ["sync", "release"]
 #: Account tracks the library lacks, beyond the two the world already codes.
 LACKING = {"t22": "USZZZ2600022", "t23": "USZZZ2600023", "t24": "USZZZ2600024"}
+#: The three tracks of Phil's twin the library lacks.
+THREE = ["t20", "t21", "t22"]
 
 
 @pytest.fixture
@@ -57,12 +60,21 @@ def _on_hold(envelope) -> list[tuple[str, str]]:
     ]
 
 
+def _held_ids(envelope) -> list[str]:
+    return sorted(remote for _pair, remote in _on_hold(envelope))
+
+
 def _queued(envelope) -> list[str]:
     found: list[str] = []
     with jobs.open_store() as store:
         for job_id in envelope["data"]["totals"]["queued_jobs"]:
             found.extend(sorted((jobs.get(store, job_id).payload or {}).get("tracks") or {}))
     return sorted(found)
+
+
+def _holding(cfg, account_id: str = PHIL) -> list[str]:
+    """What the pairs document holds for the twin's choice, by id."""
+    return sorted(pairs.PairStore(cfg).get(account_id).on_hold or {})
 
 
 def release(*args: str, answer: str = "approve"):
@@ -73,8 +85,7 @@ def release(*args: str, answer: str = "approve"):
     run_id = envelope["run_id"]
     gate = envelope["cause"]["detail"]["gate"]
     assert gate == release_cli.APPROVE_GATE, envelope
-    decided, said = drive(["run", "decide", run_id, gate, answer, "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), said
+    exited(drive(["run", "decide", run_id, gate, answer, "--actor", "a-person"]))
     return drive(["--run", run_id, *RELEASE, *args])
 
 
@@ -83,22 +94,27 @@ def _three_missing(w: World) -> None:
     w.playlist(PHIL, PHIL_NAME, ["t3", "t20", "t1", "t21", "t22"])
 
 
+def _backfilled(w: World) -> None:
+    """Phil's twin with its three missing, backfilled."""
+    _three_missing(w)
+    exited(backfill())
+
+
 def _two_twins(w: World) -> None:
     _three_missing(w)
     w.playlist(OTHER, OTHER_NAME, ["t4", "t23", "t5"])
+    exited(backfill())
 
 
 # The brief's scenarios
 
 
 def test_a_twin_with_three_missing_tracks_queues_none_and_names_three_on_hold(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     held = pairs.PairStore(cfg).get(PHIL)
     assert held is not None and held.twin
-    assert sorted(held.on_hold or {}) == ["t20", "t21", "t22"]
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    assert sorted(held.on_hold or {}) == THREE
+    envelope = exited(sync_pair())
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert envelope["data"]["totals"]["acquire"] == 0
     assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
@@ -106,36 +122,30 @@ def test_a_twin_with_three_missing_tracks_queues_none_and_names_three_on_hold(wo
     said = _warning(envelope, pair_cli.ON_HOLD)
     assert f"{PHIL_NAME}: 3" in said and f"crate sync release {PHIL}" in said
     # A SECOND SYNC STILL HOLDS THEM: the snapshot moved and the hold did not.
-    code, again = sync_pair()
-    assert code == int(ExitCode.OK), again
+    again = exited(sync_pair())
     assert again["data"]["totals"]["queued_jobs"] == []
     assert len(_on_hold(again)) == 3
-    assert sorted(pairs.PairStore(cfg).get(PHIL).on_hold or {}) == ["t20", "t21", "t22"]
+    assert _holding(cfg) == THREE
 
 
 def test_releasing_the_twin_queues_its_three_at_the_next_sync(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    code, envelope = release(PHIL)
-    assert code == int(ExitCode.OK), envelope
+    _backfilled(world)
+    envelope = exited(release(PHIL))
     assert envelope["data"]["totals"]["released"] == 1
     assert envelope["data"]["totals"]["tracks"] == 3
     assert release_cli.RELEASED in _codes(envelope)
     assert dict(pairs.PairStore(cfg).get(PHIL).on_hold) == {}
-    code, synced = sync_pair()
-    assert code == int(ExitCode.OK), synced
-    assert _queued(synced) == ["t20", "t21", "t22"]
+    synced = exited(sync_pair())
+    assert _queued(synced) == THREE
     assert _on_hold(synced) == []
 
 
 def test_a_track_added_later_on_the_account_is_queued_and_the_held_stay_held(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     world.account.playlists[PHIL].append("t24")
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert _queued(envelope) == ["t24"]
-    assert sorted(remote for _pair, remote in _on_hold(envelope)) == ["t20", "t21", "t22"]
+    assert _held_ids(envelope) == THREE
 
 
 def test_a_held_track_another_account_playlist_landed_is_added_and_the_rest_stay_held(
@@ -144,14 +154,12 @@ def test_a_held_track_another_account_playlist_landed_is_added_and_the_rest_stay
     """U229: a held track the library now holds is that row, one it lacks stays held."""
     from tests.test_sync_pair import _landed_for, _untagged_row
 
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     # Another playlist's landing brought t22 in as row nine, its code in its
     # file only.
     _untagged_row(cfg, "9", tmp_path, file_isrc=LACKING["t22"])
     _landed_for(world, cfg, "acc-daily", ("9",), session_id="s-daily", name="Daily")
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21")]
     assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "9"]
@@ -168,9 +176,7 @@ def _warmup(world, *, sync: bool) -> str:
     made = world.make(WARM_NAME)
     world.rekordbox_add(made, "1")
     if sync:
-        code, envelope = sync_pair(WARM, "--rekordbox", made)
-        assert code == int(ExitCode.OK), envelope
-        assert _queued(envelope) == ["t22"]
+        assert _queued(exited(sync_pair(WARM, "--rekordbox", made))) == ["t22"]
     else:
         pairs.PairStore(world.cfg).mark(WARM, made, name=WARM_NAME)
     return made
@@ -178,11 +184,9 @@ def _warmup(world, *, sync: bool) -> str:
 
 def test_a_twins_held_track_another_pairs_job_holds_is_still_held(world, cfg):
     """R-1385: another pair's job holding a twin's held track leaves it held, never awaiting."""
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     _warmup(world, sync=True)
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
     awaiting = [
@@ -196,10 +200,8 @@ def test_a_twins_held_track_another_pairs_job_holds_is_still_held(world, cfg):
 def test_a_twins_held_track_a_plain_pair_lists_is_queued_once_and_still_held(world, cfg):
     """R-1385: in one plan the plain pair queues t22 once and the twin still holds it."""
     _warmup(world, sync=False)
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    _backfilled(world)
+    envelope = exited(sync_pair())
     assert _queued(envelope) == ["t22"]
     assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
     planned = [item["pair"] for item in envelope["data"]["items"] if item["side"] == "library"]
@@ -210,13 +212,11 @@ def test_a_twins_held_track_stays_on_hold_beside_an_unreadable_landing_record(wo
     """R-1383: the twin's hold names its own remedy, never the landing's."""
     from cratekit.core import session
 
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     torn = session.log_path("s-torn", cfg)
     torn.parent.mkdir(parents=True, exist_ok=True)
     torn.write_text('{"session_id": "s-to')
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
     assert envelope["data"]["totals"]["landing_unread"] == 0
@@ -224,26 +224,19 @@ def test_a_twins_held_track_stays_on_hold_beside_an_unreadable_landing_record(wo
 
 def test_a_second_twin_stays_held_when_the_first_is_released(world, cfg):
     _two_twins(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    assert sorted(pairs.PairStore(cfg).get(OTHER).on_hold or {}) == ["t23"]
-    code, envelope = release(PHIL)
-    assert code == int(ExitCode.OK), envelope
-    assert sorted(pairs.PairStore(cfg).get(OTHER).on_hold or {}) == ["t23"]
-    code, synced = sync_pair()
-    assert code == int(ExitCode.OK), synced
-    assert _queued(synced) == ["t20", "t21", "t22"]
+    assert _holding(cfg, OTHER) == ["t23"]
+    exited(release(PHIL))
+    assert _holding(cfg, OTHER) == ["t23"]
+    synced = exited(sync_pair())
+    assert _queued(synced) == THREE
     assert _on_hold(synced) == [(OTHER, "t23")]
 
 
 def test_release_all_lets_every_twin_go(world, cfg):
     _two_twins(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    code, envelope = release("--all")
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(release("--all"))
     assert envelope["data"]["totals"]["released"] == 2
-    code, synced = sync_pair()
-    assert code == int(ExitCode.OK), synced
-    assert _queued(synced) == ["t20", "t21", "t22", "t23"]
+    assert _queued(exited(sync_pair())) == ["t20", "t21", "t22", "t23"]
 
 
 # A twin paired before U221, read by time
@@ -262,88 +255,77 @@ def _as_before_u221(cfg) -> str:
 
 
 def test_a_twin_paired_before_u221_holds_what_the_account_dates_before_its_mark(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     marked = _as_before_u221(cfg)
     # t20 undated, t21 before the mark, t22 after it, so only t22 reads as
     # added by hand since the twin was made.
     world.dates = {"t21": "2026-01-01T00:00:00+00:00", "t22": "2099-01-01T00:00:00+00:00"}
     assert marked < world.dates["t22"]
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert _queued(envelope) == ["t22"]
-    assert sorted(remote for _pair, remote in _on_hold(envelope)) == ["t20", "t21"]
+    assert _held_ids(envelope) == ["t20", "t21"]
+
+
+def _shown_twins() -> str:
+    """The twins line the release's gate shows for Phil's twin, nothing yet let go."""
+    refused = exited(drive([*RELEASE, PHIL]), ExitCode.DECISION_REQUIRED)
+    return refused["cause"]["detail"]["shown"]["twins"]
 
 
 def test_a_twin_paired_before_u221_is_released_by_name_and_counted_by_time(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     _as_before_u221(cfg)
-    code, refused = drive([*RELEASE, PHIL])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    shown = refused["cause"]["detail"]["shown"]["twins"]
+    shown = _shown_twins()
     assert shown.startswith(f"{PHIL_NAME}: every track the library lacks that its account")
     assert "listed before the twin was made" in shown
-    code, envelope = release(PHIL)
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(release(PHIL))
     assert envelope["data"]["totals"]["by_time"] == 1
-    code, synced = sync_pair()
-    assert code == int(ExitCode.OK), synced
-    assert _queued(synced) == ["t20", "t21", "t22"]
+    assert _queued(exited(sync_pair())) == THREE
 
 
 # The release verb's refusals and its plan of nothing
 
 
 def test_an_abort_lets_nothing_go(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    code, envelope = release(PHIL, answer="abort")
-    assert code == int(ExitCode.OK), envelope
+    _backfilled(world)
+    envelope = exited(release(PHIL, answer="abort"))
     assert envelope["outcome"] == "no_op"
-    assert sorted(pairs.PairStore(cfg).get(PHIL).on_hold or {}) == ["t20", "t21", "t22"]
+    assert _holding(cfg) == THREE
 
 
 def test_a_released_twin_asks_nothing_the_second_time(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    assert release(PHIL)[0] == int(ExitCode.OK)
-    code, envelope = drive([*RELEASE, PHIL])
-    assert code == int(ExitCode.OK), envelope
+    _backfilled(world)
+    exited(release(PHIL))
+    envelope = exited(drive([*RELEASE, PHIL]))
     assert envelope["outcome"] == "no_op"
     assert release_cli.NOTHING in _codes(envelope)
     assert [one["action"] for one in envelope["data"]["items"]] == [release_cli.NOTHING_HELD]
 
 
 def test_a_name_that_is_no_twin_is_refused_and_nothing_is_planned(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     pairs.PairStore(cfg).mark("acc-hand", "999", name="By hand")
     for named in ("acc-nobody", "acc-hand"):
-        code, envelope = drive([*RELEASE, PHIL, named])
-        assert code != int(ExitCode.OK), envelope
+        envelope = failed(drive([*RELEASE, PHIL, named]))
         assert envelope["cause"]["reason"] == release_cli.NOT_A_TWIN
         assert envelope["cause"]["detail"]["account_ids"] == [named]
-    assert sorted(pairs.PairStore(cfg).get(PHIL).on_hold or {}) == ["t20", "t21", "t22"]
+    assert _holding(cfg) == THREE
 
 
 @pytest.mark.parametrize("args", [[], ["--all", PHIL]])
 def test_release_needs_names_or_all_and_not_both(world, cfg, args):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    code, envelope = drive([*RELEASE, *args])
-    assert code != int(ExitCode.OK), envelope
+    _backfilled(world)
+    envelope = failed(drive([*RELEASE, *args]))
     assert envelope["cause"]["reason"] == release_cli.UNNAMED
-    assert sorted(pairs.PairStore(cfg).get(PHIL).on_hold or {}) == ["t20", "t21", "t22"]
+    assert _holding(cfg) == THREE
 
 
 def test_a_twin_paired_again_since_the_plan_is_left_held(world, cfg):
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
+    _backfilled(world)
     store = pairs.PairStore(cfg)
     held = store.get(PHIL)
     assert store.release_hold({PHIL: "not-" + held.rekordbox_id}) == {}
-    assert sorted(store.get(PHIL).on_hold or {}) == ["t20", "t21", "t22"]
+    assert _holding(cfg) == THREE
     assert sorted(store.release_hold({PHIL: held.rekordbox_id})) == [PHIL]
 
 
@@ -352,21 +334,15 @@ def test_a_twin_paired_again_since_the_plan_is_left_held(world, cfg):
 
 def test_the_backfills_note_says_the_missing_are_held_not_queued(world):
     _three_missing(world)
-    code, envelope = backfill()
-    assert code == int(ExitCode.OK), envelope
-    said = _warning(envelope, twins_cli.MISSING)
+    said = _warning(exited(backfill()), twins_cli.MISSING)
     assert "held for your choice" in said and "crate sync release" in said
     assert "queues each one the library lacks" not in said
 
 
 def test_a_landing_twin_records_an_empty_hold(cfg):
     landed = twins.LandedTwin(
-        account_id="acc-land",
-        account_name="DOWNLOADED Land",
-        name="Land",
-        folder="Custom Playlists 2026",
-        playlist_id="77",
-        tracks=2,
+        account_id="acc-land", account_name="DOWNLOADED Land", name="Land",
+        folder="Custom Playlists 2026", playlist_id="77", tracks=2,
     )
     twins.pair_landed(cfg, [landed])
     held = pairs.PairStore(cfg).get("acc-land")
@@ -404,17 +380,14 @@ def test_a_hold_that_is_not_ids_to_words_refuses_the_document(cfg, bad):
     assert "sync-pair-store-unusable" in str(getattr(caught.value, "cause", caught.value).reason)
 
 
+def _twin(marked: str, **held) -> pairs.Pair:
+    return pairs.Pair(account_id="a", rekordbox_id="1", name="x", marked=marked, twin=True, **held)
+
+
 def test_a_pair_that_is_no_twin_never_holds(cfg):
     plain = pairs.Pair(account_id="a", rekordbox_id="1", name="x", marked="", twin=False)
     assert not pair_cli.held_for_choice(plain, "t1", {})
-    held = pairs.Pair(
-        account_id="a",
-        rekordbox_id="1",
-        name="x",
-        marked="2026-11-05T00:00:00+00:00",
-        twin=True,
-        on_hold=MappingProxyType({"t1": "A - B"}),
-    )
+    held = _twin("2026-11-05T00:00:00+00:00", on_hold=MappingProxyType({"t1": "A - B"}))
     assert pair_cli.held_for_choice(held, "t1", {})
     assert not pair_cli.held_for_choice(held, "t2", {})
     assert not pair_cli.held_for_choice(None, "t1", {})
@@ -427,14 +400,13 @@ def test_a_short_listings_twin_records_no_hold_and_holds_a_track_served_later(wo
     """A track the account withheld from the backfill is held by time once it is served."""
     world.playlist(PHIL, PHIL_NAME, ["t3", "t20", "t1"])
     world.short.add(PHIL)
-    assert backfill()[0] == int(ExitCode.OK)
+    exited(backfill())
     assert pairs.PairStore(cfg).get(PHIL).on_hold is None
     world.short.clear()
     world.account.playlists[PHIL].append("t22")
-    code, envelope = sync_pair()
-    assert code == int(ExitCode.OK), envelope
+    envelope = exited(sync_pair())
     assert envelope["data"]["totals"]["queued_jobs"] == []
-    assert sorted(remote for _pair, remote in _on_hold(envelope)) == ["t20", "t22"]
+    assert _held_ids(envelope) == ["t20", "t22"]
 
 
 def test_a_held_track_whose_linked_row_left_the_library_is_still_counted_and_released(
@@ -442,15 +414,12 @@ def test_a_held_track_whose_linked_row_left_the_library_is_still_counted_and_rel
 ):
     """A link the pairs document keeps to a row since removed never hides a held track."""
     world.playlist(PHIL, PHIL_NAME, ["t3", "t20", "t1"])
-    assert backfill()[0] == int(ExitCode.OK)
+    exited(backfill())
     # The link names a row the collection no longer holds.
     pairs.PairStore(cfg).record(PHIL, links={"t20": "777"})
     assert world.sql("SELECT ID FROM djmdContent WHERE ID = '777'") == []
-    code, refused = drive([*RELEASE, PHIL])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["shown"]["twins"] == f"{PHIL_NAME}: 1 track(s)"
-    code, envelope = release(PHIL)
-    assert code == int(ExitCode.OK), envelope
+    assert _shown_twins() == f"{PHIL_NAME}: 1 track(s)"
+    envelope = exited(release(PHIL))
     assert envelope["data"]["totals"]["released"] == 1
     assert [one["remote_id"] for one in envelope["data"]["items"] if one["action"] == "held"] == [
         "t20"
@@ -459,15 +428,11 @@ def test_a_held_track_whose_linked_row_left_the_library_is_still_counted_and_rel
 
 def test_a_track_an_earlier_sync_queued_is_awaiting_not_on_hold(world, cfg):
     """A twin read by time again, its hold dropped by a copy, names its queued track awaiting."""
-    _three_missing(world)
-    assert backfill()[0] == int(ExitCode.OK)
-    assert release(PHIL)[0] == int(ExitCode.OK)
-    code, synced = sync_pair()
-    assert code == int(ExitCode.OK), synced
-    assert _queued(synced) == ["t20", "t21", "t22"]
+    _backfilled(world)
+    exited(release(PHIL))
+    assert _queued(exited(sync_pair())) == THREE
     _as_before_u221(cfg)
-    code, again = sync_pair()
-    assert code == int(ExitCode.OK), again
+    again = exited(sync_pair())
     assert _on_hold(again) == []
     assert again["data"]["totals"]["awaiting"] == 3
 
@@ -483,10 +448,11 @@ def test_release_hold_passes_over_a_pair_that_is_no_twin_and_one_holding_nothing
 
 
 def test_the_plans_digest_moves_with_the_hold():
-    target = pair_cli.Target(account_id="a", rekordbox_id="1", marked=True)
-    named = pair_cli.Named(key="r:t1", artist="A", title="B", remote_id="t1")
     from cratekit.sync import pair_merge
     from cratekit.write import playlist_pair
+
+    target = pair_cli.Target(account_id="a", rekordbox_id="1", marked=True)
+    named = pair_cli.Named(key="r:t1", artist="A", title="B", remote_id="t1")
 
     def plan(on_hold):
         return pair_cli.PairPlan(
@@ -507,13 +473,7 @@ def test_the_plans_digest_moves_with_the_hold():
 
 
 def test_a_track_dated_at_the_very_mark_is_held():
-    held = pairs.Pair(
-        account_id="a",
-        rekordbox_id="1",
-        name="x",
-        marked="2026-11-05T10:00:00+00:00",
-        twin=True,
-    )
+    held = _twin("2026-11-05T10:00:00+00:00")
     assert pair_cli.held_for_choice(held, "t1", {"t1": "2026-11-05T12:00:00+02:00"})
     assert not pair_cli.held_for_choice(held, "t1", {"t1": "2026-11-05T10:00:01+00:00"})
     assert pair_cli.held_for_choice(held, "t1", {"t1": "2026-11-05T09:59:59+00:00"})

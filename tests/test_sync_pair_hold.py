@@ -21,7 +21,7 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-from tests.test_sync_pair import ACCOUNT, NAME, VERB, sync
+from tests.test_sync_pair import ACCOUNT, NAME, VERB, paired, sync
 from tests.test_sync_pair import db as db  # noqa: PLC0414
 from tests.test_sync_pair import world as world  # noqa: PLC0414
 
@@ -147,14 +147,10 @@ def test_an_account_list_changed_before_the_write_refuses_stale_and_names_it(wor
     refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert refused["cause"]["reason"] == "decision-stale"
     moved = refused["cause"]["detail"]["moved"]
-    assert moved == [
-        {
-            "side": "account",
-            "playlist_id": ACCOUNT,
-            "name": NAME,
-            "why": "has gained 1 track(s) since the plan",
-        }
-    ]
+    assert moved == [{
+        "side": "account", "playlist_id": ACCOUNT, "name": NAME,
+        "why": "has gained 1 track(s) since the plan",
+    }]
     assert NAME in refused["cause"]["message"]
     assert w.on_account() == ["t1", "t5"], "the account was written over its moved list"
     assert w.held() == ["1", "2"]
@@ -190,10 +186,8 @@ def test_both_sides_moved_are_both_named(world):
     w.rekordbox_add("3")
     w.account.playlists[ACCOUNT].remove("t1")
     refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
-    assert sorted(one["side"] for one in refused["cause"]["detail"]["moved"]) == [
-        "account",
-        "rekordbox",
-    ]
+    moved = refused["cause"]["detail"]["moved"]
+    assert sorted(one["side"] for one in moved) == ["account", "rekordbox"]
 
 
 def test_a_moved_list_is_checked_whichever_side_was_skipped(world):
@@ -209,8 +203,7 @@ def test_a_moved_list_is_checked_whichever_side_was_skipped(world):
 
 
 def test_a_withheld_count_changed_before_the_write_refuses_stale(world):
-    w = world(account=("1", "2"), rekordbox=("1", "2"))
-    assert sync(w.args())[0] == int(ExitCode.OK)
+    w = paired(world, ("1", "2"), ("1", "2"))
     w.rekordbox_add("3")
     run_id = _to_the_write(w)
     w.declared = 5
@@ -219,8 +212,7 @@ def test_a_withheld_count_changed_before_the_write_refuses_stale(world):
 
 
 def test_a_pair_with_nothing_to_write_on_the_account_is_not_listed_again(world, counted):
-    w = world(account=("1", "2"), rekordbox=("1", "2"))
-    assert sync(w.args())[0] == int(ExitCode.OK)
+    w = paired(world, ("1", "2"), ("1", "2"))
     w.rekordbox_order("2", "1")
     w.account.playlists[ACCOUNT] = ["t2", "t1"]
     seen = counted(w)
@@ -270,8 +262,7 @@ def test_a_track_found_by_another_landing_costs_the_plan_no_call(world, counted,
     """U229: reading every landed INBOX playlist asks the provider nothing."""
     from tests.test_sync_pair import _landed_for, _untagged_row, isrc
 
-    w = world(account=("1",), rekordbox=("1",))
-    assert sync(w.args())[0] == int(ExitCode.OK)
+    w = paired(world)
     if found != "by its row's isrc":
         _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
         _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
@@ -321,8 +312,7 @@ def test_a_held_plan_other_than_the_offer_is_planned_again(world, cfg):
 
 
 def test_a_held_plan_made_for_other_pairs_is_planned_again(world, cfg):
-    w = world(account=("1",), rekordbox=("1", "2"))
-    assert sync(w.args())[0] == int(ExitCode.OK)
+    w = paired(world, ("1",), ("1", "2"))
     w.rekordbox_add("3")
     first = exited(drive(VERB), ExitCode.DECISION_REQUIRED)
     run_id = first["run_id"]
@@ -414,20 +404,18 @@ def test_a_held_plan_of_another_kind_or_run_is_no_plan(cfg):
     registry = pair_check._held_classes()
     plan = pair_cli.Plan()
     assert held_plan.hold("run-a", "sync.pair", plan, registry=registry, digest=plan.digest) == ""
-    found, digest, _extra, why = held_plan.load(
-        "run-a", "other.verb", registry=registry, digest_of=lambda one: one.digest
-    )
+
+    def load(kind: str):
+        return held_plan.load("run-a", kind, registry=registry, digest_of=lambda one: one.digest)
+
+    found, digest, _extra, why = load("other.verb")
     assert found is None and "kind" in why
-    found, digest, _extra, why = held_plan.load(
-        "run-a", "sync.pair", registry=registry, digest_of=lambda one: one.digest
-    )
+    found, digest, _extra, why = load("sync.pair")
     assert found == plan and digest == plan.digest and why == ""
     document = json.loads(held_plan.path("run-a").read_text())
     document["digest"] = "forged"
     held_plan.path("run-a").write_text(json.dumps(document))
-    found, _digest, _extra, why = held_plan.load(
-        "run-a", "sync.pair", registry=registry, digest_of=lambda one: one.digest
-    )
+    found, _digest, _extra, why = load("sync.pair")
     assert found is None and "does not digest" in why
 
 
@@ -452,12 +440,7 @@ def test_old_held_plans_are_pruned_and_the_new_one_kept(cfg):
 def test_a_rekordbox_playlist_deleted_before_the_write_refuses_stale(world):
     w = world(account=("1",), rekordbox=("1", "2"))
     run_id = _to_the_write(w)
-    import sqlite3
-
-    conn = sqlite3.connect(w.cfg.library.db_path)
-    conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (w.rekordbox_id,))
-    conn.commit()
-    conn.close()
+    w.sql("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", w.rekordbox_id)
     refused = exited(drive(["--run", run_id, *w.args()]), ExitCode.DECISION_STALE)
     assert refused["cause"]["detail"]["moved"][0]["why"] == "is no longer a live plain playlist"
     assert w.on_account() == ["t1"]
@@ -480,8 +463,7 @@ def test_a_held_plan_older_than_it_is_kept_is_planned_again(world):
 def test_tracks_another_sync_queued_before_the_write_refuse_stale_not_twice(world):
     from cratekit.core import jobs
 
-    w = world(account=("1",), rekordbox=("1",))
-    assert sync(w.args())[0] == int(ExitCode.OK)
+    w = paired(world)
     w.account.playlists[ACCOUNT].append("t77")
     first = _to_the_write(w)
     second = _to_the_write(w)

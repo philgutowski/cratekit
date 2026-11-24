@@ -22,17 +22,17 @@ from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
 from tests.test_sync_pair import ACCOUNT, sync
 from tests.test_sync_pair import db as db  # noqa: PLC0414
+from tests.test_sync_pair import paired as first_synced
 from tests.test_sync_pair import world as world  # noqa: PLC0414
 from tests.test_sync_pair_resume import CEILING, VERB, gate_the_account, to_the_write, write
 
-# One paired playlist: a stop inside the account's writes
+ARGS = [*VERB, ACCOUNT]
 
 
 @pytest.fixture
 def paired(world, monkeypatch):
     """A pair synced once, then t4 added on the account and row 2 swapped for 5 in rekordbox."""
-    made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
-    assert sync(made.args())[0] == int(ExitCode.OK)
+    made = first_synced(world, ("1", "2", "3"), ("1", "2", "3"))
     gate_the_account(made.account, monkeypatch)
     made.account.playlists[ACCOUNT].append("t4")
     made.rekordbox_remove("2")
@@ -40,14 +40,24 @@ def paired(world, monkeypatch):
     return made
 
 
-def test_a_stop_inside_the_account_write_is_finished_without_writing_rekordbox_twice(
-    paired, cfg
-):
+def _stopped_after_one_write() -> str:
+    """Both gates answered and the write stopped on a ceiling of one call: the run id."""
+    run_id, _first = to_the_write(ARGS)
+    assert write(run_id, ARGS, 1)[0] == CEILING
+    return run_id
+
+
+def _moved(run_id: str) -> list[dict]:
+    """What the continue refused stale over, each list the plan read that moved."""
+    refused = exited(write(run_id, ARGS, 100), ExitCode.DECISION_STALE)
+    return refused["cause"]["detail"]["moved"]
+
+
+def test_a_stop_inside_the_account_write_is_finished_without_writing_rekordbox_twice(paired, cfg):
     world = paired
-    args = [*VERB, ACCOUNT]
+    args = ARGS
     run_id, _first = to_the_write(args)
-    code, stopped = write(run_id, args, 1)
-    assert code == CEILING, stopped
+    exited(write(run_id, args, 1), CEILING)
     assert world.on_account() == ["t1", "t3", "t4"], "the removal did not land first"
     assert sorted(world.held()) == ["1", "3", "4", "5"], "rekordbox was not written first"
 
@@ -63,28 +73,18 @@ def test_a_stop_inside_the_account_write_is_finished_without_writing_rekordbox_t
 
 def test_a_track_lost_from_the_part_written_account_playlist_refuses_stale(paired):
     world = paired
-    args = [*VERB, ACCOUNT]
-    run_id, _first = to_the_write(args)
-    assert write(run_id, args, 1)[0] == CEILING
+    run_id = _stopped_after_one_write()
     world.account.playlists[ACCOUNT].remove("t1")
-
-    refused = exited(write(run_id, args, 100), ExitCode.DECISION_STALE)
-    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
+    assert [one["why"] for one in _moved(run_id)] == [
         "lost 1 track(s) this run was not taking off since the plan"
     ]
     assert world.on_account() == ["t3", "t4"]
 
 
 def test_a_rekordbox_playlist_changed_after_this_run_wrote_it_refuses_stale(paired):
-    world = paired
-    args = [*VERB, ACCOUNT]
-    run_id, _first = to_the_write(args)
-    assert write(run_id, args, 1)[0] == CEILING
-    world.rekordbox_add("6")
-
-    refused = exited(write(run_id, args, 100), ExitCode.DECISION_STALE)
-    moved = refused["cause"]["detail"]["moved"]
-    assert [(one["side"], one["why"]) for one in moved] == [
+    run_id = _stopped_after_one_write()
+    paired.rekordbox_add("6")
+    assert [(one["side"], one["why"]) for one in _moved(run_id)] == [
         ("rekordbox", "has gained 1 track(s) since this run wrote it")
     ]
 
@@ -92,21 +92,15 @@ def test_a_rekordbox_playlist_changed_after_this_run_wrote_it_refuses_stale(pair
 def test_steps_that_cannot_be_read_are_said_and_the_continue_refuses_rather_than_writes_twice(
     paired,
 ):
-    world = paired
-    args = [*VERB, ACCOUNT]
-    run_id, _first = to_the_write(args)
-    assert write(run_id, args, 1)[0] == CEILING
+    run_id = _stopped_after_one_write()
     held_plan.steps_path(run_id).write_text("{ not json")
-
-    refused = exited(write(run_id, args, 100), ExitCode.DECISION_STALE)
-    sides = {one["side"] for one in refused["cause"]["detail"]["moved"]}
-    assert sides == {"account", "rekordbox"}
-    assert sorted(world.held()) == ["1", "3", "4", "5"]
+    assert {one["side"] for one in _moved(run_id)} == {"account", "rekordbox"}
+    assert sorted(paired.held()) == ["1", "3", "4", "5"]
 
 
 def test_a_step_that_cannot_be_recorded_stops_the_write(paired, monkeypatch):
     world = paired
-    args = [*VERB, ACCOUNT]
+    args = ARGS
     run_id, _first = to_the_write(args)
 
     def refused(self, key, step, value=True):
@@ -122,40 +116,28 @@ def test_a_step_that_cannot_be_recorded_stops_the_write(paired, monkeypatch):
 def test_a_reorder_by_hand_on_the_part_written_playlist_refuses_stale(paired):
     """The order the plan read is held until the write orders."""
     world = paired
-    args = [*VERB, ACCOUNT]
-    run_id, _first = to_the_write(args)
-    assert write(run_id, args, 1)[0] == CEILING
+    run_id = _stopped_after_one_write()
     world.account.playlists[ACCOUNT] = ["t4", "t3", "t1"]
-
-    refused = exited(write(run_id, args, 100), ExitCode.DECISION_STALE)
-    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
-        "was reordered since the plan"
-    ]
+    assert [one["why"] for one in _moved(run_id)] == ["was reordered since the plan"]
     assert world.on_account() == ["t4", "t3", "t1"], "the author's order was written over"
 
 
 def test_a_track_withheld_on_the_part_written_playlist_refuses_stale(paired):
-    world = paired
-    args = [*VERB, ACCOUNT]
-    run_id, _first = to_the_write(args)
-    assert write(run_id, args, 1)[0] == CEILING
-    world.account.playlists[ACCOUNT].append("t8")
-    world.withheld.add("t8")
-
-    refused = exited(write(run_id, args, 100), ExitCode.DECISION_STALE)
-    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
+    run_id = _stopped_after_one_write()
+    paired.account.playlists[ACCOUNT].append("t8")
+    paired.withheld.add("t8")
+    assert [one["why"] for one in _moved(run_id)] == [
         "withholds a different number of tracks than the plan read"
     ]
 
 
 def test_a_job_queued_before_a_stop_is_not_queued_again_by_the_continue(world, monkeypatch):
-    made = world(account=("1",), rekordbox=("1", "2"))
-    assert sync(made.args())[0] == int(ExitCode.OK)
+    made = first_synced(world, ("1",), ("1", "2"))
     gate_the_account(made.account, monkeypatch)
     made.account.playlists[ACCOUNT].append("t-missing")
     made.codes["t-missing"] = "GBZZZ2600099"
     made.rekordbox_add("5")
-    args = [*VERB, ACCOUNT]
+    args = ARGS
     run_id, _first = to_the_write(args)
     # The account's addition fails after rekordbox's commit and the queue.
     made.account.fail_on = frozenset({ACCOUNT})
@@ -230,20 +212,16 @@ def _one_move_a_call(account) -> None:
 def test_a_stop_in_the_middle_of_an_order_sends_no_move_again_and_a_later_sync_finishes_it(
     world, monkeypatch
 ):
-    """U210, U231: a continue resends none of the moves a stop left in doubt.
-
-    It reads the order, pending, until two agreeing readings finish it from rekordbox (U225).
-    """
+    """U210, U231: a continue resends none of the moves a stop left in doubt; it reads the
+    order, pending, until two agreeing readings finish it from rekordbox (U225)."""
     from cratekit.sync import pair_plan
-    made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
-    assert sync(made.args())[0] == int(ExitCode.OK)
+    made = first_synced(world, ("1", "2", "3"), ("1", "2", "3"))
     gate_the_account(made.account, monkeypatch)
     _one_move_a_call(made.account)
     made.rekordbox_order("3", "2", "1")
-    args = [*VERB, ACCOUNT]
+    args = ARGS
     run_id, _first = to_the_write(args)
-    code, stopped = write(run_id, args, 1)
-    assert code == CEILING, stopped
+    exited(write(run_id, args, 1), CEILING)
     assert made.on_account() == ["t2", "t1", "t3"], "the stop did not fall between the moves"
 
     moves = len(made.account.ordered)
@@ -263,15 +241,13 @@ def test_a_stop_in_the_middle_of_an_order_sends_no_move_again_and_a_later_sync_f
 def test_a_park_that_is_not_the_ceiling_names_the_command_that_continues_the_run(
     world, monkeypatch
 ):
-    made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
-    assert sync(made.args())[0] == int(ExitCode.OK)
+    made = first_synced(world, ("1", "2", "3"), ("1", "2", "3"))
     gate_the_account(made.account, monkeypatch, limited_on=2)
     made.account.playlists[ACCOUNT].append("t4")
     made.rekordbox_remove("2")
     made.rekordbox_add("5")
-    args = [*VERB, ACCOUNT]
-    run_id, _first = to_the_write(args)
-    code, parked = write(run_id, args, 100)
+    run_id, _first = to_the_write(ARGS)
+    code, parked = write(run_id, ARGS, 100)
     assert parked["cause"]["reason"] == "provider-cooldown", parked
     message = parked["cause"]["message"]
     assert f"run {run_id} finished 0 of 1 pair(s)" in message

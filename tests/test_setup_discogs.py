@@ -1,8 +1,7 @@
 """U283: ``crate setup`` links Discogs as its own step and checks the token first.
 
-Every Discogs answer here is a fake fetch handed to the step, or a fake getter
-under the shipped ``default_fetch``; none reaches the live API, and the suite
-wide guard in ``tests/conftest.py`` fails any test that would.
+Every Discogs answer is a fake fetch or a fake getter under the shipped ``default_fetch``;
+none reaches the live API, which the guard in ``tests/conftest.py`` fails.
 """
 
 from __future__ import annotations
@@ -114,6 +113,15 @@ class Discogs:
         return self.answers.pop(0)
 
 
+class Reply:
+    """What the HTTP getter answers under the shipped fetch."""
+
+    def __init__(self, status_code: int, text: str = ""):
+        self.status_code = status_code
+        self.text = text
+        self.headers: dict = {}
+
+
 def accepted() -> searchers.Fetched:
     return searchers.Fetched(text=IDENTITY, status=200)
 
@@ -149,9 +157,7 @@ def recorded() -> str | None:
 
 
 def everything_said(wizard, person: Person) -> str:
-    return "\n".join(
-        [json.dumps([n.to_json() for n in wizard.notes]), *person.written]
-    )
+    return "\n".join([json.dumps([n.to_json() for n in wizard.notes]), *person.written])
 
 
 # The client's identity call
@@ -198,17 +204,8 @@ def test_a_token_that_is_not_one_printable_word_is_rejected_and_never_sent(token
         searchers.Fetched(text=json.dumps({"id": True}), status=200),
     ],
     ids=[
-        "blocked",
-        "rate-limited",
-        "server-error",
-        "moved",
-        "transport",
-        "challenge",
-        "not-json",
-        "not-an-object",
-        "no-id",
-        "id-as-text",
-        "id-as-bool",
+        "blocked", "rate-limited", "server-error", "moved", "transport", "challenge", "not-json",
+        "not-an-object", "no-id", "id-as-text", "id-as-bool",
     ],
 )
 def test_anything_but_an_identity_or_a_401_leaves_the_token_unchecked(answer):
@@ -232,18 +229,12 @@ def test_the_check_is_paced_like_a_search():
 
 
 def test_the_shipped_check_sends_the_searchers_agent_and_the_token_header(monkeypatch):
-    """Through the shipped ``default_fetch``, with only the getter faked: the
-    one request goes to the identity address with the searcher's own headers."""
+    """Through the shipped ``default_fetch``, only the getter faked: one request, its headers."""
     sent: list[tuple[str, dict]] = []
-
-    class Reply:
-        status_code = 200
-        text = IDENTITY
-        headers: dict = {}
 
     def get(url, *, headers, timeout):
         sent.append((url, dict(headers)))
-        return Reply()
+        return Reply(200, IDENTITY)
 
     monkeypatch.setattr(searchers, "_requests_get", get)
     found = searchers.check_discogs_token(GOOD, sleep=lambda _s: None)
@@ -255,8 +246,7 @@ def test_the_shipped_check_sends_the_searchers_agent_and_the_token_header(monkey
 
 
 def test_the_check_never_asks_through_the_shared_asker(monkeypatch):
-    """The shared asker holds the recorded token, and the check is of one not
-    yet recorded, so using the shared one would check the wrong token."""
+    """The shared asker holds the recorded token, so asking through it checks the wrong one."""
 
     def forbidden():
         raise AssertionError("the token check read the process's shared asker")
@@ -284,8 +274,7 @@ def test_a_valid_token_is_checked_and_then_stored_where_login_stores_it(configur
 
 
 def test_the_step_explains_before_it_asks(configured):
-    """What Discogs is for, what skipping costs, where the token comes from,
-    and that it is free, all written before the question."""
+    """What Discogs is for, what skipping costs, where the free token comes from: all before."""
     person = Person(["no"])
     link(configured, person)
     said = "".join(person.written)
@@ -370,58 +359,54 @@ def test_a_discogs_that_could_not_be_asked_stores_the_token_with_a_note(configur
     assert GOOD not in everything_said(wizard, person)
 
 
-def test_a_check_that_raises_stores_nothing_and_is_a_note(configured, monkeypatch):
-    """No verdict is no permission to store: a raise is a FAIL note, never a raise."""
+def _linked_over_a_check_raising(configured, monkeypatch, failure):
+    """Link with GOOD while the token check raises what ``failure`` builds from the token."""
 
     def raising(token, *, fetch=None, sleep=None):
-        raise CratekitError(
-            searchers.refuse(
-                "credential-missing", "the check broke", remedy=Remedy.REPORT_DEFECT
-            ).cause
-        )
-
-    monkeypatch.setattr(searchers, "check_discogs_token", raising)
-    person = Person(["yes"], [GOOD])
-    wizard = link(configured, person)
-    assert recorded() is None
-    note = the_note(wizard)
-    assert note.status is doctor.Status.FAIL
-    assert "not recorded" in note.detail
-
-
-def test_a_check_that_raises_anything_else_stores_nothing_and_is_a_note(configured, monkeypatch):
-    """A server posing as Discogs can make the JSON reader raise (deep
-    nesting), and setup runs after the configuration is saved."""
-
-    def raising(token, *, fetch=None, sleep=None):
-        raise RecursionError("maximum recursion depth exceeded")
-
-    monkeypatch.setattr(searchers, "check_discogs_token", raising)
-    person = Person(["yes"], [GOOD])
-    wizard = link(configured, person)
-    assert recorded() is None
-    note = the_note(wizard)
-    assert note.status is doctor.Status.FAIL
-    assert "RecursionError" in note.detail and "not recorded" in note.detail
-
-
-def test_an_exception_carrying_the_token_never_reaches_the_note(configured, monkeypatch):
-    """The note names the exception's type and never its words, which a client
-    library may build from the request."""
-
-    def raising(token, *, fetch=None, sleep=None):
-        raise ValueError(f"bad header Authorization: Discogs token={token}")
+        raise failure(token)
 
     monkeypatch.setattr(searchers, "check_discogs_token", raising)
     person = Person(["yes"], [GOOD])
     wizard = link(configured, person)
     assert the_note(wizard).status is doctor.Status.FAIL
+    return wizard, person
+
+
+def _broke(_token):
+    return CratekitError(
+        searchers.refuse("credential-missing", "the check broke", remedy=Remedy.REPORT_DEFECT).cause
+    )
+
+
+def test_a_check_that_raises_stores_nothing_and_is_a_note(configured, monkeypatch):
+    """No verdict is no permission to store: a raise is a FAIL note, never a raise."""
+    wizard, _person = _linked_over_a_check_raising(configured, monkeypatch, _broke)
+    assert recorded() is None
+    assert "not recorded" in the_note(wizard).detail
+
+
+def test_a_check_that_raises_anything_else_stores_nothing_and_is_a_note(configured, monkeypatch):
+    """A server posing as Discogs can make the JSON reader raise, after setup saved."""
+    wizard, _person = _linked_over_a_check_raising(
+        configured, monkeypatch, lambda _token: RecursionError("maximum recursion depth exceeded")
+    )
+    assert recorded() is None
+    note = the_note(wizard)
+    assert "RecursionError" in note.detail and "not recorded" in note.detail
+
+
+def test_an_exception_carrying_the_token_never_reaches_the_note(configured, monkeypatch):
+    """The note names the exception's type, never its words, which may carry the request."""
+    wizard, person = _linked_over_a_check_raising(
+        configured,
+        monkeypatch,
+        lambda token: ValueError(f"bad header Authorization: Discogs token={token}"),
+    )
     assert GOOD not in everything_said(wizard, person)
 
 
 def test_the_step_says_it_is_checking_before_it_asks_discogs(configured):
-    """A rate limited check waits up to a minute and a half, so the line comes
-    before the request, not after it."""
+    """A rate limited check waits up to ninety seconds, so the line comes before the request."""
     person = Person(["yes"], [GOOD])
     order: list[str] = []
 
@@ -445,8 +430,7 @@ def test_the_step_says_it_is_checking_before_it_asks_discogs(configured):
 
 
 def test_a_refusal_the_fetch_raises_is_no_verdict_and_stores_nothing(configured):
-    """The identity call reads a 401 as a rejection and re-raises any other
-    refusal, which the step notes without storing."""
+    """The identity call re-raises any refusal but a 401, which the step notes without storing."""
 
     def fetch(_url):
         raise CratekitError(
@@ -505,8 +489,7 @@ def test_a_secret_reader_that_fails_is_a_failure_note_never_a_raise(configured):
 
 
 def test_a_profile_whose_verbs_spend_no_token_is_not_offered_discogs(configured, monkeypatch):
-    """The step asks the doctor question the loop asked; every shipped profile
-    carries the tagging verbs, so it is answered no here."""
+    """The step asks the doctor question the loop asked, answered no here: every profile tags."""
     asked: list[str] = []
 
     def offered(key, membership):
@@ -606,11 +589,7 @@ def test_a_replacement_discogs_could_not_check_keeps_the_recorded_token(configur
 
 
 def _shipped() -> str:
-    return taxonomy.shipped_template_text(configured_template())
-
-
-def configured_template() -> str:
-    return taxonomy.DEFAULT_TEMPLATE_NAME
+    return taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
 
 
 def _copy_without_discogs(cfg) -> None:
@@ -676,16 +655,8 @@ def test_the_flag_parses():
     assert parser.parse_args(["--relink-discogs"]).relink_discogs is True
 
 
-class Reply:
-    def __init__(self, status_code: int, text: str = ""):
-        self.status_code = status_code
-        self.text = text
-        self.headers: dict = {}
-
-
 def _drive_setup(tmp_path, monkeypatch, *, reply, recorded_first=None, relink=False):
-    """The real dispatcher, every answer a flag, a person who says yes only to
-    Discogs, and only the getter under the shipped fetch faked."""
+    """The real dispatcher, every answer a flag, yes only to Discogs, only the getter faked."""
     import io
 
     from cratekit import cli
@@ -715,18 +686,12 @@ def _drive_setup(tmp_path, monkeypatch, *, reply, recorded_first=None, relink=Fa
         question = asked[-1] if asked else ""
         return "yes\n" if "Discogs" in question else "no\n"
 
-    scripted = prompt.Prompter(
-        read_line=read_line, read_secret=lambda _q: NEW, write=write
-    )
+    scripted = prompt.Prompter(read_line=read_line, read_secret=lambda _q: NEW, write=write)
     monkeypatch.setattr(prompt, "Prompter", lambda: scripted)
     argv = [
-        "--output", "json", "setup",
-        "--library-root", str(root),
-        "--db-path", str(root / "db" / "master.db"),
-        "--volume-id", doctor_machines.VOLUME,
-        "--staging", str(tmp_path / "staging"),
-        "--profile", "full",
-        "--taxonomy", "default",
+        "--output", "json", "setup", "--library-root", str(root), "--db-path",
+        str(root / "db" / "master.db"), "--volume-id", doctor_machines.VOLUME, "--staging",
+        str(tmp_path / "staging"), "--profile", "full", "--taxonomy", "default",
     ]
     if relink:
         argv.append("--relink-discogs")
@@ -766,9 +731,8 @@ def test_the_verb_hands_the_flag_to_the_step(tmp_path, monkeypatch):
 
 
 def test_the_verb_without_the_flag_leaves_a_recorded_token(tmp_path, monkeypatch):
-    checks, sent, _ = _drive_setup(
-        tmp_path, monkeypatch, reply=Reply(200, IDENTITY), recorded_first=GOOD
-    )
+    reply = Reply(200, IDENTITY)
+    checks, sent, _ = _drive_setup(tmp_path, monkeypatch, reply=reply, recorded_first=GOOD)
     assert recorded() == GOOD
     assert sent == []
     assert "--relink-discogs" in checks[KEY]["detail"]

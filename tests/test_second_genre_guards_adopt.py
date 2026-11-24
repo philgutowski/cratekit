@@ -1,15 +1,10 @@
-"""R-1950: the guards on adoption's second genre paths, each pinned by a test.
+"""R-1950: the guards on adoption's second genre paths (U340), each pinned by a test.
 
-U340 gave a track a second entry for its second genre folder. These pin the
-guards round one of its review removed with nothing red: the second entry is
-built only for a track that routes, only where the second folder declares a
-place for the reading, under the second genre's own word, shown as such on the
-review list; a split place is kept only beside an entry that files the track;
-and an entry that does not claim its bucket never hides that bucket from the
-track's other entry in ``adopt move``.
-
-Where no shipped bucket lacks a place for a reading, the shipped template is
-given one, R&B with no place below it, so the guard has an input to answer.
+The second entry is built only for a routed track, only where the second folder
+has a place for the reading, under the second genre's word, shown on the review
+list; a split place is kept only beside an entry that files the track; an entry
+not claiming its bucket hides it from no other in ``adopt move``. Where no
+shipped bucket lacks a place, R&B is given none, so the guard has an input.
 """
 
 from __future__ import annotations
@@ -49,6 +44,13 @@ NO_RNB_PLACE = _with_bucket(
 )
 
 
+def _without_rnb_place(first: str, second: str) -> adopt_plan.AdoptionPlan:
+    """The split pair planned on the template where R&B has no place, Soul's Med held."""
+    held = adopt_plan.Placements(read=True, held={SOUL_ID: {"t": (SPLIT_MED,)}})
+    pair = [_split_pair("t", first, second, energy=5)]
+    return adopt_plan.build_adoption_plan(pair, NO_RNB_PLACE, tree=TREE_ID, placements=held)
+
+
 def _rows(plan: adopt_plan.AdoptionPlan) -> list[tuple]:
     return [(e.bucket, e.sub, e.disposition, e.withheld_by, e.second) for e in plan.entries]
 
@@ -67,8 +69,7 @@ def test_the_template_given_here_has_rnb_with_no_place_and_soul_as_shipped():
     "disposition", [member for member in adopt_scan.Disposition if member is not ROUTE]
 )
 def test_a_track_that_does_not_route_gets_no_second_entry_whatever_its_census_says(disposition):
-    """The census reads a second genre only for a routed track, so this row is
-    built by hand: a second bucket on a track that does not route."""
+    """Built by hand, as the census reads a second genre only for a routed track."""
     track = replace(_two("t", energy=8), disposition=disposition)
     assert track.second_bucket == TWO
     plan = _plan([track], {})
@@ -80,14 +81,8 @@ def test_a_track_that_does_not_route_gets_no_second_entry_whatever_its_census_sa
 
 
 def test_a_second_folder_with_no_place_for_the_reading_files_nothing_and_keeps_nothing():
-    """Soul first, R&B second, and R&B declares no place: one entry, Soul's,
-    and R&B's band held in Soul is a competing place, as for one genre."""
-    plan = adopt_plan.build_adoption_plan(
-        [_split_pair("t", SOUL, RNB, energy=5)],
-        NO_RNB_PLACE,
-        tree=TREE_ID,
-        placements=adopt_plan.Placements(read=True, held={SOUL_ID: {"t": (SPLIT_MED,)}}),
-    )
+    """Soul first, R&B with no place: one entry, R&B's band in Soul competing, as for one genre."""
+    plan = _without_rnb_place(SOUL, RNB)
     assert _rows(plan) == [(SOUL_ID, MED, WITHHELD, "band", False)]
     (entry,) = plan.entries
     assert entry.holds == (SPLIT_MED,)
@@ -105,9 +100,7 @@ def test_the_second_entry_carries_the_second_genres_word():
 
 
 def test_the_second_entrys_band_is_chosen_by_the_second_genres_word():
-    """NonElectronic files by the source word: a Deep House track whose second
-    genre is Folk is planned into Folk there, never into the band its first
-    genre's word would name."""
+    """NonElectronic files by the source word: a second genre of Folk is planned into Folk."""
     plan = _plan([_two("t", energy=8, second="Folk")], {})
     assert [(e.bucket, e.sub, e.second) for e in plan.entries] == [
         (ONE, "high", False),
@@ -129,14 +122,8 @@ def test_the_review_row_names_the_second_genre_on_a_second_entry_only():
 
 
 def test_a_second_entry_keeps_no_split_place_beside_a_first_folder_with_no_place():
-    """R&B first and declaring no place, Soul second: nothing files the track
-    into R&B, so R&B's band held in Soul is a competing place for Soul."""
-    plan = adopt_plan.build_adoption_plan(
-        [_split_pair("t", RNB, SOUL, energy=5)],
-        NO_RNB_PLACE,
-        tree=TREE_ID,
-        placements=adopt_plan.Placements(read=True, held={SOUL_ID: {"t": (SPLIT_MED,)}}),
-    )
+    """R&B first with no place, Soul second: nothing files into R&B, its band in Soul competes."""
+    plan = _without_rnb_place(RNB, SOUL)
     assert _rows(plan) == [
         ("", "", adopt_scan.Disposition.UNDECLARED, "", False),
         (SOUL_ID, MED, WITHHELD, "band", True),

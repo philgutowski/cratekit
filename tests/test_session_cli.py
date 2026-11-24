@@ -58,11 +58,8 @@ def at_a_terminal(monkeypatch):
 @pytest.fixture
 def installed(cfg, monkeypatch, at_a_terminal):
     """The library with only the platform seams answered; every gate still runs."""
-    monkeypatch.setattr(
-        preflight,
-        "default_identity_provider",
-        lambda: (lambda _path: cfg.library.volume_id),
-    )
+    volume = cfg.library.volume_id
+    monkeypatch.setattr(preflight, "default_identity_provider", lambda: (lambda _path: volume))
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
@@ -170,14 +167,11 @@ def test_the_refusal_names_the_acknowledgment_on_record_in_all_three_states(inst
     assert on_record["valid"] is True
     assert on_record["expires_at"]
 
+    now = datetime.now(timezone.utc)
     stale = session.Acknowledgment(
-        actor="somebody",
-        recorded_at=datetime.now(timezone.utc) - timedelta(days=2),
-        expires_at=datetime.now(timezone.utc) - timedelta(days=1),
+        actor="somebody", recorded_at=now - timedelta(days=2), expires_at=now - timedelta(days=1)
     )
-    config.atomic_write_bytes(
-        json.dumps(stale.to_json()).encode("utf-8"), session.ack_path(installed)
-    )
+    config.atomic_write_bytes(json.dumps(stale.to_json()).encode(), session.ack_path(installed))
     _code, refused = _drive(["session", "ack"])
     assert refused["cause"]["detail"]["shown"]["acknowledgment"]["valid"] is False
 
@@ -201,18 +195,12 @@ def test_an_unreadable_fact_file_refuses_and_the_remedy_the_raiser_chose_travels
         os.chmod(facts, 0o000)
         # Asserted rather than skipped: an account the mode bits do not restrain
         # would pass this test over a refusal that never happened.
-        assert not os.access(facts, os.R_OK), (
-            "this account reads a file whose mode bits forbid it, so the "
-            "permission branch of read_facts is unreachable from here and this "
-            "assertion would pass over a refusal that never happened. Run the "
-            "battery as an unprivileged account"
-        )
+        assert not os.access(facts, os.R_OK), "run the battery as an unprivileged account"
     elif damage == "corrupt":
         facts.write_text("this is not json")
     else:
-        facts.write_text(
-            json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}})
-        )
+        newer = {"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}}
+        facts.write_text(json.dumps(newer))
 
     try:
         code, envelope = _drive(["session", "ack"])
@@ -223,9 +211,7 @@ def test_an_unreadable_fact_file_refuses_and_the_remedy_the_raiser_chose_travels
     assert envelope["cause"]["reason"] == "backup-facts-unreadable", envelope
     assert envelope["cause"]["remediation"]["remedy"] == str(expected), envelope
     assert code != int(ExitCode.OK)
-    assert session.read_acknowledgment(installed) is None, (
-        "an acknowledgment was recorded over ages nobody could read"
-    )
+    assert session.read_acknowledgment(installed) is None, "minted over ages nobody could read"
 
 
 def test_an_inline_answer_to_the_explicit_gate_is_refused_and_records_nothing(installed):
@@ -243,10 +229,7 @@ def test_an_inline_answer_cannot_overturn_a_recorded_abort(installed):
     _answer(run_id, ACK_GATE, "abort")
 
     code, envelope = _drive(["--run", run_id, "-d", f"{ACK_GATE}=acknowledged", "session", "ack"])
-    assert session.read_acknowledgment(installed) is None, (
-        "a flag on a later invocation overturned an abort a person recorded, so "
-        "the explicit gate can be answered by the thing it gates (R34)"
-    )
+    assert session.read_acknowledgment(installed) is None, "a later flag overturned an abort (R34)"
     assert code == int(ExitCode.DECISION_REQUIRED), envelope
     assert envelope["cause"]["detail"]["explicit"] is True
 
@@ -360,11 +343,7 @@ def test_releasing_a_lock_nobody_holds_asks_anyway_and_reports_a_no_op(installed
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["summary"] == {
-        "released": False,
-        "recorded": False,
-        "unreadable": False,
-        "abandoned": [],
-        "kept": [],
+        "released": False, "recorded": False, "unreadable": False, "abandoned": [], "kept": [],
     }
 
 
@@ -409,9 +388,8 @@ def _hard_killed_gated_write(cfg) -> str:
             # the alarm turns that hang into a death by the wrong signal.
             signal.alarm(30)
             os.close(reader)
-            gates = session.assert_gates(
-                cfg, workflow="metadata.mytags-vocals", keep=session.Keep.RECORD
-            )
+            workflow, keep = "metadata.mytags-vocals", session.Keep.RECORD
+            gates = session.assert_gates(cfg, workflow=workflow, keep=keep)
             entered = gates.__enter__()
             os.write(writer, entered.record.session_id.encode("utf-8"))
             os.close(writer)
@@ -443,12 +421,8 @@ def _before_a_power_loss(monkeypatch, **changes) -> session.Holder:
     """A holder this machine's previous boot recorded, naming a process now gone (R-647)."""
     monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
     gone = _a_process_that_is_gone()
-    fields = {
-        **gone.to_json(),
-        "machine": THIS_MACHINE,
-        "boot": str(float(session.boot_identity()) - 86400),
-        **changes,
-    }
+    boot = str(float(session.boot_identity()) - 86400)
+    fields = {**gone.to_json(), "machine": THIS_MACHINE, "boot": boot, **changes}
     return session.Holder.from_json(fields)
 
 
@@ -459,8 +433,7 @@ def test_a_cut_off_gated_write_blocks_cutover_until_release_abandons_it(
 ):
     """R-598 and R-647: the open record refuses cutover until the release ends it.
 
-    A restart cannot be staged, so the previous boot's records are written directly.
-    """
+    A restart cannot be staged, so the previous boot's records are written directly."""
     from cratekit.core import tree_registry
     from cratekit.core.cause import CratekitError
     from tests.test_intake_imported import _verified_snapshot
@@ -484,9 +457,8 @@ def test_a_cut_off_gated_write_blocks_cutover_until_release_abandons_it(
     assert refused.value.cause.reason == "cutover-open-run"
 
     code, asked, envelope = _release()
-    assert [row["session_id"] for row in asked["cause"]["detail"]["shown"]["orphans"]] == [
-        session_id
-    ]
+    orphans = asked["cause"]["detail"]["shown"]["orphans"]
+    assert [row["session_id"] for row in orphans] == [session_id]
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["summary"]["abandoned"] == [session_id]
     ended = session.read_record(session_id, installed)
@@ -632,10 +604,7 @@ def test_the_check_rows_a_person_reads_name_the_portion(installed):
     _answer(refused["run_id"], ACK_GATE, "acknowledged")
     text = exited(_human(["--run", refused["run_id"], "session", "ack"]))
     assert "backup.age.database" in text
-    assert "] ?:" not in text, (
-        "a check row rendered as a question mark, so the row is keyed by a "
-        "field the check table does not read"
-    )
+    assert "] ?:" not in text, "a check row is keyed by a field the check table does not read"
 
 
 def test_a_damaged_acknowledgment_record_can_still_be_replaced(installed):
@@ -650,10 +619,8 @@ def test_a_damaged_acknowledgment_record_can_still_be_replaced(installed):
 
 def test_a_lock_record_that_cannot_be_understood_refuses_by_name(installed):
     """A lock record with a non numeric pid is reported unreadable, not as absent."""
-    config.atomic_write_bytes(
-        json.dumps({"holder": {"host": "x", "boot": "y", "pid": "not-a-number"}}).encode(),
-        session.lock_path(installed),
-    )
+    unreadable = {"holder": {"host": "x", "boot": "y", "pid": "not-a-number"}}
+    config.atomic_write_bytes(json.dumps(unreadable).encode(), session.lock_path(installed))
 
     code, refused, envelope = _release()
     assert refused["cause"]["detail"]["shown"]["record"] == "unreadable"

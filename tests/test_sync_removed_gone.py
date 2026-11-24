@@ -25,6 +25,7 @@ from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue, tidal_catalogue
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import playlists, removed, removed_cli, unavailable
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist
 from tests.test_label_tidal_catalogue import PLAYLIST, FakeClient
@@ -38,6 +39,7 @@ from tests.test_sync_removed import (
     _by_title,
     _five,
     _run,
+    sunset,
     track,
 )
 from tests.test_sync_removed import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -47,6 +49,7 @@ from tests.test_sync_removed import (
 from tests.test_sync_removed import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_sync_removed import five_landed as five_landed  # noqa: PLC0414
 from tests.test_sync_removed import fresh_cache as fresh_cache  # noqa: PLC0414
+from tests.test_sync_removed import land as land  # noqa: PLC0414
 from tests.test_sync_removed import library as library  # noqa: PLC0414
 from tests.test_sync_removed import machine as machine  # noqa: PLC0414
 from tests.test_sync_removed import native_library as native_library  # noqa: PLC0414
@@ -61,6 +64,8 @@ SAME_DAY = FIRST + timedelta(hours=3)
 NEXT_DAY = FIRST + timedelta(hours=25)
 #: Eight hours past the first: a later calendar day, not yet a day apart.
 NEXT_DATE = FIRST + timedelta(hours=9)
+#: Sunset Warmup as the account lists it with New1 taken off.
+NEW1_OFF = ("Held1", "New2", "Held2", "Held3")
 
 
 class Clock:
@@ -134,12 +139,18 @@ def _codes(out: dict) -> list[str]:
     return [one["code"] for one in out["warnings"]]
 
 
+def _a_day_apart(clock: Clock) -> tuple[dict, dict]:
+    """Two runs, the second a day and an hour after the first."""
+    first = _run()
+    clock.moment = NEXT_DAY
+    return first, _run()
+
+
 def _a179(cfg, silence, monkeypatch) -> Account:
     """New1 taken off Sunset Warmup; a pair nothing records answers not found; nine hearts withheld."""
     _five(cfg, silence)
     _pair(cfg)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2"), track("Held2"), track("Held3")])
+    account = sunset(monkeypatch, *NEW1_OFF)
     answering(account, 404, PAIRED)
     withholding(account, 9)
     return account
@@ -221,24 +232,52 @@ def test_a_sighting_on_a_later_date_but_under_a_day_after_the_first_retires_noth
     assert not _record()[PAIRED].is_retired
 
 
+def failing_with(account: Account, error: BaseException, *references: str) -> None:
+    """Each of ``references`` fails to open, the adapter's wrapper raised from ``error``."""
+    original = account.fake.playlist_for
+    named = set(references)
+
+    def playlist_for(reference: str):
+        if reference in named:
+            outer = tidal_catalogue.PlaylistUnresolvable(f"could not resolve {reference!r}")
+            outer.__cause__ = error
+            raise outer
+        return original(reference)
+
+    account.fake.playlist_for = playlist_for
+
+
+def _failed_a_day_apart(cfg: config.Config, monkeypatch, fail) -> dict:
+    """New1 taken off, the pair failing to open as ``fail`` makes it, read twice a day apart."""
+    _pair(cfg)
+    fail(sunset(monkeypatch, *NEW1_OFF))
+    _first, out = _a_day_apart(Clock(monkeypatch))
+    assert _by_title(out)["New1"]["why"] == removed.PARTIAL_READ
+    assert _playlists(out)[PAIRED]["state"] == removed.UNREADABLE
+    assert _record() == {}
+    return out
+
+
 def test_a_playlist_that_failed_any_other_way_twice_a_day_apart_is_never_retired(
     five_landed, monkeypatch
 ):
-    cfg = five_landed
-    _pair(cfg)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2"), track("Held2"), track("Held3")])
-    answering(account, 503, PAIRED)
-    clock = Clock(monkeypatch)
+    out = _failed_a_day_apart(five_landed, monkeypatch, lambda one: answering(one, 503, PAIRED))
 
-    _run()
-    clock.moment = NEXT_DAY
-    out = _run()
-
-    assert _by_title(out)["New1"]["why"] == removed.PARTIAL_READ
-    assert _playlists(out)[PAIRED]["state"] == removed.UNREADABLE
     assert removed_cli.UNAVAILABLE not in _codes(out)
-    assert _record() == {}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [FileNotFoundError(2, "No such file or directory"), ModuleNotFoundError("no module")],
+    ids=["file-not-found", "module-not-found"],
+)
+def test_pythons_own_not_found_classes_are_no_sighting_and_never_retire(
+    five_landed, monkeypatch, error
+):
+    """Round one's BLOCKING finding: the provider gate's lock raised FileNotFoundError."""
+    _failed_a_day_apart(five_landed, monkeypatch, lambda one: failing_with(one, error, PAIRED))
+
+    assert not unavailable.answered_unavailable(error)
 
 
 def test_two_runs_the_same_day_with_a_sighting_keep_one_digest(a179, monkeypatch):
@@ -256,8 +295,7 @@ def test_two_runs_the_same_day_with_a_sighting_keep_one_digest(a179, monkeypatch
 def test_hearts_short_only_by_what_the_provider_withholds_read_whole_and_still_keep_a_heart(
     five_landed, monkeypatch
 ):
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    account = sunset(monkeypatch, "Held1")
     account.fake.hearts.append(track("New1"))
     withholding(account, 9)
     Clock(monkeypatch)
@@ -275,37 +313,37 @@ def _hearts_of(fake: FakeCatalogue) -> removed.Listing:
     return removed.read_hearts(fake)
 
 
+def _declaring(fake: FakeCatalogue, declared: int, served: tuple | None = None) -> FakeCatalogue:
+    """``fake`` serving ``served``, or its hearts, as the shortfall of ``declared`` (R-504)."""
+
+    def short():
+        raise catalogue.HeartsShortfall(tuple(fake.hearts) if served is None else served, declared)
+
+    fake.favourite_tracks = short
+    return fake
+
+
 @pytest.mark.parametrize(
     ("served", "declared"),
     [((), 5), ((track("One", track_id="tid-one"),), 1)],
     ids=["none-served", "nothing-withheld"],
 )
 def test_hearts_short_by_more_than_the_provider_withholds_stay_partial(served, declared):
-    fake = FakeCatalogue()
-
-    def short():
-        raise catalogue.HeartsShortfall(served, declared)
-
-    fake.favourite_tracks = short
-
-    read = _hearts_of(fake)
+    read = _hearts_of(_declaring(FakeCatalogue(), declared, served))
 
     assert read.state == removed.SHORT
     assert f"{declared} declared, {len(served)} listed" in read.why
     assert not read.holds(match.Wanted(artist="Probe", title="One", ref="tid-one"))
 
 
+def _hearted(count: int, *first: Listed) -> FakeCatalogue:
+    """An account hearting ``first`` and then ``count`` more."""
+    hearts = [track(f"Heart {number}", track_id=f"tid-{number}") for number in range(count)]
+    return FakeCatalogue(hearts=[*first, *hearts])
+
+
 def _thirty(declared: int) -> FakeCatalogue:
-    fake = FakeCatalogue(
-        hearts=[track("One", track_id="tid-one")]
-        + [track(f"Heart {number}", track_id=f"tid-{number}") for number in range(29)]
-    )
-
-    def short():
-        raise catalogue.HeartsShortfall(tuple(fake.hearts), declared)
-
-    fake.favourite_tracks = short
-    return fake
+    return _declaring(_hearted(29, track("One", track_id="tid-one")), declared)
 
 
 def test_hearts_short_by_the_withheld_count_hold_every_heart_served():
@@ -332,9 +370,7 @@ def test_hearts_short_by_more_than_a_tenth_of_their_count_stay_partial(declared,
 
 def test_hearts_a_dropped_window_short_of_a_hearted_track_offer_nothing(five_landed, monkeypatch):
     """Round one's driven shape: 349 declared and 100 listed, the hearted New1 in the window lost."""
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
-    withholding(account, 249, served=100)
+    withholding(sunset(monkeypatch, "Held1"), 249, served=100)
     Clock(monkeypatch)
 
     out = _run()
@@ -346,24 +382,27 @@ def test_hearts_a_dropped_window_short_of_a_hearted_track_offer_nothing(five_lan
 # A retired playlist, read again
 
 
-def _retired_pair(cfg, silence, monkeypatch) -> tuple[Account, Clock]:
+@pytest.fixture
+def retired(native_library, silence, monkeypatch, offline) -> tuple[Account, Clock]:
+    """A179's pair sighted twice a day apart, so retired, the clock a day on: (account, clock)."""
+    cfg, _root = native_library
     account = _a179(cfg, silence, monkeypatch)
     clock = Clock(monkeypatch)
-    _run()
-    clock.moment = NEXT_DAY
-    _run()
+    _a_day_apart(clock)
     assert _record()[PAIRED].is_retired
+    clock.moment = NEXT_DAY + timedelta(days=1)
     return account, clock
 
 
-def test_a_retired_playlist_that_opens_again_is_read_again_and_the_retirement_cleared(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    account, clock = _retired_pair(cfg, silence, monkeypatch)
+def _opens_again(account: Account, *tracks: Listed) -> None:
+    """The retired pair's id opens again, serving ``tracks``."""
     account.fake.playlist_for = FakeCatalogue.playlist_for.__get__(account.fake)
-    account.fake.playlists[PAIRED] = FakePagedPlaylist([track("New1")], declared=1)
-    clock.moment = NEXT_DAY + timedelta(days=1)
+    account.fake.playlists[PAIRED] = FakePagedPlaylist(list(tracks), declared=len(tracks))
+
+
+def test_a_retired_playlist_that_opens_again_is_read_again_and_the_retirement_cleared(retired):
+    account, _clock = retired
+    _opens_again(account, track("New1"))
 
     out = _run()
 
@@ -374,38 +413,33 @@ def test_a_retired_playlist_that_opens_again_is_read_again_and_the_retirement_cl
     assert _record() == {}
 
 
-def test_a_retired_playlist_the_account_lists_again_stops_every_offer_again(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    account, clock = _retired_pair(cfg, silence, monkeypatch)
-    account.fake.account.append(AccountPlaylist(playlist_id=PAIRED, name="A Pair", tracks=3))
-    clock.moment = NEXT_DAY + timedelta(days=1)
-
-    out = _run()
-
+def _unreadable_again(out: dict) -> None:
+    """The run is partial again, the pair unreadable, and its retirement cleared."""
     assert _by_title(out)["New1"]["why"] == removed.PARTIAL_READ
     assert _playlists(out)[PAIRED]["state"] == removed.UNREADABLE
     assert _record() == {}
 
 
+def test_a_retired_playlist_the_account_lists_again_stops_every_offer_again(retired):
+    account, _clock = retired
+    account.fake.account.append(AccountPlaylist(playlist_id=PAIRED, name="A Pair", tracks=3))
+
+    _unreadable_again(_run())
+
+
 def test_the_control_taken_off_one_of_two_synced_playlists_is_kept_naming_the_other(
-    native_library, silence, monkeypatch, offline
+    land, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New1", "New3"))})
+    cfg = land(also={"pl-b": (DEEP, ("New1", "New3"))})
     _pair(cfg)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("Held2"), track("Held3")])
+    account = sunset(monkeypatch, "Held1", "Held2", "Held3")
     account.lists("pl-b", DEEP, [track("New1"), track("New3")])
     answering(account, 404, PAIRED)
     withholding(account, 9)
-    clock = Clock(monkeypatch)
-    _run()
-    clock.moment = NEXT_DAY
 
-    answers = _by_title(_run())
+    _first, out = _a_day_apart(Clock(monkeypatch))
 
+    answers = _by_title(out)
     assert answers["New1"]["why"] == removed.ON_ANOTHER
     assert answers["New1"]["kept_by"] == [DEEP]
     assert answers["New2"]["action"] == removed.OFFERED
@@ -413,19 +447,14 @@ def test_the_control_taken_off_one_of_two_synced_playlists_is_kept_naming_the_ot
 
 
 def test_a_retired_downloaded_playlist_offers_none_of_its_tracks_and_holds_none_of_them(
-    native_library, silence, monkeypatch, offline
+    land, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New1", "New3"))})
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2"), track("Held2"), track("Held3")])
-    answering(account, 404, "pl-b")
-    clock = Clock(monkeypatch)
+    land(also={"pl-b": (DEEP, ("New1", "New3"))})
+    answering(sunset(monkeypatch, *NEW1_OFF), 404, "pl-b")
 
-    first = _by_title(_run())
-    clock.moment = NEXT_DAY
-    out = _run()
+    first, out = _a_day_apart(Clock(monkeypatch))
 
+    first = _by_title(first)
     # One sighting: gone, still holding what its pass recorded (U287).
     assert first["New1"]["why"] == removed.ON_ANOTHER and first["New1"]["kept_by"] == [DEEP]
     # Retired: none of Deep Cuts' own tracks is a removal, and the account's
@@ -445,25 +474,26 @@ RETIRE = [*VERB, "--retire"]
 
 
 def _decide(run_id: str, answer: str) -> tuple[int, dict]:
-    decided, envelope = drive(
-        ["run", "decide", run_id, removed_cli.RETIRE_GATE, answer, "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
+    exited(drive(["run", "decide", run_id, removed_cli.RETIRE_GATE, answer, "--actor", "a-person"]))
     return drive(["--run", run_id, *RETIRE])
+
+
+def _retire() -> dict:
+    """``--retire`` asked, its gate answered retire, and the run carried out."""
+    asked = exited(drive(RETIRE), ExitCode.DECISION_REQUIRED)
+    return exited(_decide(asked["run_id"], "retire"))
 
 
 def test_retire_lists_each_playlist_behind_its_gate_and_its_abort_writes_nothing(a179, monkeypatch):
     Clock(monkeypatch)
     state = config.state_path("sync_unavailable_record", config.load())
 
-    code, asked = drive(RETIRE)
+    asked = exited(drive(RETIRE), ExitCode.DECISION_REQUIRED)
 
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
     detail = asked["cause"]["detail"]
     assert detail["gate"] == removed_cli.RETIRE_GATE and detail["explicit"] is True
     assert not state.exists()
-    code, aborted = _decide(asked["run_id"], "abort")
-    assert code == int(ExitCode.OK), aborted
+    aborted = exited(_decide(asked["run_id"], "abort"))
     assert aborted["outcome"] == "no_op"
     assert [item["account"] for item in aborted["data"]["items"]] == [PAIRED]
     assert aborted["data"]["items"][0]["seen unavailable"] == "2026-11-21"
@@ -475,11 +505,8 @@ def test_retire_answered_retire_records_the_playlist_and_the_next_run_offers_pas
 ):
     Clock(monkeypatch)
 
-    code, asked = drive(RETIRE)
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
-    code, done = _decide(asked["run_id"], "retire")
+    done = _retire()
 
-    assert code == int(ExitCode.OK), done
     assert removed_cli.RETIRED_NOW in _codes(done)
     entry = _record()[PAIRED]
     assert entry.is_retired and entry.by == unavailable.BY_PERSON
@@ -489,19 +516,21 @@ def test_retire_answered_retire_records_the_playlist_and_the_next_run_offers_pas
 
 
 def test_retire_offers_no_playlist_whose_id_failed_any_other_way(five_landed, monkeypatch):
-    cfg = five_landed
-    _pair(cfg)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
-    answering(account, 503, PAIRED)
+    _pair(five_landed)
+    answering(sunset(monkeypatch, "Held1"), 503, PAIRED)
     Clock(monkeypatch)
 
-    code, out = drive(RETIRE)
+    out = exited(drive(RETIRE))
 
-    assert code == int(ExitCode.OK), out
     assert out["outcome"] == "no_op"
     assert out["data"]["items"] == []
     assert _record() == {}
+
+
+def _record_path() -> Path:
+    path = config.state_path("sync_unavailable_record", config.load())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def test_an_unreadable_record_refuses_before_the_account_is_asked(
@@ -509,13 +538,10 @@ def test_an_unreadable_record_refuses_before_the_account_is_asked(
 ):
     cfg, _root = native_library
     account = _a179(cfg, silence, monkeypatch)
-    path = config.state_path("sync_unavailable_record", config.load())
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("not json", encoding="utf-8")
+    _record_path().write_text("not json", encoding="utf-8")
 
-    code, out = drive(VERB)
+    out = failed(drive(VERB))
 
-    assert code != int(ExitCode.OK)
     assert out["cause"]["reason"] == "sync-unavailable-record-unusable", out
     assert account.fake.account_listings == 0
 
@@ -556,6 +582,12 @@ def _raised(make):
     raise AssertionError("nothing raised")
 
 
+def _status(code: int) -> requests.Response:
+    response = requests.Response()
+    response.status_code = code
+    return response
+
+
 def test_only_a_not_found_answer_is_read_as_unavailable():
     assert unavailable.answered_unavailable(recorded_failure("pl", 404))
     assert not unavailable.answered_unavailable(recorded_failure("pl", 503))
@@ -572,9 +604,7 @@ def test_only_a_not_found_answer_is_read_as_unavailable():
         try:
             raise ObjectNotFound("Playlist with id pl not found")
         except ObjectNotFound:
-            failing = requests.Response()
-            failing.status_code = 503
-            raise requests.HTTPError("503", response=failing)  # noqa: B904
+            raise requests.HTTPError("503", response=_status(503))  # noqa: B904
 
     assert not unavailable.answered_unavailable(_raised(met_while_handling))
 
@@ -587,20 +617,16 @@ def test_the_real_adapter_reads_a_404_as_unavailable_and_a_server_error_not():
 
         return tidal_catalogue.TidalCatalogue(Answers())
 
-    response = requests.Response()
-    response.status_code = 404
     missing = ObjectNotFound("Playlist with id x not found")
-    missing.__cause__ = requests.HTTPError("404", response=response)
+    missing.__cause__ = requests.HTTPError("404", response=_status(404))
     with pytest.raises(CratekitError) as gone:
         intake_cli.list_playlist_readable(adapter(missing), PLAYLIST)
     assert gone.value.cause.reason in playlists.PER_PLAYLIST_REASONS
     assert unavailable.answered_unavailable(gone.value)
 
-    failing = requests.Response()
-    failing.status_code = 500
     with pytest.raises(CratekitError) as down:
         intake_cli.list_playlist_readable(
-            adapter(requests.HTTPError("500", response=failing)), PLAYLIST
+            adapter(requests.HTTPError("500", response=_status(500))), PLAYLIST
         )
     assert down.value.cause.reason in playlists.PER_PLAYLIST_REASONS
     assert not unavailable.answered_unavailable(down.value)
@@ -613,27 +639,42 @@ def _write_record(cfg: config.Config, raw: object) -> unavailable.UnavailableRec
     return record
 
 
+_WHEN = "2026-11-21T00:00:00+00:00"
+
+
+def _entry(**changed) -> dict:
+    """One sighting as the record writes it, ``changed`` set over a first and last of _WHEN."""
+    held = {"playlist_id": "pl", "name": "P", "first": _WHEN, "last": _WHEN}
+    return {**held, "retired": "", "by": "", **changed}
+
+
+def _refuses(record: unavailable.UnavailableRecord) -> None:
+    with pytest.raises(CratekitError) as refused:
+        record.read()
+    assert refused.value.cause.reason == "sync-unavailable-record-unusable"
+
+
 @pytest.mark.parametrize(
     "damage",
     [
         {"version": 2},
         {"library_id": "another"},
         {"playlists": "none"},
-        {"playlists": [{"playlist_id": "pl", "name": "P", "first": "", "last": "", "retired": "", "by": ""}]},
-        {"playlists": [{"playlist_id": "pl", "name": "P", "first": "2026-11-21", "last": "2026-11-21T00:00:00+00:00", "retired": "", "by": ""}]},
-        {"playlists": [{"playlist_id": "pl", "name": "P", "first": "2026-11-21T00:00:00+00:00", "last": "2026-11-21T00:00:00+00:00", "retired": "2026-11-22T00:00:00+00:00", "by": ""}]},
+        {"playlists": [_entry(first="", last="")]},
+        {"playlists": [_entry(first="2026-11-21")]},
+        {"playlists": [_entry(retired="2026-11-22T00:00:00+00:00")]},
+        {"playlists": [_entry(), _entry()]},
+        {"playlists": [_entry(retired=_WHEN, by="hand")]},
     ],
-    ids=["version", "library", "no-list", "no-sighting", "naive-time", "retired-by-nobody"],
+    ids=["version", "library", "no-list", "no-sighting", "naive-time", "retired-by-nobody", "twice",
+         "unknown-hand"],
 )
 def test_a_damaged_record_refuses_and_is_never_read_as_empty(native_library, damage):
+    """A record naming a playlist twice or an unknown hand refuses as well."""
     cfg, _root = native_library
     raw = {"version": 1, "library_id": cfg.library.volume_id, "playlists": [], **damage}
-    record = _write_record(cfg, raw)
 
-    with pytest.raises(CratekitError) as refused:
-        record.read()
-
-    assert refused.value.cause.reason == "sync-unavailable-record-unusable"
+    _refuses(_write_record(cfg, raw))
 
 
 def test_the_record_reads_back_what_it_wrote_and_drops_an_entry_given_none(native_library):
@@ -645,7 +686,6 @@ def test_the_record_reads_back_what_it_wrote_and_drops_an_entry_given_none(nativ
     assert record.read() == {"pl": entry}
     assert record.update({"pl": None}) == {}
     assert record.read() == {}
-
 
 
 def test_a_sighting_keeps_the_latest_instant_and_a_clock_set_back_moves_nothing():
@@ -660,74 +700,19 @@ def test_a_sighting_keeps_the_latest_instant_and_a_clock_set_back_moves_nothing(
 # Round one
 
 
-def failing_with(account: Account, error: BaseException, *references: str) -> None:
-    """Each of ``references`` fails to open, the adapter's wrapper raised from ``error``."""
-    original = account.fake.playlist_for
-    named = set(references)
-
-    def playlist_for(reference: str):
-        if reference in named:
-            outer = tidal_catalogue.PlaylistUnresolvable(f"could not resolve {reference!r}")
-            outer.__cause__ = error
-            raise outer
-        return original(reference)
-
-    account.fake.playlist_for = playlist_for
-
-
-@pytest.mark.parametrize(
-    "error",
-    [FileNotFoundError(2, "No such file or directory"), ModuleNotFoundError("no module")],
-    ids=["file-not-found", "module-not-found"],
-)
-def test_pythons_own_not_found_classes_are_no_sighting_and_never_retire(
-    native_library, silence, monkeypatch, offline, error
-):
-    """Round one's BLOCKING finding: the provider gate's lock raised FileNotFoundError."""
-    cfg, _root = native_library
-    _five(cfg, silence)
-    _pair(cfg)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2"), track("Held2"), track("Held3")])
-    failing_with(account, error, PAIRED)
-    clock = Clock(monkeypatch)
-
-    _run()
-    clock.moment = NEXT_DAY
-    out = _run()
-
-    assert _by_title(out)["New1"]["why"] == removed.PARTIAL_READ
-    assert _playlists(out)[PAIRED]["state"] == removed.UNREADABLE
-    assert _record() == {}
-    assert not unavailable.answered_unavailable(error)
-
-
-def test_a_retired_playlist_whose_id_opens_and_whose_rows_are_refused_is_cleared(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_retired_playlist_whose_id_opens_and_whose_rows_are_refused_is_cleared(retired):
     """Round one: it opened, serving New1 beside a row with no identifier."""
-    cfg, _root = native_library
-    account, clock = _retired_pair(cfg, silence, monkeypatch)
-    account.fake.playlist_for = FakeCatalogue.playlist_for.__get__(account.fake)
-    account.fake.playlists[PAIRED] = FakePagedPlaylist(
-        [track("New1"), Listed("", "Nameless")], declared=2
-    )
-    clock.moment = NEXT_DAY + timedelta(days=1)
+    account, _clock = retired
+    _opens_again(account, track("New1"), Listed("", "Nameless"))
 
-    out = _run()
-
-    assert _by_title(out)["New1"]["why"] == removed.PARTIAL_READ
-    assert _playlists(out)[PAIRED]["state"] == removed.UNREADABLE
-    assert _record() == {}
+    _unreadable_again(_run())
 
 
 def test_a_retired_playlist_whose_id_now_fails_another_way_stops_offers_this_run_and_stays_retired(
-    native_library, silence, monkeypatch, offline
+    retired
 ):
-    cfg, _root = native_library
-    account, clock = _retired_pair(cfg, silence, monkeypatch)
+    account, clock = retired
     answering(account, 503, PAIRED)
-    clock.moment = NEXT_DAY + timedelta(days=1)
 
     out = _run()
 
@@ -744,14 +729,9 @@ def test_a_retired_playlist_whose_id_now_fails_another_way_stops_offers_this_run
     assert "2026-11-21 and 2026-11-22" in _playlists(again)[PAIRED]["why"]
 
 
-def test_a_gone_downloaded_playlist_is_named_by_what_cratekit_calls_it(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New1", "New3"))})
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New2"), track("Held2"), track("Held3")])
-    answering(account, 404, "pl-b")
+def test_a_gone_downloaded_playlist_is_named_by_what_cratekit_calls_it(land, monkeypatch):
+    land(also={"pl-b": (DEEP, ("New1", "New3"))})
+    answering(sunset(monkeypatch, *NEW1_OFF), 404, "pl-b")
     Clock(monkeypatch)
 
     out = _run()
@@ -760,6 +740,11 @@ def test_a_gone_downloaded_playlist_is_named_by_what_cratekit_calls_it(
     assert _record()["pl-b"].name == DEEP
     (seen,) = [one for one in out["warnings"] if one["code"] == removed_cli.UNAVAILABLE]
     assert f"pl-b ({DEEP})" in seen["message"]
+
+
+def _said_partial(out: dict) -> str:
+    (said,) = [one for one in out["warnings"] if one["code"] == removed_cli.PARTIAL]
+    return said["message"]
 
 
 def test_retire_offers_no_playlist_seen_before_whose_id_now_fails_another_way_and_says_so(
@@ -772,24 +757,18 @@ def test_retire_offers_no_playlist_seen_before_whose_id_now_fails_another_way_an
     assert PAIRED in _record()
     answering(account, 503, PAIRED)
 
-    code, out = drive(RETIRE)
+    out = exited(drive(RETIRE))
 
-    assert code == int(ExitCode.OK), out
     assert out["outcome"] == "no_op" and out["data"]["items"] == []
-    (said,) = [one for one in out["warnings"] if one["code"] == removed_cli.PARTIAL]
-    assert "A Pair" in said["message"]
+    assert "A Pair" in _said_partial(out)
     assert not _record()[PAIRED].is_retired
 
 
-def test_retire_writes_every_reads_answer_with_the_retirement(
-    native_library, silence, monkeypatch, offline
-):
+def test_retire_writes_every_reads_answer_with_the_retirement(land, monkeypatch):
     """A playlist seen before that opens on the retire's read is dropped as the plain run drops it."""
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))})
+    cfg = land(also={"pl-b": (DEEP, ("New3",))})
     _pair(cfg)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    account = sunset(monkeypatch, "Held1")
     answering(account, 404, PAIRED, "pl-b")
     clock = Clock(monkeypatch)
     _run()
@@ -799,11 +778,8 @@ def test_retire_writes_every_reads_answer_with_the_retirement(
     answering(account, 404, PAIRED)
     clock.moment = SAME_DAY
 
-    code, asked = drive(RETIRE)
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
-    code, done = _decide(asked["run_id"], "retire")
+    _retire()
 
-    assert code == int(ExitCode.OK), done
     assert set(_record()) == {PAIRED}
     assert _record()[PAIRED].by == unavailable.BY_PERSON
 
@@ -812,12 +788,10 @@ def test_the_retire_gate_binds_across_midnight(a179, monkeypatch):
     """Round one: two drives either side of UTC midnight, nothing recorded before."""
     clock = Clock(monkeypatch, datetime(2026, 11, 21, 23, 55, tzinfo=timezone.utc))
 
-    code, asked = drive(RETIRE)
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    asked = exited(drive(RETIRE), ExitCode.DECISION_REQUIRED)
     clock.moment = datetime(2026, 11, 22, 0, 5, tzinfo=timezone.utc)
-    code, done = _decide(asked["run_id"], "retire")
+    exited(_decide(asked["run_id"], "retire"))
 
-    assert code == int(ExitCode.OK), done
     assert _record()[PAIRED].by == unavailable.BY_PERSON
 
 
@@ -831,42 +805,12 @@ def test_a_not_found_met_only_while_handling_another_failure_is_not_one():
     assert not unavailable.answered_unavailable(_raised(reset_while_handling))
 
     def status_while_handling_a_404():
-        found = requests.Response()
-        found.status_code = 404
         try:
-            raise requests.HTTPError("404", response=found)
+            raise requests.HTTPError("404", response=_status(404))
         except requests.HTTPError:
-            failing = requests.Response()
-            failing.status_code = 503
-            raise requests.HTTPError("503", response=failing)  # noqa: B904
+            raise requests.HTTPError("503", response=_status(503))  # noqa: B904
 
     assert not unavailable.answered_unavailable(_raised(status_while_handling_a_404))
-
-
-_WHEN = "2026-11-21T00:00:00+00:00"
-
-
-@pytest.mark.parametrize(
-    "entries",
-    [
-        [
-            {"playlist_id": "pl", "name": "P", "first": _WHEN, "last": _WHEN, "retired": "", "by": ""},
-            {"playlist_id": "pl", "name": "P", "first": _WHEN, "last": _WHEN, "retired": "", "by": ""},
-        ],
-        [{"playlist_id": "pl", "name": "P", "first": _WHEN, "last": _WHEN, "retired": _WHEN, "by": "hand"}],
-    ],
-    ids=["twice", "unknown-hand"],
-)
-def test_a_record_naming_a_playlist_twice_or_an_unknown_hand_refuses(native_library, entries):
-    cfg, _root = native_library
-    record = _write_record(
-        cfg, {"version": 1, "library_id": cfg.library.volume_id, "playlists": entries}
-    )
-
-    with pytest.raises(CratekitError) as refused:
-        record.read()
-
-    assert refused.value.cause.reason == "sync-unavailable-record-unusable"
 
 
 def test_a_record_that_cannot_be_opened_refuses(native_library):
@@ -874,10 +818,7 @@ def test_a_record_that_cannot_be_opened_refuses(native_library):
     record = unavailable.UnavailableRecord(cfg)
     record.path.mkdir(parents=True)
 
-    with pytest.raises(CratekitError) as refused:
-        record.read()
-
-    assert refused.value.cause.reason == "sync-unavailable-record-unusable"
+    _refuses(record)
 
 
 # Round two
@@ -890,59 +831,38 @@ def test_a_record_that_cannot_be_opened_refuses(native_library):
 )
 def test_hearts_short_by_half_a_page_or_more_stay_partial_on_any_account(served, declared, state):
     """Round two: 1,020 declared and a window of a hundred lost was within a tenth."""
-    fake = FakeCatalogue(
-        hearts=[track(f"Heart {number}", track_id=f"tid-{number}") for number in range(served)]
-    )
-
-    def short():
-        raise catalogue.HeartsShortfall(tuple(fake.hearts), declared)
-
-    fake.favourite_tracks = short
-
-    assert _hearts_of(fake).state == state
+    assert _hearts_of(_declaring(_hearted(served), declared)).state == state
 
 
-def test_a_run_with_no_removal_never_reads_the_pair_store(
-    native_library, silence, monkeypatch, offline
-):
+def test_a_run_with_no_removal_never_reads_the_pair_store(five_landed, monkeypatch):
     """Round two: the store read moved ahead of the removal, so a damaged one refused a quiet run."""
     from cratekit.modules.outbound import pairs
 
-    cfg, _root = native_library
-    _five(cfg, silence)
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1"), track("New1"), track("New2"), track("Held2"), track("Held3")])
+    sunset(monkeypatch, "Held1", "New1", "New2", "Held2", "Held3")
 
     def refused(_self):
         raise AssertionError("the pair store was read")
 
     monkeypatch.setattr(pairs.PairStore, "all", refused)
 
-    code, out = drive(VERB)
+    out = exited(drive(VERB))
 
-    assert code == int(ExitCode.OK), out
     assert out["outcome"] == "no_op"
 
 
-def test_retire_names_a_gone_playlist_whose_id_now_fails_another_way(
-    native_library, silence, monkeypatch, offline
-):
+def test_retire_names_a_gone_playlist_whose_id_now_fails_another_way(land, monkeypatch):
     """Round two: a recorded gone playlist reads GONE, not short, and was silent."""
-    cfg, _root = native_library
-    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))})
-    account = Account(monkeypatch)
-    account.lists("pl-a", SUNSET, [track("Held1")])
+    land(also={"pl-b": (DEEP, ("New3",))})
+    account = sunset(monkeypatch, "Held1")
     answering(account, 404, "pl-b")
     Clock(monkeypatch)
     _run()
     answering(account, 503, "pl-b")
 
-    code, out = drive(RETIRE)
+    out = exited(drive(RETIRE))
 
-    assert code == int(ExitCode.OK), out
     assert out["data"]["items"] == []
-    (said,) = [one for one in out["warnings"] if one["code"] == removed_cli.PARTIAL]
-    assert DEEP in said["message"]
+    assert DEEP in _said_partial(out)
 
 
 def test_a_retired_listing_holds_nothing_whatever_it_carries():

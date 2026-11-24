@@ -7,6 +7,8 @@ into its own run with its own. The machine, account and stand ins are
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from cratekit.core import config, jobs
@@ -19,20 +21,10 @@ from tests._sync_builders import exited
 from tests.acquire_fakes import Landing
 from tests.cli_drive import drive
 from tests.test_sync_all import _playlist, _tracks, _warmup_and_peak, bind_playlists
-from tests.test_sync_land import (
-    _account,
-    _all_jobs,
-    _summary,
-)
-from tests.test_sync_land import (
-    machine as machine,  # noqa: PLC0414
-)
-from tests.test_sync_land import (
-    tail as tail,  # noqa: PLC0414
-)
-from tests.test_sync_land import (
-    vocal_model as vocal_model,  # noqa: PLC0414
-)
+from tests.test_sync_land import _account, _all_jobs, _cancel, _ready, _summary
+from tests.test_sync_land import machine as machine  # noqa: PLC0414
+from tests.test_sync_land import tail as tail  # noqa: PLC0414
+from tests.test_sync_land import vocal_model as vocal_model  # noqa: PLC0414
 
 MIRRORED = "pl-jazz-med"
 
@@ -41,13 +33,10 @@ def _mirror_job(monkeypatch, cfg: config.Config, *ids: str) -> jobs.Job:
     """The job ``mirror-downloads`` queues: the account playlist's tracks, frozen, under no run."""
     bind_playlists(monkeypatch, (_playlist(MIRRORED, "Jazz Med"), _tracks(*ids)))
     listing = intake_cli.list_playlist_readable(catalogue.resolve(cfg), MIRRORED)
+    tracks = {one: dict(listing.tracks[one]) for one in ids}
     with jobs.open_store() as store:
         return intake_cli.queue_playlist(
-            store,
-            cfg,
-            handler_key=mirror_downloads.HANDLER,
-            reference=MIRRORED,
-            tracks={one: dict(listing.tracks[one]) for one in ids},
+            store, cfg, handler_key=mirror_downloads.HANDLER, reference=MIRRORED, tracks=tracks,
             source_id=mirror_downloads.SOURCE_ID,
         )
 
@@ -55,6 +44,10 @@ def _mirror_job(monkeypatch, cfg: config.Config, *ids: str) -> jobs.Job:
 def _job(job_id: str) -> jobs.Job:
     with jobs.open_store() as store:
         return jobs.get(store, job_id)
+
+
+def _staged_names(cfg: config.Config) -> list[str]:
+    return sorted(p.name for p in cfg.paths.download_staging.expanduser().iterdir() if p.is_file())
 
 
 def _left_open(envelope: dict) -> list[str]:
@@ -86,8 +79,7 @@ def test_a_pass_takes_the_open_mirror_download_and_lands_its_track(machine, monk
     assert summary["mirror_downloads_taken"] == [queued.job_id]
     assert queued.job_id not in _left_open(envelope)
     assert any("took 1 download(s)" in said for said in _said(envelope, "sync"))
-    staged = sorted(p.name for p in cfg.paths.download_staging.expanduser().iterdir() if p.is_file())
-    assert staged == ["101.wav", "301.wav"]
+    assert _staged_names(cfg) == ["101.wav", "301.wav"]
     assert ("intake", "land") in tail.verbs()
 
 
@@ -100,14 +92,11 @@ def test_a_track_the_mirror_job_and_another_playlist_both_list_lands_once(
 
     envelope = exited(drive(["sync", "land"]), ExitCode.PENDING_HUMAN)
     assert _job(queued.job_id).payload["run_id"] == _summary(envelope)["pass_run"]
-    staged = sorted(p.name for p in cfg.paths.download_staging.expanduser().iterdir() if p.is_file())
-    assert staged == ["101.wav", "102.wav"]
+    assert _staged_names(cfg) == ["101.wav", "102.wav"]
     assert len(script.fetched) == 2, "the track two jobs list was downloaded twice"
 
 
-def test_a_pass_whose_sync_all_queued_nothing_takes_the_mirror_download(
-    machine, monkeypatch, tail
-):
+def test_a_pass_whose_sync_all_queued_nothing_takes_the_mirror_download(machine, monkeypatch, tail):
     """No new playlist and no earlier pass: the run sync all named is the pass."""
     cfg, script = machine
     script.landings["301"] = Landing()
@@ -125,8 +114,7 @@ def test_a_pass_whose_sync_all_queued_nothing_takes_the_mirror_download(
 
 
 def test_a_continued_pass_takes_no_mirror_download_and_names_it(machine, monkeypatch, tail):
-    cfg, script = machine
-    _account(monkeypatch, script, "101")
+    cfg, script = _ready(machine, monkeypatch, "101")
     earlier = exited(drive(["sync", "all"]))
     queued = _mirror_job(monkeypatch, cfg, "301")
     _account(monkeypatch, script, "101")
@@ -139,12 +127,9 @@ def test_a_continued_pass_takes_no_mirror_download_and_names_it(machine, monkeyp
     assert "mirror_downloads_taken" not in _summary(envelope)
 
 
-def test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none(
-    machine, monkeypatch, tail
-):
+def test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none(machine, monkeypatch, tail):
     """Sync all queued nothing and one earlier pass is open: that pass is continued."""
-    cfg, script = machine
-    _account(monkeypatch, script, "101")
+    cfg, script = _ready(machine, monkeypatch, "101")
     earlier = exited(drive(["sync", "all"]))
     queued = _mirror_job(monkeypatch, cfg, "301")
     _account(monkeypatch, script, "101")
@@ -164,8 +149,7 @@ def test_a_hand_queued_playlist_job_and_a_cancelled_mirror_job_are_not_taken(
 ):
     cfg, script = machine
     cancelled = _mirror_job(monkeypatch, cfg, "301")
-    with jobs.open_store() as store:
-        jobs.cancel(store, cancelled.job_id)
+    _cancel(cancelled.job_id)
     _account(monkeypatch, script, "101")
     by_hand = exited(drive(["intake", "playlist", "pl-a"]))
     script.landings["201"] = Landing()
@@ -223,12 +207,8 @@ def test_join_run_refuses_a_job_the_queue_does_not_hold(machine):
 
 def test_a_mirror_download_another_library_queued_is_not_taken(machine, monkeypatch, tail):
     """The queue is installation wide: a job of another library is never given this pass's run."""
-    import dataclasses
-
     cfg, script = machine
-    elsewhere = dataclasses.replace(
-        cfg, library=dataclasses.replace(cfg.library, volume_id="another-library-volume")
-    )
+    elsewhere = replace(cfg, library=replace(cfg.library, volume_id="another-library-volume"))
     queued = _mirror_job(monkeypatch, elsewhere, "301")
     assert queued.library_id != cfg.library.volume_id
     _account(monkeypatch, script, "101")
@@ -244,10 +224,9 @@ def test_a_mirror_download_a_pass_cannot_take_keeps_the_command_that_settles_it(
     """A blocked mirror job is not the next pass's, so the row names its own command."""
     cfg, script = machine
     queued = _mirror_job(monkeypatch, cfg, "301")
+    blocked = (str(jobs.JobState.BLOCKED), queued.job_id)
     with jobs.open_store() as store:
-        store.conn.execute(
-            "UPDATE jobs SET state = ? WHERE job_id = ?", (str(jobs.JobState.BLOCKED), queued.job_id)
-        )
+        store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", blocked)
     _account(monkeypatch, script, "101")
 
     code, envelope = drive(["sync", "land"])

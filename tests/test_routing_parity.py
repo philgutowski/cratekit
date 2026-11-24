@@ -22,12 +22,7 @@ DISPLAY = {bucket.id: bucket.display for bucket in TAXONOMY.buckets}
 POPULATION = sorted(set(legacy.CORPUS) | set(legacy.GENRE_MAP) | set(legacy.GENRE_NORMALIZE))
 
 # The strings the template declares an outright refusal for (own test).
-REFUSED = {
-    needle.lower()
-    for rule in TAXONOMY.suggest
-    if rule.equals and rule.decline
-    for needle in rule.equals
-}
+REFUSED = {n.lower() for r in TAXONOMY.suggest if r.equals and r.decline for n in r.equals}
 
 # The strings the template declares an alias for; the sweep never had one (own test).
 ALIASED = {v for v in POPULATION if TAXONOMY.tagging_alias(v.lower().strip()) is not None}
@@ -39,9 +34,7 @@ SWEEP_PARITY_POPULATION = [
 # The buckets the old code never had (R-797, U118, U133): R&B, Soul, Hip-Hop
 # and Jazz moved out of the playlists the old code filed them in. Every set is
 # derived, and its own test holds it equal to what the old code filed there.
-PROMOTED_BUCKETS = tuple(
-    bucket for bucket in TAXONOMY.buckets if bucket.formerly or bucket.split_from
-)
+PROMOTED_BUCKETS = tuple(b for b in TAXONOMY.buckets if b.formerly or b.split_from)
 
 
 def _old_playlist(bucket):
@@ -82,8 +75,7 @@ ROUTING_PARITY_POPULATION = [
     v for v in POPULATION if v not in PROMOTED and v not in MOVED_BY_KEYWORD
 ]
 TAGGER_PARITY_POPULATION = [
-    k
-    for k in sorted(legacy.GENRE_NORMALIZE)
+    k for k in sorted(legacy.GENRE_NORMALIZE)
     if k.lower().strip() not in REFUSED and k not in RETAGGED
 ]
 SOUL = next(b for b in PROMOTED_BUCKETS if b.display == "Soul")
@@ -194,10 +186,8 @@ def test_every_bucket_and_level_lands_in_the_same_sub():
         for level in LEVELS:
             sub = routing.energy_sub(TAXONOMY, bucket.id, level)
             assert sub is not None
-            assert sub.display == legacy.energy_to_sub(level, bucket.display), (
-                bucket.display,
-                level,
-            )
+            expected = legacy.energy_to_sub(level, bucket.display)
+            assert sub.display == expected, (bucket.display, level)
 
 
 def test_the_source_routed_bucket_matches_for_every_source_string():
@@ -211,9 +201,7 @@ def test_the_source_routed_bucket_matches_for_every_source_string():
 
 def test_a_bucket_with_no_energy_split_ignores_the_level_entirely():
     """Checked before the missing level, since this bucket has no no-energy sink."""
-    bucket = next(
-        b for b in TAXONOMY.buckets if not b.energy.enabled and b.single_sub is not None
-    )
+    bucket = next(b for b in TAXONOMY.buckets if not b.energy.enabled and b.single_sub is not None)
     subs = {routing.energy_sub(TAXONOMY, bucket.id, level).id for level in LEVELS}
     assert subs == {bucket.single_sub.id}
     assert routing.no_energy_sub(TAXONOMY, bucket.id) is None
@@ -236,8 +224,7 @@ def test_the_star_curve_is_unchanged(level):
 
 @pytest.mark.parametrize("policy", ["manual", "derived"], ids=["reserved", "derived"])
 def test_the_reserved_and_derived_subs_are_never_returned_by_routing(policy):
-    """The reserved sub is asserted, not merely absent; the derived one is
-    additive, so returning it would make it a replacement."""
+    """The reserved sub is asserted, not absent; the derived one adds, never replaces."""
     held = {e.display for e in TAXONOMY.sub_classes if e.policy.value == policy}
     assert held
     produced = {
@@ -284,8 +271,7 @@ def test_the_tempo_window_is_unchanged_for_every_source_string(value):
 
 
 def test_an_untagged_track_now_uses_the_fallback_window_not_a_generic_one():
-    """The one deliberate change: an empty genre takes the fallback bucket's
-    declared window, not a hardcoded two-octave one the fold never fired on."""
+    """The one deliberate change: an empty genre takes the fallback's window, not a fixed one."""
     prior = routing.bpm_prior(TAXONOMY, "")
     assert prior == TAXONOMY.bucket(TAXONOMY.fallback.bucket).bpm
     assert (prior.start, prior.floor, prior.ceil) != legacy.prior_for_genre("")
@@ -296,11 +282,8 @@ def test_an_untagged_track_now_uses_the_fallback_window_not_a_generic_one():
 
 @pytest.mark.parametrize("value", POPULATION)
 def test_the_family_projection_matches_the_old_rules_applied_to_the_folder(value):
-    """Exact against the old rules run on the folder, not the raw tag, which
-    let a track score as a family its folder is not in."""
-    assert routing.family_of(TAXONOMY, value) == legacy.family_of(
-        legacy.resolve_genre(value)[0]
-    )
+    """Exact against the old rules on the folder, not the raw tag, which scored a foreign family."""
+    assert routing.family_of(TAXONOMY, value) == legacy.family_of(legacy.resolve_genre(value)[0])
 
 
 def test_running_the_family_rules_on_the_raw_tag_was_the_bug_not_the_contract():
@@ -315,9 +298,8 @@ def test_the_catch_all_family_awards_no_bonus():
     """Sharing the least informative family must not be the strongest signal."""
     catch_all = [b for b in TAXONOMY.buckets if b.family == TAXONOMY.family.catch_all]
     assert len(catch_all) >= 2
-    assert routing.genre_affinity(
-        TAXONOMY, catch_all[0].display, catch_all[1].display
-    ) == TAXONOMY.family.unrelated
+    affinity = routing.genre_affinity(TAXONOMY, catch_all[0].display, catch_all[1].display)
+    assert affinity == TAXONOMY.family.unrelated
 
 
 def test_affinity_is_unchanged_wherever_the_two_systems_agree_on_family():
@@ -399,8 +381,7 @@ def test_the_tagger_writes_the_promoted_buckets_name_where_it_wrote_the_old_play
 
 @pytest.mark.parametrize("value", ["House", "Disco", "Ambient", "Jackin House", "Trap / Future Bass"])
 def test_the_sweep_gains_the_alias_table_it_never_had(value):
-    """The old sweep wrote the source's word verbatim; the alias table writes
-    this library's name for it, which still routes to the same bucket."""
+    """The old sweep wrote the source's word; the alias table writes this library's, same bucket."""
     assert legacy.suggest_genre(value)[0] == value
     suggestion = routing.suggest_tag(TAXONOMY, value)
     assert suggestion.bucket_id is not None
@@ -436,8 +417,7 @@ def test_tagging_never_falls_back_to_a_bucket():
 
 
 def test_a_declared_tag_with_no_bucket_is_not_off_taxonomy():
-    """``off_taxonomy`` is not ``bucket_id is None``: a declared bucketless rule
-    is the template's deliberate gap, an undeclared word is the one to report."""
+    """``off_taxonomy`` is not ``bucket_id is None``: a declared bucketless rule is a chosen gap."""
     declared = routing.suggest_tag(TAXONOMY, "melodic techno")
     assert declared.tag == "Melodic Techno"
     assert declared.bucket_id is None
@@ -477,8 +457,7 @@ def test_the_tempo_split_is_unchanged_for_the_combined_source_bucket():
 
 
 def test_the_tempo_split_no_longer_swallows_a_source_that_named_one_side():
-    """The trigger narrowed from either term to both: a source naming one side
-    outright is not moved to the other and flagged."""
+    """The trigger needs both terms: a source naming one side is not moved to the other, flagged."""
     suggestion = routing.suggest_tag(TAXONOMY, "Downtempo")
     assert suggestion.tag == "Downtempo"
     assert suggestion.needs_review is False
@@ -508,15 +487,10 @@ def test_a_source_string_naming_something_with_no_bucket_keeps_its_own_word():
 
 @pytest.mark.parametrize(
     ("value", "tagged_as"),
-    [
-        ("Bass / Club", "UK Garage / Bassline"),
-        ("Reggae", "Caribbean"),
-        ("Trap / Wave", "Hip-Hop"),
-    ],
+    [("Bass / Club", "UK Garage / Bassline"), ("Reggae", "Caribbean"), ("Trap / Wave", "Hip-Hop")],
 )
 def test_the_three_strings_the_two_old_tables_flatly_contradicted(value, tagged_as):
-    """Tagging and routing disagree here, chained not parallel: the tagged file
-    lands where its new tag says, an untouched one where the raw string says."""
+    """Tagging and routing disagree, chained: a tagged file lands by its new tag, others by raw."""
     suggestion = routing.suggest_tag(TAXONOMY, value)
     assert suggestion.tag == tagged_as, value
     assert suggestion.tag == legacy.normalize_genre(value), value
@@ -556,7 +530,4 @@ def test_the_vocal_cut_is_inclusive_at_the_threshold():
 
 def test_the_taxonomy_does_not_decide_the_vocal_cut():
     """A calibration the caller supplies, not a taxonomy fact."""
-    assert list(inspect.signature(routing.routes_with_vox).parameters) == [
-        "voxlevel",
-        "threshold",
-    ]
+    assert list(inspect.signature(routing.routes_with_vox).parameters) == ["voxlevel", "threshold"]

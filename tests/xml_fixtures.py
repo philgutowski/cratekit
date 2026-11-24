@@ -17,11 +17,7 @@ _LOC_PREFIX = "file://localhost/library/"
 
 
 def _xml_doc(*, collection: list[str], root_children: list[str]) -> bytes:
-    """Assemble a byte-exact rekordbox export from its two varying parts.
-
-    ``collection`` is the COLLECTION lines, tags included, and ``root_children``
-    the ROOT node's children; everything else is owned here.
-    """
+    """A byte-exact rekordbox export from its COLLECTION lines and ROOT's children."""
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<DJ_PLAYLISTS Version="1.0.0">',
@@ -43,24 +39,16 @@ def _no_bare_lf(data: bytes) -> bool:
 
 
 def _fresh_xml() -> bytes:
-    """A minimal but structurally real FRESH export: a CRLF COLLECTION and an
-    empty INBOX folder. Enough for an intake splice to target, routing off."""
-    return _xml_doc(
-        collection=_EMPTY_COLLECTION,
-        root_children=[
-            '      <NODE Name="INBOX" Type="0" Count="0">',
-            "      </NODE>",
-        ],
-    )
+    """A minimal FRESH export: a CRLF COLLECTION and an empty INBOX folder, routing off."""
+    inbox = ['      <NODE Name="INBOX" Type="0" Count="0">', "      </NODE>"]
+    return _xml_doc(collection=_EMPTY_COLLECTION, root_children=inbox)
 
 
 def _ml_track(tid: int, name: str, *, analyzed: bool = False) -> list[str]:
-    """One COLLECTION TRACK element in the production multi-line shape.
+    """One COLLECTION TRACK in the production multi-line shape (tag at 4, attributes at 11).
 
-    Open tag at 4 spaces, continuation attributes at 11, ``</TRACK>`` at 4.
-    ``analyzed=True`` adds a real ``AverageBpm`` and ``<TEMPO>``, rekordbox's own
-    grid, which must round-trip verbatim while our emitters never create one
-    (R17); both halves are asserted in tests/test_no_beatgrid_ever.py.
+    ``analyzed=True`` adds rekordbox's own ``AverageBpm`` and ``<TEMPO>``, which must
+    round-trip verbatim while our emitters never create one (R17, tests/test_no_beatgrid_ever.py).
     """
     bpm = "124.00" if analyzed else "0.00"
     lines = [
@@ -77,22 +65,14 @@ def _ml_track(tid: int, name: str, *, analyzed: bool = False) -> list[str]:
 
 
 def _routing_xml(*, collision: bool = False) -> bytes:
-    """A FRESH export carrying the BY GENRE routing tree the splicers target.
-
-    ROOT / BY GENRE / "Deep House" / "High Energy", the sub-playlist empty at
-    the real 10-space indent. ``collision=True`` adds a COLLECTION TRACK named as
-    the genre folder, the bait that made the source system's splicers mis-anchor;
-    a splicer not scoped to <PLAYLISTS> fails on it.
-    """
+    """A FRESH export with ROOT / BY GENRE / Deep House / High Energy, empty at the real indent.
+    ``collision=True`` adds a COLLECTION TRACK named as the genre folder, the bait that
+    made the source system's splicers mis-anchor outside <PLAYLISTS>."""
+    collection = _EMPTY_COLLECTION
     if collision:
-        collection = [
-            '  <COLLECTION Entries="1">',
-            '    <TRACK TrackID="1" Name="Deep House" Artist="Bait" '
-            'Location="file://localhost/bait.flac"/>',
-            "  </COLLECTION>",
-        ]
-    else:
-        collection = _EMPTY_COLLECTION
+        bait = 'Name="Deep House" Artist="Bait" Location="file://localhost/bait.flac"/>'
+        track = f'    <TRACK TrackID="1" {bait}'
+        collection = ['  <COLLECTION Entries="1">', track, "  </COLLECTION>"]
     return _xml_doc(
         collection=collection,
         root_children=[

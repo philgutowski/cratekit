@@ -43,17 +43,11 @@ def cfg(tmp_path, monkeypatch):
     (library / "Music").mkdir(parents=True)
     (library / "db").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
-    resolved = config.from_dict(
-        valid_data(
-            library,
-            backup={
-                "remote": "remote",
-                "dest": "remote:mirror",
-                "archive_root": "remote:mirror-archive",
-                "db_dest_root": "remote:database-snapshots",
-            },
-        )
-    )
+    backup = {
+        "remote": "remote", "dest": "remote:mirror", "archive_root": "remote:mirror-archive",
+        "db_dest_root": "remote:database-snapshots",
+    }
+    resolved = config.from_dict(valid_data(library, backup=backup))
     config.state_path("rekordbox_db", resolved).write_bytes(b"a database")
     return resolved
 
@@ -97,8 +91,7 @@ def acknowledge(cfg, **kwargs):
 
 
 def _gates_refusal(cfg, **arguments):
-    """The cause the real gates refuse with, by default for a destructive workflow
-    through the open seams, failing when they admit the session instead."""
+    """The cause the real gates refuse with, a destructive workflow through the open seams."""
     arguments = {"workflow": "a-destructive-workflow", **open_gates(cfg), **arguments}
     return _refusal_entering(session.assert_gates, cfg, **arguments)
 
@@ -128,6 +121,16 @@ def _handle_recording(disposed: list[str]):
             disposed.append("session")
 
     return Handle
+
+
+def _while_another_holds_the_lock(cfg, body):
+    """``body``'s answer while another handle holds this library's session lock."""
+    contender = open(session.lock_path(cfg), "a+")
+    try:
+        rb_writer._acquire_exclusive(contender)
+        return body()
+    finally:
+        contender.close()
 
 
 def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
@@ -161,9 +164,7 @@ def test_the_three_refusals_carry_three_distinct_codes_and_write_nothing(cfg):
         assert state_fingerprint(*roots) == before, "a refused session left a trace"
         return cause
 
-    wrong_volume = refuse_with(
-        identity_provider=foreign_identity, mount_enumerator=lambda: ()
-    )
+    wrong_volume = refuse_with(identity_provider=foreign_identity, mount_enumerator=lambda: ())
     assert wrong_volume.code is ExitCode.LIBRARY_UNAVAILABLE
     assert wrong_volume.reason == "library-volume-mismatch"
 
@@ -172,12 +173,7 @@ def test_the_three_refusals_carry_three_distinct_codes_and_write_nothing(cfg):
     assert no_acknowledgment.reason == "backup-acknowledgment-missing"
 
     acknowledge(cfg)
-    contender = open(session.lock_path(cfg), "a+")
-    try:
-        rb_writer._acquire_exclusive(contender)
-        busy = refuse_with(**open_gates(cfg))
-    finally:
-        contender.close()
+    busy = _while_another_holds_the_lock(cfg, lambda: refuse_with(**open_gates(cfg)))
     assert busy.code is ExitCode.LIBRARY_BUSY
     assert busy.reason == "session-lock-held"
 
@@ -195,13 +191,7 @@ def test_the_gates_admit_a_session_once_all_three_pass(cfg):
 def test_the_volume_is_judged_before_any_library_path_is_resolved(cfg):
     """The volume is judged first, or the lock is read off somebody else's disk."""
     acknowledge(cfg)
-    cause = _refusal_entering(
-        session.assert_gates,
-        cfg,
-        workflow="a-destructive-workflow",
-        identity_provider=foreign_identity,
-        mount_enumerator=lambda: (),
-    )
+    cause = _gates_refusal(cfg, identity_provider=foreign_identity)
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
     assert not session.lock_path(cfg).exists(), "the lock was created before the volume check"
 
@@ -233,17 +223,14 @@ def test_every_mount_verdict_about_a_rule_target_was_decided_exactly_once(state)
 
 
 def test_the_verdicts_that_prove_a_rule_target_are_spelled_out():
-    """The pass set as a literal, since widening it opens the gate.
-    ``LIBRARY_PATH_MISSING`` passes because the identity matched."""
+    """The pass set as a literal, since widening it opens the gate (the identity matched)."""
     assert session._MAPPED_PROVED == {
-        preflight.MountState.OK,
-        preflight.MountState.LIBRARY_PATH_MISSING,
+        preflight.MountState.OK, preflight.MountState.LIBRARY_PATH_MISSING
     }
 
 
 def test_a_rule_is_held_to_its_own_identity_then_the_librarys_then_to_nothing(cfg, tmp_path):
-    """The third answer is None, since an empty mount-point directory sits on the
-    library's boot disk and would match its identity."""
+    """The third answer is None: an empty mount point sits on the library's boot disk."""
     root = Path(cfg.library.root)
     own = _rule(root / "Old", _ARCHIVE)
     inside = _rule(root / "Old")
@@ -264,6 +251,11 @@ def _mapped(cfg, rules, **seams):
     return session.assert_mapped_volume_identities(cfg, rules, **seams)
 
 
+def _through(provider) -> dict:
+    """The mapped assertion's seams: ``provider`` for identities and no mounts."""
+    return {"identity_provider": provider, "mount_enumerator": lambda: ()}
+
+
 def _rule(target, volume_id=None) -> locations.PrefixRule:
     """A rule recorded on another machine pointing at ``target``."""
     return locations.PrefixRule(_RECORDED_ELSEWHERE, str(target), volume_id)
@@ -278,9 +270,7 @@ def _mounted(monkeypatch, cfg, path: Path, identity) -> Path:
 
 def test_a_rule_onto_the_volume_it_recorded_passes(cfg, tmp_path, monkeypatch):
     archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
-
     proved = _mapped(cfg, [_rule(archive, _ARCHIVE)])
-
     assert [status.state for status in proved] == [preflight.MountState.OK]
     assert proved[0].observed_identity == _ARCHIVE
 
@@ -296,7 +286,6 @@ def test_a_different_disk_at_a_rules_target_refuses_and_names_the_rule(
     ]
 
     cause = _refusal(_mapped, cfg, rules)
-
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
     assert cause.detail["rule"] == 1 and cause.detail["target"] == str(archive)
@@ -313,9 +302,7 @@ def test_an_empty_directory_where_a_volume_mounts_is_not_that_volume(cfg, tmp_pa
     stale = tmp_path / "Volumes" / "ARCHIVE"
     stale.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
-
     cause = _refusal(_mapped, cfg, [_rule(stale, _ARCHIVE)])
-
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.detail["state"] == str(preflight.MountState.FOREIGN_VOLUME)
 
@@ -325,9 +312,7 @@ def test_a_recorded_volume_that_is_not_mounted_anywhere_has_its_own_slug(
 ):
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
     absent = tmp_path / "Volumes" / "ARCHIVE"
-
     cause = _refusal(_mapped, cfg, [_rule(absent, _ARCHIVE)])
-
     assert cause.reason == "mapped-volume-unmounted"
     assert str(absent) in cause.remediation.steps[0]
 
@@ -337,9 +322,7 @@ def test_a_recorded_volume_mounted_somewhere_else_says_where(cfg, tmp_path, monk
     actually.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {actually: _ARCHIVE}, otherwise=cfg.library.volume_id)
     configured = tmp_path / "Volumes" / "ARCHIVE"
-
     cause = _refusal(_mapped, cfg, [_rule(configured, _ARCHIVE)])
-
     assert cause.reason == "mapped-volume-mismatch"
     assert str(actually.resolve()) in cause.remediation.steps[0]
 
@@ -347,12 +330,9 @@ def test_a_recorded_volume_mounted_somewhere_else_says_where(cfg, tmp_path, monk
 def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_the_identity(
     cfg, tmp_path, monkeypatch
 ):
-    """With nothing recorded, the refusal names the rule's config key and the
-    identity the disk shows now, so the fix is one edit."""
+    """The refusal names the rule's config key and the identity the disk shows: one edit."""
     archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
-
     cause = _refusal(_mapped, cfg, [_rule(archive)])
-
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.detail["state"] == str(preflight.MountState.IDENTITY_NOT_RECORDED)
     assert cause.detail["observed_identity"] == _ARCHIVE
@@ -363,9 +343,7 @@ def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_
 def test_a_volume_nested_under_the_library_root_is_not_the_library(cfg, monkeypatch):
     """Inside the root, the library's identity is asserted, not passed."""
     nested = _mounted(monkeypatch, cfg, Path(cfg.library.root) / "Archive", "BBBB-nested")
-
     cause = _refusal(_mapped, cfg, [_rule(nested)])
-
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.detail["recorded_identity"] == cfg.library.volume_id
 
@@ -373,9 +351,7 @@ def test_a_volume_nested_under_the_library_root_is_not_the_library(cfg, monkeypa
 def test_a_rule_target_whose_identity_cannot_be_read_refuses(cfg, tmp_path, monkeypatch):
     """Destructive strength. "I could not look" is not "it is the right disk"."""
     archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", None)
-
     cause = _refusal(_mapped, cfg, [_rule(archive, _ARCHIVE)])
-
     assert cause.detail["state"] == str(preflight.MountState.IDENTITY_UNAVAILABLE)
 
 
@@ -384,26 +360,19 @@ def test_a_matched_volume_with_the_directory_absent_is_left_to_the_pass_that_fol
 ):
     """The one non-OK pass, and the reason is that the identity question was answered."""
     archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
-    rule = _rule(archive / "never-made", _ARCHIVE)
-
-    proved = _mapped(cfg, [rule])
-
+    proved = _mapped(cfg, [_rule(archive / "never-made", _ARCHIVE)])
     assert [status.state for status in proved] == [preflight.MountState.LIBRARY_PATH_MISSING]
 
 
 def test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it(
     cfg, tmp_path, monkeypatch
 ):
-    """An empty mount slot refuses before any identity is compared, since a rule
-    recording the slot's own disk would match the leftover directory (R-51)."""
+    """It refuses before any identity is compared: the slot's disk matches its leftover (R-51)."""
     volumes = tmp_path / "Volumes"
     leftover = volumes / "ARCHIVE"
     leftover.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id, slots_under=volumes)
-    rule = _rule(leftover, cfg.library.volume_id)
-
-    cause = _refusal(_mapped, cfg, [rule])
-
+    cause = _refusal(_mapped, cfg, [_rule(leftover, cfg.library.volume_id)])
     assert cause.reason == "mapped-volume-unmounted"
     assert cause.detail["state"] == "mount_slot_empty"
 
@@ -411,15 +380,11 @@ def test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it(
 def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
     cfg, tmp_path, monkeypatch
 ):
-    """An ejected drive's refusal never offers the boot disk's identity to record,
-    which would disarm the gate for good."""
+    """Recording the boot disk's identity would disarm the gate for good."""
     volumes = tmp_path / "Volumes"
     (volumes / "ARCHIVE").mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise="CCCC-the-boot-disk", slots_under=volumes)
-    rule = _rule(volumes / "ARCHIVE")
-
-    cause = _refusal(_mapped, cfg, [rule])
-
+    cause = _refusal(_mapped, cfg, [_rule(volumes / "ARCHIVE")])
     assert cause.reason == "mapped-volume-unmounted"
     said = cause.message + " ".join(cause.remediation.steps) + json.dumps(cause.detail)
     assert "CCCC-the-boot-disk" not in said
@@ -428,12 +393,9 @@ def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
 def test_a_foreign_volume_under_a_rule_that_recorded_nothing_offers_nothing_to_record(
     cfg, monkeypatch
 ):
-    """Inside the root the identity compared was the library's, and the wording
-    says so and offers no ``volume_id`` to record."""
+    """Inside the root the library's identity was compared, said so, with no ``volume_id``."""
     nested = _mounted(monkeypatch, cfg, Path(cfg.library.root) / "Archive", "BBBB-nested")
-
     cause = _refusal(_mapped, cfg, [_rule(nested)])
-
     assert "the library's volume" in cause.message
     assert "recorded on that rule" not in cause.message
     assert "volume_id" not in cause.remediation.steps[0]
@@ -450,9 +412,7 @@ def test_a_way_to_the_target_this_account_cannot_walk_is_a_refusal_and_not_a_tra
         raise PermissionError(13, "Permission denied")
 
     monkeypatch.setattr(preflight, "identity_source", cannot_walk)
-
     cause = _refusal(_mapped, cfg, [_rule(archive, _ARCHIVE)])
-
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.detail["state"] == "unreachable"
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
@@ -466,21 +426,14 @@ def test_a_provider_that_cannot_read_the_identity_to_hand_over_is_a_refusal_too(
     def provider(_path):
         raise PermissionError(13, "Permission denied")
 
-    cause = _refusal(
-        _mapped,
-        cfg,
-        [_rule(archive)],
-        identity_provider=provider,
-        mount_enumerator=lambda: (),
-    )
+    cause = _refusal(_mapped, cfg, [_rule(archive)], **_through(provider))
     assert cause.detail["state"] == "unreachable"
 
 
 def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
     cfg, tmp_path, monkeypatch
 ):
-    """A file is proved where it is: a volume mounted under the rule's target is a
-    third disk. Both halves are asserted, since refuse-all passes the second."""
+    """A volume under the rule's target is a third disk; both halves, as refuse-all passes one."""
     archive = tmp_path / "Volumes" / "ARCHIVE"
     inner = archive / "Music" / "On Another Disk"
     inner.mkdir(parents=True)
@@ -494,13 +447,9 @@ def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
     ]
     assert len(_mapped(cfg, rules)) == 2
 
-    held = session.assert_mapped_file_volume(
-        cfg, rules, 1, archive / "Music" / "Here" / "a.flac"
-    )
+    held = session.assert_mapped_file_volume(cfg, rules, 1, archive / "Music" / "Here" / "a.flac")
     assert held.ok and held.observed_identity == _ARCHIVE
-
     cause = _refusal(session.assert_mapped_file_volume, cfg, rules, 1, inner / "a.flac")
-
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.detail["rule"] == 1 and cause.detail["probed"] == str(inner)
     assert cause.detail["observed_identity"] == "BBBB-inner"
@@ -520,12 +469,7 @@ def test_a_verdict_in_neither_table_fails_rather_than_wearing_the_mismatch_slug(
     monkeypatch.setattr(session, "_MAPPED_REASONS", undecided)
 
     with pytest.raises(KeyError):
-        _mapped(
-            cfg,
-            [_rule(archive, _ARCHIVE)],
-            identity_provider=lambda _path: "BBBB-a-decoy",
-            mount_enumerator=lambda: (),
-        )
+        _mapped(cfg, [_rule(archive, _ARCHIVE)], **_through(lambda _path: "BBBB-a-decoy"))
 
 
 def test_the_seams_handed_in_are_the_seams_used(cfg, tmp_path):
@@ -538,13 +482,7 @@ def test_the_seams_handed_in_are_the_seams_used(cfg, tmp_path):
         seen.append(Path(path))
         return _ARCHIVE
 
-    cause = _refusal(
-        _mapped,
-        cfg,
-        [_rule(archive)],
-        identity_provider=provider,
-        mount_enumerator=lambda: (),
-    )
+    cause = _refusal(_mapped, cfg, [_rule(archive)], **_through(provider))
     assert cause.detail["observed_identity"] == _ARCHIVE
     assert seen, "the refusal read the identity through some other provider"
 
@@ -585,9 +523,7 @@ def test_the_lock_file_is_never_unlinked_and_is_private_under_any_umask(cfg):
         with session.session_lock(cfg) as held:
             assert held.exists()
             assert stat.S_IMODE(held.stat().st_mode) == config.PRIVATE_FILE_MODE
-            assert (
-                stat.S_IMODE(held.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
-            )
+            assert stat.S_IMODE(held.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
         assert held.exists(), "the lock file was unlinked on release"
 
 
@@ -601,17 +537,12 @@ def test_releasing_a_dead_holders_lock_is_an_explicit_verb(cfg):
     """Never automatic. Clearing another run's claim mid-write is the failure."""
     lock = session.lock_path(cfg)
     lock.parent.mkdir(parents=True, exist_ok=True)
-    dead = session.Holder(
-        host=session.current_holder().host,
-        boot=session.current_holder().boot,
-        pid=os.getpid(),
-        started="0.000",  # this process did not start at the epoch
-    )
+    here = session.current_holder()
+    # This process did not start at the epoch.
+    dead = session.Holder(host=here.host, boot=here.boot, pid=os.getpid(), started="0.000")
     lock.write_text(json.dumps({"holder": dead.to_json()}))
-
     assert session.holder_alive(dead) is False
-    cleared = session.release_stale_lock(cfg)
-    assert cleared == dead
+    assert session.release_stale_lock(cfg) == dead
     assert session.read_lock_holder(lock) is None
 
 
@@ -627,9 +558,7 @@ def test_a_holder_on_another_machine_or_another_boot_is_assumed_alive(cfg):
     other_host = session.Holder(
         host="another-machine", boot=here.boot, pid=here.pid, started=here.started
     )
-    other_boot = session.Holder(
-        host=here.host, boot="0", pid=here.pid, started=here.started
-    )
+    other_boot = session.Holder(host=here.host, boot="0", pid=here.pid, started=here.started)
     assert session.holder_alive(other_host) is True
     assert session.holder_alive(other_boot) is True
 
@@ -657,9 +586,7 @@ def test_this_platform_names_its_machine_as_a_digest_not_the_serial(cfg):
         assert machine == session.UNKNOWN_IDENTITY or re.fullmatch(r"[0-9a-f]{32}", machine)
 
 
-# ---------------------------------------------------------------------------
 # A holder from an earlier boot of this machine (R-647)
-# ---------------------------------------------------------------------------
 
 #: A machine identity for the tests below, in the digest's shape.
 THIS_MACHINE = "0123456789abcdef0123456789abcdef"
@@ -673,18 +600,19 @@ def _here() -> session.Holder:
     )
 
 
-def _before_a_power_loss(here: session.Holder, **changes) -> session.Holder:
-    """A holder from this machine's previous boot, a day back, naming a real
-    finished process so the platform is genuinely asked."""
+def _finished_pid() -> int:
+    """The id of a real process that has exited, so the platform is genuinely asked."""
     finished = subprocess.Popen([sys.executable, "-c", "pass"])
     finished.wait()
     assert session.process_exists(finished.pid) is False
+    return finished.pid
+
+
+def _before_a_power_loss(here: session.Holder, **changes) -> session.Holder:
+    """A holder from this machine's previous boot, a day back, naming a finished process."""
     fields = {
-        "host": here.host,
-        "machine": here.machine,
-        "boot": str(float(here.boot) - 86400),
-        "pid": finished.pid,
-        "started": "900000.000",
+        "host": here.host, "machine": here.machine, "boot": str(float(here.boot) - 86400),
+        "pid": _finished_pid(), "started": "900000.000",
     }
     fields.update(changes)
     return session.Holder(**fields)
@@ -711,8 +639,7 @@ def test_a_holder_from_an_earlier_boot_of_this_machine_is_gone(cfg):
 def test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine(
     cfg, label, changes
 ):
-    """Each cross boot condition fails alive, one row each from the gone holder.
-    The host name is no proof, since a drive can move between same-named machines."""
+    """Each cross boot condition fails alive; a host name is no proof, as drives move."""
     here = _here()
     assert session.holder_alive(_before_a_power_loss(here, **changes), here=here) is True, label
 
@@ -747,12 +674,9 @@ def test_a_live_process_read_through_a_moved_clock_is_kept(cfg):
 
 
 def test_a_live_process_whose_start_time_moved_with_the_clock_is_kept(cfg):
-    """On Linux the start time moves with a stepped clock, so a live identifier keeps
-    the claim whatever start time it reports."""
+    """On Linux a stepped clock moves the start time; a live identifier keeps the claim."""
     here = _here()
-    stepped = _before_a_power_loss(
-        here, pid=here.pid, started=f"{float(here.started) - 86400:.3f}"
-    )
+    stepped = _before_a_power_loss(here, pid=here.pid, started=f"{float(here.started) - 86400:.3f}")
     assert session.holder_alive(stepped, here=here) is True
 
 
@@ -767,10 +691,8 @@ def test_a_platform_that_cannot_say_whether_the_process_exists_keeps_it(cfg, mon
 def test_the_lock_left_by_this_machines_earlier_boot_is_releasable(cfg, monkeypatch):
     """The release verb's lock half, through the same judgment and no other."""
     monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
-    live = session.current_holder()
-    dead = _before_a_power_loss(live)
+    dead = _before_a_power_loss(session.current_holder())
     lock = _lock_recording(cfg, dead)
-
     assert session.release_stale_lock(cfg) == dead
     assert session.read_lock_holder(lock) is None
 
@@ -780,11 +702,8 @@ def test_the_lock_left_by_another_machine_with_this_host_name_is_not_releasable(
 ):
     """The drive moved, the other machine is writing, and its claim stands."""
     monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
-    live = session.current_holder()
-    theirs = _before_a_power_loss(live, machine="f" * 32)
-    lock = _lock_recording(cfg, theirs)
+    lock = _lock_recording(cfg, _before_a_power_loss(session.current_holder(), machine="f" * 32))
     before = lock.read_bytes()
-
     cause = _refusal(session.release_stale_lock, cfg)
     assert cause.reason == "session-lock-held"
     assert lock.read_bytes() == before
@@ -824,15 +743,11 @@ def test_the_recorded_actor_is_derived_from_the_invocation_and_never_supplied():
 def test_the_acknowledgment_records_the_backup_age_that_was_shown(cfg):
     """KTD18: the backup age shown is recorded for every declared portion."""
     now = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
+    two_days_ago = now - timedelta(days=2)
     backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=now - timedelta(days=2),
-        destination="remote:mirror",
+        cfg, backup_facts.Portion.FILES, completed_at=two_days_ago, destination="remote:mirror"
     )
-    recorded = acknowledge(cfg, now=now)
-
-    shown = {entry.portion: entry for entry in recorded.shown}
+    shown = {entry.portion: entry for entry in acknowledge(cfg, now=now).shown}
     assert set(shown) == {str(portion) for portion in backup_facts.Portion}
     assert shown[str(backup_facts.Portion.FILES)].age_seconds == timedelta(days=2).total_seconds()
     assert shown[str(backup_facts.Portion.DATABASE)].state == str(
@@ -858,13 +773,9 @@ def test_the_acknowledgment_file_is_private_under_any_umask(cfg):
 
 
 def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
-    """AE20 and R34: no flag, configuration key or environment variable satisfies
-    the acknowledgment.
-
-    Flags are read from the signatures, every module toggle is switched on, and
-    both the consult and the mint are scanned for environment reads, since a
-    behavioural test would have to guess the variable name.
-    """
+    """AE20 and R34: no flag, configuration key or environment variable satisfies it.
+    Signatures, every module toggle on, and an environment read scan of the consult and the
+    mint, since a behavioural test would have to guess the variable name."""
     from cratekit.core import profiles
 
     for function in (session.assert_gates, session.assert_backup_acknowledged):
@@ -907,25 +818,15 @@ def test_the_log_records_everything_a_restore_has_to_judge(cfg):
     """Identifier, workflow, timestamp, capture path, change summary, state, actor."""
     acknowledged = acknowledge(cfg)
     record = session.open_session(
-        cfg,
-        workflow="a-destructive-workflow",
-        actor=acknowledged.actor,
+        cfg, workflow="a-destructive-workflow", actor=acknowledged.actor,
         acknowledged_at=acknowledged.recorded_at.isoformat(),
     )
     session.attach_capture(record, "/captures/one/master.db", cfg)
-    record.change = session.ChangeSummary(
-        (
-            session.TreeChange(tree="tree-one", created=3, updated=1),
-            session.TreeChange(tree="tree-two", created=0, updated=7),
-        )
-    )
-    session.close_session(
-        record,
-        cfg,
-        identity_provider=lambda _path: cfg.library.volume_id,
-        mount_enumerator=lambda: (),
-    )
-
+    record.change = session.ChangeSummary((
+        session.TreeChange(tree="tree-one", created=3, updated=1),
+        session.TreeChange(tree="tree-two", created=0, updated=7),
+    ))
+    session.close_session(record, cfg, **open_gates(cfg))
     written = json.loads(session.log_path(record.session_id, cfg).read_text())
     assert written["session_id"] == record.session_id
     assert written["workflow"] == "a-destructive-workflow"
@@ -972,17 +873,15 @@ def test_an_unreadable_record_does_not_stop_the_log_being_read(cfg):
 
 
 def test_a_refusal_at_source_two_leaves_source_one_committed_and_names_both(cfg):
-    record = session.open_session(
-        cfg, workflow="a-destructive-workflow", sources=("one", "two", "three")
-    )
+    sources = ("one", "two", "three")
+    record = session.open_session(cfg, workflow="a-destructive-workflow", sources=sources)
 
     def run_one(source):
         if source == "two":
             raise refuse("refused-by-policy", "source two is not acceptable")
         return session.ChangeSummary((session.TreeChange(tree=f"tree-{source}", created=1),))
 
-    cause = _refusal(session.commit_sources, record, ("one", "two", "three"), run_one, cfg=cfg)
-
+    cause = _refusal(session.commit_sources, record, sources, run_one, cfg=cfg)
     assert cause.detail["committed"] == ["one"]
     assert cause.detail["refused_source"] == "two"
     assert set(cause.detail["remaining"]) == {"two", "three"}
@@ -996,9 +895,7 @@ def test_a_refusal_at_source_two_leaves_source_one_committed_and_names_both(cfg)
 
 
 def test_a_resume_skips_a_committed_source_and_finishes_the_rest(cfg):
-    record = session.open_session(
-        cfg, workflow="a-destructive-workflow", sources=("one", "two")
-    )
+    record = session.open_session(cfg, workflow="a-destructive-workflow", sources=("one", "two"))
     attempted: list[str] = []
 
     def run_one(source):
@@ -1020,6 +917,11 @@ def test_a_resume_skips_a_committed_source_and_finishes_the_rest(cfg):
 # The capture gate, and the post-commit read-back (AE13)
 
 
+def _unverified(record, cfg, reopen=object, agrees: bool = False):
+    """The refusal a read-back of ``record`` ends in, by ``reopen``, agreeing or not."""
+    return _refusal(session.verify_commit, record, cfg, expect=lambda _db: agrees, reopen=reopen)
+
+
 def test_a_capture_that_failed_its_check_blocks_the_commit_behind_it(cfg):
     record = snapshot.capture(cfg, verifier=lambda _path: False)
     cause = _refusal(snapshot.assert_verified, record)
@@ -1027,22 +929,14 @@ def test_a_capture_that_failed_its_check_blocks_the_commit_behind_it(cfg):
 
 
 def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothing(cfg):
-    record = session.open_session(
-        cfg, workflow="a-destructive-workflow", sources=("one", "two")
-    )
+    record = session.open_session(cfg, workflow="a-destructive-workflow", sources=("one", "two"))
     session.attach_capture(record, "/captures/one/master.db", cfg)
     record.sources["one"] = str(session.SourceState.COMMITTED)
     record.change = session.ChangeSummary((session.TreeChange("tree-one", created=4),))
     session.write_record(record, cfg)
 
     disposed: list[str] = []
-    cause = _refusal(
-        session.verify_commit,
-        record,
-        cfg,
-        expect=lambda _db: False,
-        reopen=_handle_recording(disposed),
-    )
+    cause = _unverified(record, cfg, reopen=_handle_recording(disposed))
     assert cause.code is ExitCode.LIBRARY_UNREADABLE
     assert cause.reason == "session-committed-unverified"
     assert cause.detail["snapshot_path"] == "/captures/one/master.db"
@@ -1054,15 +948,13 @@ def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothi
         "a source was marked done behind a read-back that disagreed"
     )
     assert disposed == ["session", "engine"], (
-        "the read-back handle was not fully released on the DISAGREEING path, "
-        "which is the path a restore follows, so the restore would meet a file "
-        "this process still holds open"
+        "the read-back handle was not fully released on the DISAGREEING path, the one a "
+        "restore follows, so the restore would meet a file this process still holds open"
     )
 
 
 def test_the_read_back_releases_the_database_completely(cfg):
-    """The read-back disposes the engine too, since a pooled connection held open
-    makes a restore over the file fail as if corrupt."""
+    """The engine is disposed too: a pooled connection held open fails a restore as if corrupt."""
     disposed: list[str] = []
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     handle = _handle_recording(disposed)
@@ -1076,9 +968,7 @@ def test_a_disagreement_reports_a_live_rekordbox_separately(cfg, monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
 
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    cause = _refusal(
-        session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object
-    )
+    cause = _unverified(record, cfg)
     assert cause.reason == "session-committed-unverified"
     assert cause.inner is not None
     assert cause.inner.reason == "rekordbox-running"
@@ -1089,7 +979,7 @@ def test_an_unresolved_session_refuses_every_further_write(cfg):
     """Post-commit rollback does not exist, so the next write waits for a person."""
     acknowledge(cfg)
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    _refusal(session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object)
+    _unverified(record, cfg)
 
     cause = _gates_refusal(cfg)
     assert cause.reason == "session-committed-unverified"
@@ -1101,7 +991,7 @@ def test_an_unresolved_session_keeps_its_capture_out_of_the_pruner(cfg):
     capture_path = cfg.library.root / "captures" / "one" / "master.db"
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     session.attach_capture(record, capture_path, cfg)
-    _refusal(session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object)
+    _unverified(record, cfg)
 
     assert rb_writer.default_protected_snapshot_paths(cfg) == {capture_path.resolve()}
 
@@ -1109,20 +999,20 @@ def test_an_unresolved_session_keeps_its_capture_out_of_the_pruner(cfg):
 # The un-imported XML output as a first-class state
 
 
+def _pending(cfg, record, **steps):
+    """The pending import of a generated collection, blocking ``route.inbox``."""
+    return session.pending_import(
+        record, artifact=cfg.library.root / "Music" / "out.xml",
+        summary="import the generated collection", verify_verb="run.show", blocks=("route.inbox",),
+        **steps,
+    )
+
+
 def test_a_run_holding_an_unimported_output_refuses_a_database_surface(cfg):
-    """XML surfaces are upstream, since the import creates the row a database
-    surface addresses."""
+    """XML surfaces are upstream: the import creates the row a database surface addresses."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     session.assert_database_surface_allowed(record)  # nothing pending, nothing refused
-
-    pending = session.pending_import(
-        record,
-        artifact=cfg.library.root / "Music" / "out.xml",
-        summary="import the generated collection",
-        verify_verb="run.show",
-        blocks=("route.inbox",),
-        steps=("import the file in rekordbox",),
-    )
+    pending = _pending(cfg, record, steps=("import the file in rekordbox",))
     session.mark_awaiting_import(record, pending, cfg)
 
     cause = _refusal(session.assert_database_surface_allowed, record)
@@ -1140,14 +1030,7 @@ def test_the_pending_action_is_the_one_the_command_line_layer_already_enforces(c
     """The pending import feeds the command line's own ``blocks`` check."""
     from cratekit.cli import gates, registry
 
-    record = session.open_session(cfg, workflow="a-destructive-workflow")
-    pending = session.pending_import(
-        record,
-        artifact=cfg.library.root / "Music" / "out.xml",
-        summary="import the generated collection",
-        verify_verb="run.show",
-        blocks=("route.inbox",),
-    )
+    pending = _pending(cfg, session.open_session(cfg, workflow="a-destructive-workflow"))
     assert pending.kind == "rekordbox_import"
 
     entry = next(e for e in registry.entries() if e.name == "run.show")
@@ -1193,11 +1076,8 @@ def _drift_refusal(tmp_path: Path, body):
 
 def test_a_moved_analysis_file_refuses_the_session(cfg, tmp_path):
     """A real rewritten file refuses, the half the source scan cannot see."""
-    written = _analysis_tree(tmp_path / "library")
-    victim = written[1]
-
+    victim = _analysis_tree(tmp_path / "library")[1]
     cause = _drift_refusal(tmp_path, lambda: _rewrite(victim, b"a rewritten grid"))
-
     assert cause.reason == "anlz-modified"
     assert cause.code is ExitCode.REFUSED_BY_POLICY
     assert any(str(victim) in line for line in cause.detail["changed"])
@@ -1221,48 +1101,34 @@ def test_a_session_that_touches_nothing_passes(cfg, tmp_path):
 
 
 def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp_path):
-    """The gates arm the analysis watch over caller-supplied roots, not the whole
-    volume; the empty default is closed by the countdown below."""
+    """Over caller-supplied roots, not the whole volume; the countdown below closes the default."""
     written = _analysis_tree(tmp_path / "library")
     acknowledge(cfg)
+    watched = {"workflow": "a-destructive-workflow", "analysis_roots": [tmp_path / "library"]}
     with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(
-            cfg,
-            workflow="a-destructive-workflow",
-            analysis_roots=[tmp_path / "library"],
-            **open_gates(cfg),
-        ):
+        with session.assert_gates(cfg, **watched, **open_gates(cfg)):
             _rewrite(written[2], b"a rewritten grid, mid session")
     assert excinfo.value.cause.reason == "anlz-modified"
 
 
 def test_the_tree_writers_reach_for_the_session_spine(cfg):
-    """P5: the tree writers call ``assert_gates`` and ``assert_verified`` and pass
-    ``analysis_roots``, or the watch watches nothing.
-
-    Checked on the syntax tree, since a substring search passes on the module's
-    own docstring explaining the calls.
-    """
+    """P5: they call ``assert_gates`` and ``assert_verified`` and pass ``analysis_roots``.
+    On the syntax tree, since a substring search passes on the module's own docstring."""
     import importlib
 
     from tests.test_tree_registry import _called_names
 
     trees = importlib.import_module("cratekit.write.trees")
     module = ast.parse(Path(trees.__file__).read_text(encoding="utf-8"))
-
     called = _called_names(module)
     keywords = {
         kw.arg for node in ast.walk(module) if isinstance(node, ast.Call) for kw in node.keywords
     }
 
     for obligation in ("assert_gates", "assert_verified"):
-        assert obligation in called, (
-            f"the tree writers do not CALL {obligation!r}, so the "
-            f"destructive-session spine is optional for the unit that needs it most"
-        )
+        assert obligation in called, f"the tree writers do not CALL {obligation!r}"
     assert "analysis_roots" in keywords, (
-        "the tree writers never pass analysis_roots to anything, so the watch "
-        "that is the runtime half of R17's fifth surface watches nothing"
+        "the tree writers never pass analysis_roots, so R17's fifth surface watches nothing"
     )
 
 
@@ -1277,8 +1143,7 @@ def test_the_watched_set_is_never_narrower_than_the_binding_recognises():
 
 
 def test_the_watched_set_covers_every_file_surface_five_declares():
-    """Wider than the binding: surface five's four declared suffixes, read from its
-    docstring, since the fourth is a real grid-bearing file."""
+    """Wider than the binding: surface five's four declared suffixes, read from its docstring."""
     import tests.test_no_beatgrid_ever as surface_five
 
     declared = set(re.findall(r"``\.([0-9A-Z]{3})``", surface_five.__doc__))
@@ -1293,19 +1158,26 @@ def test_the_watched_set_covers_every_file_surface_five_declares():
 # destructive-session gates": the backup restore passes the same gates
 
 
+def _succeeds(command):
+    return backup.CommandResult(returncode=0)
+
+
+def _restore_plan(cfg, target: Path, clears=()) -> backup.RestorePlan:
+    """A restore of one database snapshot into ``target``, clearing ``clears`` first."""
+    return backup.RestorePlan(
+        target=target, database_target=backup.database_target_for(cfg, target),
+        snapshot="2026-08-01T000000Z", clears=clears,
+        commands=(backup.Command(label=backup.RESTORE_DATABASE, argv=("rclone", "copy")),),
+    )
+
+
 def test_the_backup_restore_passes_the_destructive_session_gates(volume_matches, cfg, tmp_path):
     """KTD24: the gates bind to destruction, and a restore writes no database row."""
     target = tmp_path / "scratch"
     target.mkdir()
-
     cause = _refusal(
-        backup.plan_restore,
-        cfg,
-        target=target,
-        confirmed=True,
-        snapshot="2026-08-01T000000Z",
-        runner=lambda command: backup.CommandResult(returncode=0),
-        process_lister=lambda: (),
+        backup.plan_restore, cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
+        runner=_succeeds, process_lister=lambda: (),
     )
     assert cause.code is ExitCode.ACK_REQUIRED
 
@@ -1315,11 +1187,7 @@ def test_the_restores_own_refusals_survive_the_gates_being_added(cfg, tmp_path):
     acknowledge(cfg)
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.plan_restore(
-            cfg,
-            target=tmp_path,
-            confirmed=False,
-            runner=lambda command: backup.CommandResult(returncode=0),
-            process_lister=lambda: (),
+            cfg, target=tmp_path, confirmed=False, runner=_succeeds, process_lister=lambda: (),
             gates=lambda: session.assert_gates(
                 cfg, workflow=backup.RESTORE_WORKFLOW, **open_gates(cfg)
             ),
@@ -1328,20 +1196,9 @@ def test_the_restores_own_refusals_survive_the_gates_being_added(cfg, tmp_path):
 
 
 def test_a_rehearsed_restore_is_not_exempt_from_the_gates(volume_matches, cfg, tmp_path):
-    """A rehearsal is gated too, since one run beside another write previews a
-    library changing underneath it."""
-    database_target = backup.database_target_for(cfg, tmp_path / "scratch")
-    plan = backup.RestorePlan(
-        target=tmp_path / "scratch",
-        database_target=database_target,
-        snapshot="2026-08-01T000000Z",
-        clears=(),
-        commands=(backup.Command(label=backup.RESTORE_DATABASE, argv=("rclone", "copy")),),
-    )
-    cause = _refusal(
-        backup.run_restore,
-        plan, cfg, runner=lambda command: backup.CommandResult(returncode=0), dry_run=True
-    )
+    """A rehearsal beside another write previews a library changing underneath it."""
+    plan = _restore_plan(cfg, tmp_path / "scratch")
+    cause = _refusal(backup.run_restore, plan, cfg, runner=_succeeds, dry_run=True)
     assert cause.code is ExitCode.ACK_REQUIRED
 
 
@@ -1353,10 +1210,9 @@ def test_the_destructive_half_of_a_restore_has_no_ungated_call_shape():
 
 
 def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
-    """Every backup refusal has one code in both cause tables (U27, KTD25).
+    """Every backup refusal has one code in both cause tables (U27, KTD25), from the enum (P3).
 
-    Derived from the enum (P3), and the codes are compared, not mere presence,
-    since disagreeing tables describe different failures.
+    The codes are compared, not mere presence, since disagreeing tables describe different failures.
     """
     from cratekit.cli import exit_codes as reservations  # noqa: PLC0415
 
@@ -1366,21 +1222,22 @@ def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
         for refusal in backup.REFUSALS
         if REASONS.get(str(refusal)) is not reservations.reserved(str(refusal)).code
     }
-    assert not disagreements, (
-        f"cause.REASONS and exit_codes.RESERVED_CAUSES give different statuses to "
-        f"the same backup refusal: {disagreements}"
-    )
+    assert not disagreements, f"the two cause tables disagree on backup refusals: {disagreements}"
 
 
 # The latch has an exit, the log fails CLOSED, and the guards run on both paths.
 # Found by an adversarial read: the other half of properties tested above.
 
 
+#: A recovery session's own workflow and intent.
+RECOVERY = {"workflow": "a-recovery-workflow", "intent": session.Intent.RECOVERY}
+
+
 def _condemn(cfg):
     """Leave this library with one unresolved ``committed-unverified`` session."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     session.attach_capture(record, "/captures/one/master.db", cfg)
-    _refusal(session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object)
+    _unverified(record, cfg)
     return record
 
 
@@ -1390,13 +1247,7 @@ def test_a_condemned_library_still_admits_the_recovery_its_remedy_names(cfg):
     condemned = _condemn(cfg)
 
     assert _gates_refusal(cfg).reason == "session-committed-unverified"
-
-    with session.assert_gates(
-        cfg,
-        workflow="a-recovery-workflow",
-        intent=session.Intent.RECOVERY,
-        **open_gates(cfg),
-    ) as held:
+    with session.assert_gates(cfg, **RECOVERY, **open_gates(cfg)) as held:
         assert held.intent is session.Intent.RECOVERY
     assert condemned.session_id
 
@@ -1404,25 +1255,11 @@ def test_a_condemned_library_still_admits_the_recovery_its_remedy_names(cfg):
 def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
     """Recovery is exempt from the latch only (R34)."""
     _condemn(cfg)
-    recovery = {
-        "workflow": "a-recovery-workflow",
-        "intent": session.Intent.RECOVERY,
-    }
-
-    assert _gates_refusal(cfg, **recovery).code is ExitCode.ACK_REQUIRED
-
+    assert _gates_refusal(cfg, **RECOVERY).code is ExitCode.ACK_REQUIRED
     acknowledge(cfg)
-    wrong_disk = _gates_refusal(
-        cfg, **recovery, identity_provider=foreign_identity, mount_enumerator=lambda: ()
-    )
+    wrong_disk = _gates_refusal(cfg, **RECOVERY, identity_provider=foreign_identity)
     assert wrong_disk.code is ExitCode.LIBRARY_UNAVAILABLE
-
-    contender = open(session.lock_path(cfg), "a+")
-    try:
-        rb_writer._acquire_exclusive(contender)
-        busy = _gates_refusal(cfg, **recovery)
-    finally:
-        contender.close()
+    busy = _while_another_holds_the_lock(cfg, lambda: _gates_refusal(cfg, **RECOVERY))
     assert busy.code is ExitCode.LIBRARY_BUSY
 
 
@@ -1432,11 +1269,7 @@ def test_the_restore_is_the_recovery_and_reaches_its_own_refusals(volume_matches
     _condemn(cfg)
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.plan_restore(
-            cfg,
-            target=tmp_path,
-            confirmed=False,
-            runner=lambda command: backup.CommandResult(returncode=0),
-            process_lister=lambda: (),
+            cfg, target=tmp_path, confirmed=False, runner=_succeeds, process_lister=lambda: ()
         )
     assert excinfo.value.refusal is backup.Refusal.RESTORE_NOT_CONFIRMED
 
@@ -1463,8 +1296,7 @@ def test_resolving_refuses_any_state_but_the_one_it_is_for(cfg):
 
 
 def test_the_latch_refuses_a_record_this_build_cannot_read(cfg):
-    """The gate reads the log strictly, since a tolerant reader fails open. Both
-    damage shapes are driven, since they raise differently."""
+    """The gate reads the log strictly, as a tolerant one fails open; both damage shapes."""
     acknowledge(cfg)
     condemned = _condemn(cfg)
     path = session.log_path(condemned.session_id, cfg)
@@ -1479,11 +1311,9 @@ def test_the_latch_refuses_a_record_this_build_cannot_read(cfg):
 
 
 def test_the_session_log_filename_is_legal_on_a_library_volume(cfg):
-    """Log filenames carry no colon, since exFAT and FAT library volumes refuse one;
-    the identifier itself keeps its colons."""
+    """No colon, which exFAT and FAT library volumes refuse; the identifier keeps its colons."""
     identifier = session.new_session_id()
     assert ":" in identifier, "the identifier space is the run identifier space"
-
     name = session.log_path(identifier, cfg).name
     assert not (set(name) & set(r'<>:"/\|?* ')), name
     assert name.isascii()
@@ -1507,20 +1337,16 @@ def test_a_supplied_identifier_cannot_compose_a_path(cfg):
 
 
 def test_a_per_source_refusal_widens_the_scope_and_never_narrows_it(cfg):
-    """A wrapper widens a refusal's scope, never narrows it, since it knows less
-    than the cause it wraps."""
+    """A wrapper widens a refusal's scope, never narrows it: it knows less than the cause."""
     from cratekit.core.cause import Scope
 
     def refusing_at(scope):
-        record = session.open_session(
-            cfg, workflow="a-destructive-workflow", sources=("one",)
-        )
+        record = session.open_session(cfg, workflow="a-destructive-workflow", sources=("one",))
 
         def run_one(_source):
             raise refuse("refused-by-policy", "not this time", scope=scope)
 
-        cause = _refusal(session.commit_sources, record, ("one",), run_one, cfg=cfg)
-        return cause
+        return _refusal(session.commit_sources, record, ("one",), run_one, cfg=cfg)
 
     assert refusing_at(Scope.RUN).scope is Scope.RUN
     assert refusing_at(Scope.SESSION).scope is Scope.SESSION
@@ -1529,16 +1355,13 @@ def test_a_per_source_refusal_widens_the_scope_and_never_narrows_it(cfg):
 
 
 def test_a_read_back_that_could_not_run_says_so_rather_than_saying_it_disagreed(cfg):
-    """A read-back that could not run carries its typed cause, so an unplugged drive
-    is not reported as a disagreement."""
+    """It carries its typed cause, so an unplugged drive is not reported as a disagreement."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
 
     def cannot_open():
         raise refuse("library-directory-missing", "the volume went away")
 
-    cause = _refusal(
-        session.verify_commit, record, cfg, expect=lambda _db: True, reopen=cannot_open
-    )
+    cause = _unverified(record, cfg, reopen=cannot_open, agrees=True)
     assert cause.reason == "session-committed-unverified"
     assert cause.inner is not None
     assert cause.inner.reason == "library-directory-missing", (
@@ -1558,18 +1381,12 @@ def test_both_the_read_back_failure_and_a_live_rekordbox_travel_together(cfg, mo
     def cannot_open():
         raise refuse("database-open-failed", "held by something")
 
-    cause = _refusal(
-        session.verify_commit, record, cfg, expect=lambda _db: True, reopen=cannot_open
-    )
+    cause = _unverified(record, cfg, reopen=cannot_open, agrees=True)
     chain = []
     while cause is not None:
         chain.append(cause.reason)
         cause = cause.inner
-    assert chain == [
-        "session-committed-unverified",
-        "database-open-failed",
-        "rekordbox-running",
-    ]
+    assert chain == ["session-committed-unverified", "database-open-failed", "rekordbox-running"]
 
 
 def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
@@ -1589,8 +1406,7 @@ def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
 
 
 def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cfg):
-    """A permission failure asks for access, not repair, driven through
-    ``read_facts`` with the precondition asserted, not assumed."""
+    """Access, not repair, driven through ``read_facts`` with the precondition asserted."""
     locked = backup_facts.path_for(cfg)
     locked.parent.mkdir(parents=True, exist_ok=True)
     locked.write_text("{}")
@@ -1606,8 +1422,7 @@ def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cf
     assert cause.reason == "backup-facts-unreadable"
     assert cause.code is ExitCode.ACK_REQUIRED
     assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS, (
-        "a person whose configuration directory this account cannot open was "
-        "told to repair or reset a file that is very likely intact"
+        "a person this account cannot open the configuration of was told to repair an intact file"
     )
     assert session.read_acknowledgment(cfg) is None, "a refused mint wrote a record"
 
@@ -1616,30 +1431,23 @@ def test_a_fact_file_from_a_newer_build_asks_for_an_upgrade(cfg):
     """The third remedy ``read_facts`` raises travels the same way."""
     newer = backup_facts.path_for(cfg)
     newer.parent.mkdir(parents=True, exist_ok=True)
-    newer.write_text(
-        json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}})
-    )
+    newer_build = {"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}}
+    newer.write_text(json.dumps(newer_build))
     cause = _refusal(acknowledge, cfg)
-
     assert cause.reason == "backup-facts-unreadable"
     assert cause.remediation.remedy is Remedy.UPGRADE_CRATEKIT
 
 
 def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_path):
-    """The watch runs when the body refuses, or a retried session rewrites a grid
-    unreported, carrying the body's refusal inside."""
-    written = _analysis_tree(tmp_path / "library")
-    victim = written[0]
+    """Or a retried session rewrites a grid unreported; the body's refusal is carried inside."""
+    victim = _analysis_tree(tmp_path / "library")[0]
 
     def rewrite_then_refuse():
         _rewrite(victim, b"a rewritten grid")
         _smoke_test_fails()
 
     cause = _drift_refusal(tmp_path, rewrite_then_refuse)
-    assert cause.reason == "anlz-modified", (
-        "the body's refusal hid a moved beat grid, which is the one rule the "
-        "project calls inviolable"
-    )
+    assert cause.reason == "anlz-modified", "the body's refusal hid a moved beat grid"
     assert cause.inner is not None and cause.inner.reason == "refused-by-policy", (
         "the body's own refusal was replaced rather than carried"
     )
@@ -1661,23 +1469,17 @@ def test_an_appearing_analysis_file_refuses_too(cfg, tmp_path):
 
 def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_path):
     """The size catches a rewrite inside one clock tick; the mtime is put back."""
-    written = _analysis_tree(tmp_path / "library")
-    victim = written[3]
+    victim = _analysis_tree(tmp_path / "library")[3]
     original = victim.stat()
-
-    cause = _drift_refusal(
-        tmp_path,
-        lambda: _rewrite(
-            victim, b"a rewritten grid, longer than what was there", mtime_ns=original.st_mtime_ns
-        ),
-    )
+    longer = b"a rewritten grid, longer than what was there"
+    kept = original.st_mtime_ns
+    cause = _drift_refusal(tmp_path, lambda: _rewrite(victim, longer, mtime_ns=kept))
     assert cause.reason == "anlz-modified"
     assert victim.stat().st_mtime_ns == original.st_mtime_ns, "the mtime moved after all"
 
 
 def test_a_live_holder_this_platform_will_not_describe_is_assumed_alive(cfg, monkeypatch):
-    """A live holder whose start time the platform hides is alive, or a writing
-    session is offered up as stale."""
+    """A start time the platform hides is alive, or a writing session is offered up as stale."""
     here = session.current_holder()
     monkeypatch.setattr(session, "process_started", lambda _pid: session.UNKNOWN_IDENTITY)
     assert session.holder_alive(here) is True
@@ -1687,29 +1489,16 @@ def test_a_live_holder_this_platform_will_not_describe_is_assumed_alive(cfg, mon
 
 
 def test_a_holder_whose_process_is_gone_is_still_judged_dead(cfg):
-    """A genuinely finished process is still judged dead, since only "no such
-    process", not "will not say", clears a claim. Real probes, no stub."""
-    finished = subprocess.Popen([sys.executable, "-c", "pass"])
-    finished.wait()
-    assert session.process_exists(finished.pid) is False
-
-    here = session.current_holder()
-    gone = session.Holder(
-        host=here.host, boot=here.boot, pid=finished.pid, started="1.000"
-    )
-    assert session.holder_alive(gone) is False
-
-    cleared = session.release_stale_lock(cfg, path=_lock_recording(cfg, gone))
-    assert cleared == gone
+    """Only "no such process", not "will not say", clears a claim. Real probes, no stub."""
+    gone = _gone_holder()
+    assert session.release_stale_lock(cfg, path=_lock_recording(cfg, gone)) == gone
     assert session.read_lock_holder(session.lock_path(cfg)) is None
 
 
 def _lock_recording(cfg, holder):
     """Write a lock file naming ``holder``, and return its path."""
     path = session.lock_path(cfg)
-    config.atomic_write_bytes(
-        json.dumps({"holder": holder.to_json()}).encode("utf-8"), path
-    )
+    config.atomic_write_bytes(json.dumps({"holder": holder.to_json()}).encode("utf-8"), path)
     return path
 
 
@@ -1744,22 +1533,15 @@ def test_the_real_terminal_probe_answers_no_when_there_is_no_terminal(monkeypatc
 
 
 def test_the_volume_is_judged_before_a_restore_resolves_its_target(cfg, tmp_path):
-    """``plan_restore`` judges the volume first, since resolving a path against the
-    wrong volume is already the damage."""
+    """``plan_restore`` judges the volume first: a path resolved on the wrong one is the damage."""
     cause = _refusal(
-        backup.plan_restore,
-        cfg,
-        target=tmp_path / "a-target-that-does-not-exist",
-        confirmed=True,
-        snapshot="2026-08-01T000000Z",
+        backup.plan_restore, cfg, target=tmp_path / "a-target-that-does-not-exist",
+        confirmed=True, snapshot="2026-08-01T000000Z",
         runner=lambda command: (_ for _ in ()).throw(AssertionError("the remote was read")),
         process_lister=lambda: (),
         gates=lambda: session.assert_gates(
-            cfg,
-            workflow=backup.RESTORE_WORKFLOW,
-            intent=session.Intent.RECOVERY,
-            identity_provider=foreign_identity,
-            mount_enumerator=lambda: (),
+            cfg, workflow=backup.RESTORE_WORKFLOW, intent=session.Intent.RECOVERY,
+            identity_provider=foreign_identity, mount_enumerator=lambda: (),
         ),
     )
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
@@ -1772,8 +1554,7 @@ def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
     volume_matches, cfg, tmp_path
 ):
     """A gate-refused restore clears and transfers nothing, with real gates."""
-    target = tmp_path / "scratch"
-    database_target = backup.database_target_for(cfg, target)
+    database_target = backup.database_target_for(cfg, tmp_path / "scratch")
     database_target.parent.mkdir(parents=True, exist_ok=True)
     sidecars = tuple(
         database_target.with_name(database_target.name + sidecar.suffix)
@@ -1781,22 +1562,14 @@ def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
     )
     for sidecar in sidecars:
         sidecar.write_bytes(b"the live write-ahead log")
-
+    plan = _restore_plan(cfg, tmp_path / "scratch", clears=sidecars)
     invoked: list[backup.Command] = []
-    plan = backup.RestorePlan(
-        target=target,
-        database_target=database_target,
-        snapshot="2026-08-01T000000Z",
-        clears=sidecars,
-        commands=(backup.Command(label=backup.RESTORE_DATABASE, argv=("rclone", "copy")),),
-    )
 
     def recorder(command):
         invoked.append(command)
         return backup.CommandResult(returncode=0)
 
     cause = _refusal(backup.run_restore, plan, cfg, runner=recorder, dry_run=False)
-
     assert cause.code is ExitCode.ACK_REQUIRED
     assert invoked == [], "a refused restore ran a transfer"
     for sidecar in sidecars:
@@ -1837,8 +1610,7 @@ def test_the_record_is_the_gates_own_workflow_actor_and_acknowledgment(cfg):
 
 
 def test_the_record_names_the_holder_the_lock_names(cfg):
-    """R-598: the record names the lock's holder, since only the record survives a
-    kill. Read while both are on disk."""
+    """R-598: only the record survives a kill, so it names the lock's holder; both read on disk."""
     acknowledge(cfg)
     with recording_gates(cfg) as gates:
         on_disk = session.read_record(gates.record.session_id, cfg)
@@ -1860,10 +1632,8 @@ def test_a_supplied_holder_reaches_the_record_as_well_as_the_lock(cfg):
 
 def _gone_holder() -> session.Holder:
     """A process this boot started and that has exited, so ``holder_alive`` says gone."""
-    finished = subprocess.Popen([sys.executable, "-c", "pass"])
-    finished.wait()
     here = session.current_holder()
-    gone = session.Holder(host=here.host, boot=here.boot, pid=finished.pid, started="1.000")
+    gone = session.Holder(host=here.host, boot=here.boot, pid=_finished_pid(), started="1.000")
     assert session.holder_alive(gone) is False
     return gone
 
@@ -1961,8 +1731,7 @@ def test_a_log_that_cannot_record_the_abandonment_does_not_replace_the_error(cfg
 
 
 def test_a_clean_close_that_refuses_ends_abandoned_rather_than_open(cfg, monkeypatch):
-    """A refused clean close ends ABANDONED, never OPEN, which would block every
-    later prune and cutover, and the refusal still surfaces."""
+    """Never OPEN, which would block every later prune and cutover; the refusal still surfaces."""
     acknowledge(cfg)
     answers = iter([cfg.library.volume_id])
 
@@ -1971,12 +1740,8 @@ def test_a_clean_close_that_refuses_ends_abandoned_rather_than_open(cfg, monkeyp
 
     with pytest.raises(CratekitError) as excinfo:
         with recording_gates(cfg, identity_provider=identity_then_gone) as gates:
-            session.record_commit(
-                gates.record,
-                "a-tree",
-                session.ChangeSummary((session.TreeChange(tree="a-tree", created=1),)),
-                cfg,
-            )
+            change = session.ChangeSummary((session.TreeChange(tree="a-tree", created=1),))
+            session.record_commit(gates.record, "a-tree", change, cfg)
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
 
     (only,) = session.records(cfg)
@@ -1989,11 +1754,8 @@ def test_a_recovery_closes_as_a_recovery(cfg):
     """The intent rides in on the gates, so a recovery's close is not gated twice."""
     acknowledge(cfg)
     answers = iter([cfg.library.volume_id])
-    with recording_gates(
-        cfg,
-        intent=session.Intent.RECOVERY,
-        identity_provider=lambda _path: next(answers, _ELSEWHERE),
-    ):
+    then_gone = {"identity_provider": lambda _path: next(answers, _ELSEWHERE)}
+    with recording_gates(cfg, intent=session.Intent.RECOVERY, **then_gone):
         pass
     (only,) = session.records(cfg)
     assert only.state is session.SessionState.CLOSED
@@ -2037,12 +1799,8 @@ SHARED_CAPTURE = "attached_capture"
 
 
 def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
-    """Every function in ``src`` that takes a capture, with what it still owes.
-
-    Per function, since one compliant writer would satisfy a per-module reading.
-    Unattributable spellings are returned, not passed. The shared function's own
-    body is not a taker.
-    """
+    """Every function in ``src`` that takes a capture, with what it still owes, per function.
+    Unattributable spellings are returned, not passed; the shared function's body is no taker."""
     takers: dict[str, set[str]] = {}
     unreadable: list[str] = []
     for path in sorted(src.rglob("*.py")):
@@ -2059,10 +1817,8 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
                     unreadable.append(f"{path.name}: from {node.module} import capture")
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in node.names:
-                    if alias.name.split(".")[-1] == "snapshot" and alias.asname not in (
-                        None,
-                        "snapshot",
-                    ):
+                    named = alias.name.split(".")[-1] == "snapshot"
+                    if named and alias.asname not in (None, "snapshot"):
                         unreadable.append(f"{path.name}: snapshot imported as {alias.asname}")
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -2080,6 +1836,11 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
                     takes = True
                     seen.add("attach_capture")
                 if isinstance(node.func, ast.Name) and node.func.id == "record_commit":
+                    seen.add("a recorded commit")
+                # A ``_record_*_commit`` helper counts, each checked by
+                # ``test_each_commit_helper_records_the_commit``.
+                name = node.func.id if isinstance(node.func, ast.Name) else ""
+                if name.startswith("_record_") and name.endswith("_commit"):
                     seen.add("a recorded commit")
                 if not isinstance(node.func, ast.Attribute):
                     continue
@@ -2099,16 +1860,6 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
                     seen.add("attach_capture")
                 if node.func.attr == "record_commit":
                     seen.add("a recorded commit")
-            # A ``_record_*_commit`` helper counts, each checked by
-            # ``test_each_commit_helper_records_the_commit``.
-            for node in ast.walk(function):
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id.startswith("_record_")
-                    and node.func.id.endswith("_commit")
-                ):
-                    seen.add("a recorded commit")
             if takes:
                 owed = {"keep=Keep.RECORD", "attach_capture", "a recorded commit"}
                 takers[f"{path.relative_to(src).as_posix()}::{function.name}"] = owed - seen
@@ -2124,49 +1875,28 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         f"a capture is imported in a spelling this guard cannot follow: {unreadable}"
     )
     assert set(takers) == {
-        # R-746, the native landing.
-        "intake/native.py::apply_rows",
-        # U111, the INBOX rotation.
-        "intake/rotate.py::apply_rotation",
-        # U134, the INBOX refill.
-        "intake/refill.py::apply_refill",
-        # U166, the INBOX / Analyze clear.
-        "intake/analyzed.py::apply_clear",
-        # U327, a landed title given rekordbox's key and tempo.
-        "analysis/head_adopt.py::apply_adopt",
-        # U121, a landed set's permanent playlist.
-        "intake/set_playlist.py::apply_alone",
-        # U154, the shelve.
-        "intake/shelve.py::apply",
-        # U144, INSPIRATION levelled with downloaded sets.
-        "organize/inspiration.py::apply",
-        # U201, an account edit to a mirrored genre playlist.
-        "organize/mirror_edits.py::write",
-        # R-816, a row's genre written from its file.
-        "tagging/rows.py::apply_rows",
-        # U339, a chosen genre written on the file and the row.
-        "tagging/genre_set.py::apply_set",
-        # U120, the favourites backfill.
-        "favorites/backfill.py::apply",
-        # U145, the quarters split into months.
-        "favorites/split.py::apply",
-        # U180, the Favorites folder ordered.
-        "favorites/order.py::apply",
-        # U119, the genre Favorites refresh.
-        "write/genre_favorites.py::apply_refresh",
+        "intake/native.py::apply_rows",  # R-746, the native landing.
+        "intake/rotate.py::apply_rotation",  # U111, the INBOX rotation.
+        "intake/refill.py::apply_refill",  # U134, the INBOX refill.
+        "intake/analyzed.py::apply_clear",  # U166, the INBOX / Analyze clear.
+        "analysis/head_adopt.py::apply_adopt",  # U327, rekordbox's key and tempo on a title.
+        "intake/set_playlist.py::apply_alone",  # U121, a landed set's permanent playlist.
+        "intake/shelve.py::apply",  # U154, the shelve.
+        "organize/inspiration.py::apply",  # U144, INSPIRATION levelled with downloaded sets.
+        "organize/mirror_edits.py::write",  # U201, an account edit to a mirrored genre playlist.
+        "tagging/rows.py::apply_rows",  # R-816, a row's genre written from its file.
+        "tagging/genre_set.py::apply_set",  # U339, a chosen genre on the file and the row.
+        "favorites/backfill.py::apply",  # U120, the favourites backfill.
+        "favorites/split.py::apply",  # U145, the quarters split into months.
+        "favorites/order.py::apply",  # U180, the Favorites folder ordered.
+        "write/genre_favorites.py::apply_refresh",  # U119, the genre Favorites refresh.
         "write/metadata_cli.py::mytags_vocals",
-        # U130, a playlist pair's rekordbox side.
-        "write/playlist_pair.py::apply",
-        # R-923, rekordbox's defaults on bare rows.
-        "write/row_defaults.py::apply_rows",
-        # A32, the row probe's values.
-        "write/row_link.py::apply_probes",
-        # U149, the custom playlist twins.
-        "sync/twins.py::write",
-        # U202, a pair's rekordbox side for an account playlist.
-        "sync/pair_reverse.py::create",
-        # U288, offered rows taken out of the collection.
-        "sync/removed.py::apply_removed",
+        "write/playlist_pair.py::apply",  # U130, a playlist pair's rekordbox side.
+        "write/row_defaults.py::apply_rows",  # R-923, rekordbox's defaults on bare rows.
+        "write/row_link.py::apply_probes",  # A32, the row probe's values.
+        "sync/twins.py::write",  # U149, the custom playlist twins.
+        "sync/pair_reverse.py::create",  # U202, a pair's rekordbox side for an account playlist.
+        "sync/removed.py::apply_removed",  # U288, offered rows taken out of the collection.
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",
         "write/trees.py::write_tree_membership",
@@ -2206,8 +1936,7 @@ def test_the_capture_guard_reads_a_function_that_keeps_no_record(tmp_path):
 def test_the_capture_guard_reads_a_writer_that_takes_its_capture_through_the_shared_function(
     tmp_path,
 ):
-    """A writer using the shared function (U298) still owes the record and commit,
-    and the shared function's own body is not read as a writer."""
+    """A writer using the shared function (U298) still owes both; its own body is no writer."""
     module = tmp_path / "write" / "sample.py"
     module.parent.mkdir()
     module.write_text(
