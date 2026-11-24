@@ -141,10 +141,25 @@ def _write_ledger(cfg_value, document) -> None:
     adopt_revert.path_for(cfg_value).write_text(json.dumps(document))
 
 
+def _unreadable(cfg_value, document) -> adopt_revert.RevertLedgerUnreadable:
+    """``document`` written as the revert ledger, which the reader must refuse."""
+    _write_ledger(cfg_value, document)
+    with pytest.raises(adopt_revert.RevertLedgerUnreadable) as refused:
+        adopt_revert.read(cfg_value)
+    return refused.value
+
+
 def _apply(cfg_value, plan, declared_taxonomy, **kwargs):
     """``apply_plan`` under a fresh approval of ``plan``."""
     approval = adopt_approval.grant(plan, actor="tester")
     return adopt_apply.apply_plan(cfg_value, plan, declared_taxonomy, approval=approval, **kwargs)
+
+
+def _apply_adopting(cfg_value, plan, declared_taxonomy, place):
+    """``_apply`` writing the genre tag ``Adopted Genre`` with each membership."""
+    return _apply(
+        cfg_value, plan, declared_taxonomy, place=place, tag_value=lambda *_: "Adopted Genre"
+    )
 
 
 def _count_digest_reads(monkeypatch) -> list[Path]:
@@ -690,12 +705,8 @@ def test_a_withheld_entry_is_never_written_by_an_apply(cfg, declared, tmp_path):
         existing=[adopt_plan.ExistingFolder("node-41", declared.bucket(routable).display, ("x",))],
     )
     withheld = adopt_plan.with_collision_verdicts(plan, {"node-41": adopt_plan.COLLISION_SEPARATE})
-    report = _apply(
-        cfg,
-        withheld,
-        declared,
-        place=lambda *_: pytest.fail("a withheld entry reached the membership writer"),
-        tag_value=lambda *_: "Adopted Genre",
+    report = _apply_adopting(
+        cfg, withheld, declared, lambda *_: pytest.fail("a withheld entry reached the writer")
     )
     assert report.applied == ()
     assert tags.read_genre_from_file(path) == "Original Genre"
@@ -993,26 +1004,24 @@ def test_a_second_run_over_a_finished_plan_writes_nothing(cfg, declared):
 def test_the_ledger_is_marked_only_after_the_write(cfg, declared):
     """The order U19 established, and the one direction that is not recoverable."""
     plan = _plan_of(cfg, declared, [_row(cfg, "A.flac", _bucket_and_genre(declared)[1], "a")])
-    granted = adopt_approval.grant(plan, actor="tester")
     seen: list[bool] = []
 
     def place(_entry, _folder, _sub):
         seen.append(adopt_apply.read(cfg).entry_ids() == frozenset())
 
-    adopt_apply.apply_plan(cfg, plan, declared, approval=granted, place=place)
+    _apply(cfg, plan, declared, place=place)
     assert seen == [True], "the entry was marked applied before it was written"
 
 
 def test_a_failed_write_leaves_the_entry_outstanding(cfg, declared):
     plan = _plan_of(cfg, declared, [_row(cfg, "A.flac", _bucket_and_genre(declared)[1], "a")])
-    granted = adopt_approval.grant(plan, actor="tester")
 
     def place(_entry, _folder, _sub):
         raise adopt_apply.AppliedLedgerUnreadable(
             "the library refused", path=Path("/x"), remedy=Remedy.RUN_DOCTOR
         )
 
-    report = adopt_apply.apply_plan(cfg, plan, declared, approval=granted, place=place)
+    report = _apply(cfg, plan, declared, place=place)
     assert report.applied == ()
     assert len(report.failed) == 1
     assert adopt_apply.outstanding(plan, adopt_apply.read(cfg)) == plan.applicable()
@@ -1041,14 +1050,12 @@ def test_an_entry_whose_destination_the_template_dropped_costs_one_entry(cfg, de
     plan = _plan_of(cfg, declared, [_row(cfg, "A.flac", _bucket_and_genre(declared)[1], "a")])
     broken = replace(plan.entries[0], sub="a_sub_nobody_declares")
     plan = adopt_plan.AdoptionPlan(tree=plan.tree, entries=(broken,))
-    granted = adopt_approval.grant(plan, actor="tester")
 
     assert adopt_apply.membership_plan(plan.applicable(), declared) == {}
-    report = adopt_apply.apply_plan(
+    report = _apply(
         cfg,
         plan,
         declared,
-        approval=granted,
         place=lambda *_: pytest.fail("an unresolvable destination reached the writer"),
     )
     assert report.applied == ()
@@ -1081,7 +1088,7 @@ def test_a_refusal_from_the_writer_rewrites_no_files_at_all(cfg, declared, tmp_p
     def refusing_place(*_args):
         raise cause.refuse("decision-required", "the backup acknowledgment has not been answered")
 
-    report = _apply(cfg, plan, declared, place=refusing_place, tag_value=lambda *_: "Adopted Genre")
+    report = _apply_adopting(cfg, plan, declared, refusing_place)
     # The files first: they are what nothing puts back.
     for index, entry in enumerate(plan.applicable()):
         assert tags.read_genre_from_file(Path(entry.path)) == f"Original {index}", (
@@ -1105,7 +1112,7 @@ def test_a_refusal_about_one_track_still_costs_only_that_track(cfg, declared, tm
         if entry.entry_id == refused:
             raise cause.refuse("internal-error", "this one row has no collection entry")
 
-    report = _apply(cfg, plan, declared, place=place, tag_value=lambda *_: "Adopted Genre")
+    report = _apply_adopting(cfg, plan, declared, place)
     assert len(attempted) == 6, (
         f"only {len(attempted)} of 6 entries were attempted; one row's refusal ended the pass"
     )
@@ -1124,12 +1131,8 @@ def test_a_track_DELETED_between_the_census_and_the_apply_costs_one_entry(cfg, d
     Path(gone.path).unlink()
     attempted: list[str] = []
 
-    report = _apply(
-        cfg,
-        plan,
-        declared,
-        place=lambda entry, _f, _s: attempted.append(entry.entry_id),
-        tag_value=lambda *_: "Adopted Genre",
+    report = _apply_adopting(
+        cfg, plan, declared, lambda entry, _f, _s: attempted.append(entry.entry_id)
     )
     assert len(attempted) == 4, (
         f"only {len(attempted)} of 4 entries were attempted; one deleted track ended the pass"
@@ -1163,13 +1166,7 @@ def test_a_container_this_build_cannot_write_costs_one_entry_not_the_run(cfg, de
     plan = _plan_over_real_files(cfg, declared, tmp_path, [".flac", ".flac", ".aac", ".flac"])
     awkward = next(e for e in plan.applicable() if e.path.endswith(".aac"))
     placed: list[str] = []
-    report = _apply(
-        cfg,
-        plan,
-        declared,
-        place=lambda entry, *_: placed.append(entry.entry_id),
-        tag_value=lambda *_: "Adopted Genre",
-    )
+    report = _apply_adopting(cfg, plan, declared, lambda entry, *_: placed.append(entry.entry_id))
     assert len(report.applied) == 3 and list(report.failed) == [awkward.entry_id]
     assert not any(record.path.endswith(".aac") for record in adopt_revert.read(cfg).snapshots), (
         "a revert record was left for a file whose tag was never written"
@@ -1179,13 +1176,7 @@ def test_a_container_this_build_cannot_write_costs_one_entry_not_the_run(cfg, de
     assert awkward.entry_id not in placed, "the unfinished entry got its membership"
     assert len(placed) == 3, "3 is the full complement here"
 
-    second = _apply(
-        cfg,
-        plan,
-        declared,
-        place=lambda entry, *_: placed.append(entry.entry_id),
-        tag_value=lambda *_: "Adopted Genre",
-    )
+    second = _apply_adopting(cfg, plan, declared, lambda entry, *_: placed.append(entry.entry_id))
     assert len(second.already_applied) == 3, "the plan can never finish"
     assert placed.count(awkward.entry_id) == 0, "the re-run placed it a second time"
 
@@ -1222,13 +1213,11 @@ def test_the_original_is_recorded_before_the_file_is_touched(cfg, declared, tmp_
     row = adopt_scan.CollectionRow(str(path), str(path), genre, False)
     scanned = list(adopt_scan.scan_rows([row], declared, root=tmp_path, probe=_readable))
     plan = adopt_plan.build_adoption_plan(scanned, declared, tree=TREE_ID)
-    granted = adopt_approval.grant(plan, actor="tester")
 
-    adopt_apply.apply_plan(
+    _apply(
         cfg,
         plan,
         declared,
-        approval=granted,
         place=lambda *_: None,
         tag_value=lambda entry, dec: dec.bucket(entry.bucket).display,
     )
@@ -1562,10 +1551,7 @@ def test_the_FIRST_ADOPTION_of_a_library_hashes_NOTHING(cfg, tmp_path, monkeypat
 
     reads.clear()
     _adopt(cfg, path, written="Adopted Bucket", entry_id="e2")
-    assert reads == [path], (
-        f"a re-run whose identity and path agree read the file to decide "
-        f"something that was not in doubt, reads={reads}"
-    )
+    assert reads == [path], f"a re-run whose identity and path agree read it, reads={reads}"
     assert len(adopt_revert.read(cfg).snapshots) == 1
 
     # A SECOND FILE, INTO A LEDGER THAT ALREADY HOLDS A STAMPED RECORD.
@@ -1573,9 +1559,7 @@ def test_the_FIRST_ADOPTION_of_a_library_hashes_NOTHING(cfg, tmp_path, monkeypat
     reads.clear()
     _adopt(cfg, second, written="Adopted Bucket", entry_id="e3")
     assert reads == [second], (
-        f"the second file into a non-empty ledger was hashed to look itself up "
-        f"and then hashed again to stamp it, which doubles the reads of the one "
-        f"pass that touches every track in the library, reads={reads}"
+        f"a second file was hashed to look itself up and again to stamp it, reads={reads}"
     )
     assert len(adopt_revert.read(cfg).snapshots) == 2
 
@@ -1593,10 +1577,7 @@ def test_a_first_adoption_of_EIGHT_files_reads_EIGHT_times_and_not_FIFTEEN(
         _adopt(cfg, track, written="Adopted Bucket", entry_id=f"e{index}")
         per_file.append(len(reads))
 
-    assert per_file == [1] * 8, (
-        f"a first adoption into an empty ledger read some file more than once "
-        f"per track, which is the whole-library pass paying twice: {per_file}"
-    )
+    assert per_file == [1] * 8, f"the whole-library pass read a file twice: {per_file}"
     assert sum(per_file) == 8
     assert len(adopt_revert.read(cfg).snapshots) == 8
 
@@ -1747,10 +1728,7 @@ def test_a_record_whose_SIZE_is_not_this_files_size_is_never_a_reason_to_HASH(
     reads.clear()
     with pytest.raises(adopt_revert.RecordCannotBeMatched):
         _adopt(cfg, path, written="Adopted Bucket", entry_id="e2")
-    assert reads == [], (
-        f"a record whose recorded size is not this file's size was corroborated "
-        f"by hashing the whole file, which no answer could depend on: {reads}"
-    )
+    assert reads == [], f"a file of another size was hashed, which decides nothing: {reads}"
 
 
 def test_a_HARDLINKED_second_name_asks_the_BYTES_when_the_field_holds_a_stranger(cfg, tmp_path):
@@ -1878,9 +1856,7 @@ def test_a_CRASH_SEAM_record_with_no_digest_still_matches_its_own_file(cfg, tmp_
 def test_an_identifier_from_NEITHER_scheme_is_refused_by_the_reader(cfg):
     """``file`` was accepted as any non-empty string, so nothing pinned its shape."""
     for identifier in ("not-a-digest", "a" * 23, "a" * 25, "dev-ino:1", ""):
-        _write_ledger(cfg, _one_record_document(file=identifier))
-        with pytest.raises(adopt_revert.RevertLedgerUnreadable):
-            adopt_revert.read(cfg)
+        _unreadable(cfg, _one_record_document(file=identifier))
 
     # And both shapes this build can legitimately have written are read.
     for identifier in ("a" * 24, "dev-ino:16777232:12345"):
@@ -2067,9 +2043,7 @@ def test_a_record_with_no_original_KEY_is_refused_rather_than_read_as_absent(cfg
         "schema_version": adopt_revert.SCHEMA_VERSION,
         "snapshots": [{"file": "f", "field": "genre", "path": "/x/y.flac", "written": "Adopted"}],
     }
-    _write_ledger(cfg, document)
-    with pytest.raises(adopt_revert.RevertLedgerUnreadable):
-        adopt_revert.read(cfg)
+    _unreadable(cfg, document)
 
 
 def _one_record_document(**overrides) -> dict:
@@ -2090,11 +2064,16 @@ def _one_record_document(**overrides) -> dict:
     return {"schema_version": adopt_revert.SCHEMA_VERSION, "snapshots": [record]}
 
 
+def _without(document: dict, *keys: str) -> dict:
+    """``document`` with these KEYS REMOVED from its first record."""
+    for key in keys:
+        del document["snapshots"][0][key]
+    return document
+
+
 def _document_with_no_state(**overrides) -> dict:
     """:func:`_one_record_document` with the ``digest_state`` KEY REMOVED."""
-    document = _one_record_document(**overrides)
-    del document["snapshots"][0]["digest_state"]
-    return document
+    return _without(_one_record_document(**overrides), "digest_state")
 
 
 #: Every JSON shape Python calls false, plus the two it calls true.
@@ -2111,9 +2090,7 @@ def _document_with_no_state(**overrides) -> dict:
 )
 def test_a_digest_that_is_not_a_STRING_is_refused_rather_than_coerced(cfg, digest):
     """Truthiness is not a type check, and six shapes went through it silently."""
-    _write_ledger(cfg, _document_with_no_state(digest=digest))
-    with pytest.raises(adopt_revert.RevertLedgerUnreadable):
-        adopt_revert.read(cfg)
+    _unreadable(cfg, _document_with_no_state(digest=digest))
 
 
 def test_null_and_absent_are_both_NO_DIGEST_and_neither_is_an_acceptance(cfg):
@@ -2121,19 +2098,7 @@ def test_null_and_absent_are_both_NO_DIGEST_and_neither_is_an_acceptance(cfg):
     for document in (
         _document_with_no_state(digest=None),
         _document_with_no_state(digest=""),
-        {
-            "schema_version": adopt_revert.SCHEMA_VERSION,
-            "snapshots": [
-                {
-                    "file": "f" * 24,
-                    "field": "genre",
-                    "path": "/x/y.flac",
-                    "original": ["Original"],
-                    "written": "Adopted",
-                    "recorded": "2026-08-03T00:00:00+00:00",
-                }
-            ],
-        },
+        _without(_one_record_document(), "size", "mtime_ns", "digest", "digest_state"),
     ):
         _write_ledger(cfg, document)
         record = adopt_revert.read(cfg).snapshots[0]
@@ -2147,10 +2112,7 @@ def test_a_digest_state_of_NULL_is_not_the_same_document_as_no_key_at_all(cfg, t
     document = json.loads(adopt_revert.path_for(cfg).read_text())
 
     document["snapshots"][0]["digest_state"] = None
-    _write_ledger(cfg, document)
-    with pytest.raises(adopt_revert.RevertLedgerUnreadable) as refused:
-        adopt_revert.read(cfg)
-    assert "digest_state is None" in str(refused.value)
+    assert "digest_state is None" in str(_unreadable(cfg, document))
 
     # The shape it was confused with still derives.
     del document["snapshots"][0]["digest_state"]
@@ -2167,10 +2129,8 @@ def test_a_state_that_DISOWNS_a_digest_it_is_holding_is_refused_too(cfg, tmp_pat
 
     for disowning in ("absent", "unreadable"):
         document["snapshots"][0]["digest_state"] = disowning
-        _write_ledger(cfg, document)
-        with pytest.raises(adopt_revert.RevertLedgerUnreadable) as refused:
-            adopt_revert.read(cfg)
-        assert "carries one anyway" in str(refused.value), str(refused.value)
+        refused = str(_unreadable(cfg, document))
+        assert "carries one anyway" in refused, refused
 
 
 def test_a_document_written_BEFORE_the_state_existed_still_spends_its_digest(cfg, tmp_path):
@@ -2187,16 +2147,12 @@ def test_a_document_written_BEFORE_the_state_existed_still_spends_its_digest(cfg
 
 def test_a_record_claiming_a_digest_it_does_not_carry_is_refused(cfg):
     """A state and a digest that contradict each other cannot both be believed."""
-    _write_ledger(cfg, _one_record_document(digest="", digest_state="recorded"))
-    with pytest.raises(adopt_revert.RevertLedgerUnreadable):
-        adopt_revert.read(cfg)
+    _unreadable(cfg, _one_record_document(digest="", digest_state="recorded"))
 
 
 def test_a_digest_state_this_build_does_not_know_is_refused(cfg):
     """Positive recognition, like every other field in this reader."""
-    _write_ledger(cfg, _one_record_document(digest_state="probably-fine"))
-    with pytest.raises(adopt_revert.RevertLedgerUnreadable):
-        adopt_revert.read(cfg)
+    _unreadable(cfg, _one_record_document(digest_state="probably-fine"))
 
 
 def test_a_file_replaced_since_adoption_wrote_it_is_refused_not_overwritten(cfg, tmp_path):
@@ -2546,10 +2502,7 @@ def test_a_cloud_EVICTED_file_IS_read_because_the_restore_fetches_it_anyway(cfg,
     assert report.failed == {}, report.failed
     assert report.restored == ((str(path), "genre"),)
     # TWO READS, AND THE COUNT IS THE COST WRITTEN DOWN RATHER THAN ROUNDED OFF.
-    assert reads == [path, path], (
-        f"the evicted file was decided about without asking the one piece of "
-        f"evidence a replacement cannot forge, reads={reads}"
-    )
+    assert reads == [path, path], f"the evicted file's bytes were never asked, reads={reads}"
     assert tags.read_genre_from_file(path) == "Original Genre", "the file was not rewritten"
 
 
@@ -2725,10 +2678,7 @@ def test_a_TARGETED_revert_cannot_DISSOLVE_the_group_refusal(cfg, tmp_path):
     assert whole.restored == (), whole.restored
 
     targeted = adopt_revert.revert_tags(cfg, entry_id="e1")
-    assert targeted.restored == (), (
-        f"naming an entry dissolved the refusal and spent a record from a group "
-        f"nothing can tell apart, restored={targeted.restored}"
-    )
+    assert targeted.restored == (), f"an entry dissolved the refusal: {targeted.restored}"
     assert list(targeted.failed) == [key]
     assert "force=" not in targeted.failed[key]
     # THE WHOLE MESSAGE, wrapper and reason, spelled out rather than sampled.
@@ -2934,10 +2884,7 @@ def test_the_deadline_ends_a_read_that_keeps_arriving_forever(tmp_path):
         Path.open = original
     # Counted in blocks rather than timed, R-759.
     read = 100 - stream.blocks
-    assert read <= 20, (
-        f"the deadline is asked between blocks, so the read must end near it "
-        f"rather than run the stream on; {read} of 100 blocks were read"
-    )
+    assert read <= 20, f"the read ran past the deadline: {read} of 100 blocks were read"
 
 
 @pytest.mark.parametrize(
@@ -3465,12 +3412,8 @@ def test_with_snapshot_KEEPS_the_record_already_there(cfg, tmp_path):
 
 def test_an_original_key_that_is_ABSENT_is_refused_rather_than_read_as_null(cfg):
     """Absence of a fact and absence AS a fact, in the field that owns the phrase."""
-    document = _one_record_document()
-    del document["snapshots"][0]["original"]
-    _write_ledger(cfg, document)
-    with pytest.raises(adopt_revert.RevertLedgerUnreadable) as refused:
-        adopt_revert.read(cfg)
-    assert "with no original key at all" in str(refused.value), str(refused.value)
+    refused = str(_unreadable(cfg, _without(_one_record_document(), "original")))
+    assert "with no original key at all" in refused, refused
 
 
 def test_the_refusal_slug_is_declared_with_an_exit_code():
@@ -3532,8 +3475,7 @@ def test_concurrent_marks_from_real_processes_all_survive(cfg, library):
     )
     landed = adopt_apply.read(cfg).entry_ids()
     assert len(landed) == workers * per_worker, (
-        f"{workers * per_worker - len(landed)} records were lost to an unlocked "
-        f"read-modify-write, and every losing call reported success"
+        f"{workers * per_worker - len(landed)} records lost to an unlocked read-modify-write"
     )
 
 
@@ -3664,15 +3606,9 @@ def test_the_planned_marker_on_the_apply_verb_CAN_ACTUALLY_FIRE():
     # Derived from the registry: a marker and a landed module cannot both be true.
     for entry in (scan_entry, apply_entry):
         assert entry.landed is (entry.planned_in is None), (
-            f"{entry.name} says landed={entry.landed} and planned_in="
-            f"{entry.planned_in!r}, so the marker and the module disagree and "
-            f"the conformance suite drives whichever one it happens to read"
+            f"{entry.name}: landed={entry.landed} and planned_in={entry.planned_in!r} disagree"
         )
-        assert entry.landed, (
-            f"{entry.name} carries a planned_in again while its module is "
-            f"importable; the countdown that expires a marker keys on the "
-            f"module, so this is the state where a verb ships uncovered"
-        )
+        assert entry.landed, f"{entry.name} is planned again and importable, so ships uncovered"
 
     assert scan_entry.module_id == apply_entry.module_id == "adoption", (
         "the profile toggle is a different namespace from the package and was never the thing that was wrong"
@@ -3689,11 +3625,8 @@ def test_no_landed_adoption_verb_still_owes_the_file_the_board_reads():
             continue
         registered = entry.module in _pending.PENDING
         assert registered is not entry.landed, (
-            f"{entry.name} has landed={entry.landed} and is "
-            f"{'in' if registered else 'absent from'} the pending register. A "
-            f"landed module still owed by the register is the contradiction "
-            f"board.py audit exits 2 on; an unlanded one absent from it is an "
-            f"obligation nobody owns"
+            f"{entry.name}: landed={entry.landed} and registered={registered}, which "
+            f"board.py audit exits 2 on, or an obligation nobody owns"
         )
         if registered:
             unit, _what = _pending.PENDING[entry.module]
@@ -3723,10 +3656,7 @@ def test_the_adoption_shell_never_reaches_into_the_layer_above_it():
         for alias in node.names
     }
     reaching_up = {name for name in imported if name.startswith("cratekit.cli")}
-    assert reaching_up == {"cratekit.cli.output"}, (
-        f"the shell names {sorted(reaching_up)} from the CLI layer; the output "
-        f"envelope is the only one that is foundation-ranked (KTD25)"
-    )
+    assert reaching_up == {"cratekit.cli.output"}, f"{sorted(reaching_up)}: only output (KTD25)"
 
 
 def test_no_module_in_the_adoption_package_spells_a_taxonomy_display_name():
