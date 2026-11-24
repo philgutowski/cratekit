@@ -67,6 +67,7 @@ KEBAB_LITERALS = {
         'tree-unconverged',
         'unconverged-tree',
         'vocal-dimension-not-compared',
+        'vocal-membership-untagged',  # 2026-11-24, R-2056
     ],
     # 2026-11-22, U302: the export path and the convergence check left their modules.
     'write/routing_cli.py': [
