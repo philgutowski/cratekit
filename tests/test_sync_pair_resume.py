@@ -21,6 +21,7 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
+from tests.test_sync_pair_discover import _codes
 from tests.test_sync_pair_discover import db as db  # noqa: PLC0414
 from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
 
@@ -44,9 +45,7 @@ class Limited:
 
 def gate_the_account(account, monkeypatch, *, limited_on: int | None = None) -> None:
     """Send every fake account write through a real provider gate, asked before it changes anything.
-
-    ``limited_on`` makes that call answer rate limited, a park that is not the ceiling.
-    """
+    ``limited_on`` makes that call answer rate limited, a park that is not the ceiling."""
     gate = provider_gate.Gate(
         provider_gate.GateSettings(min_interval_s=0.0), sleep=lambda seconds: None
     )
@@ -85,10 +84,6 @@ def write(run_id: str, args: list[str], calls: int) -> tuple[int, dict]:
     return drive(["--calls", str(calls), "--run", run_id, *args])
 
 
-def _codes(envelope) -> set[str]:
-    return {warning["code"] for warning in envelope.get("warnings") or ()}
-
-
 # Many made pairs.
 
 
@@ -120,8 +115,7 @@ def test_a_ceiling_stop_after_three_of_five_pairs_is_finished_by_a_continue_of_t
     listings = world.catalogue.account_listings
     lookups = len(world.account.matches)
 
-    code, stopped = write(run_id, VERB, 10)
-    assert code == CEILING, stopped
+    stopped = exited(write(run_id, VERB, 10), CEILING)
     assert stopped["cause"]["reason"] == provider_gate.CEILING
     assert len(world.account.created) == 3, world.account.created
     assert world.account._writes == 10
@@ -153,8 +147,7 @@ def test_a_ceiling_stop_after_three_of_five_pairs_is_finished_by_a_continue_of_t
 def test_the_stop_names_the_run_and_the_calls_its_continue_needs(made_world):
     world, _playlists = made_world
     run_id, _first = to_the_write(VERB)
-    code, stopped = write(run_id, VERB, 10)
-    assert code == CEILING, stopped
+    stopped = exited(write(run_id, VERB, 10), CEILING)
     cause = stopped["cause"]
     assert run_id in cause["message"]
     assert "finished 3 of 5 pair(s)" in cause["message"]
@@ -202,9 +195,7 @@ def test_a_stop_between_making_a_playlist_and_filling_it_fills_it_and_makes_no_s
     assert held.account == ("t1", "t2", "t3")
 
 
-def test_a_track_put_on_a_part_made_playlist_before_the_continue_refuses_stale_naming_it(
-    gated,
-):
+def test_a_track_put_on_a_part_made_playlist_before_the_continue_refuses_stale_naming_it(gated):
     world = gated
     folder = world.folder("GIG READY")
     world.playlist("Opener", "1", "2", under=folder)
@@ -215,14 +206,10 @@ def test_a_track_put_on_a_part_made_playlist_before_the_continue_refuses_stale_n
 
     refused = exited(write(run_id, VERB, 100), ExitCode.DECISION_STALE)
     moved = refused["cause"]["detail"]["moved"]
-    assert moved == [
-        {
-            "side": "account",
-            "playlist_id": made,
-            "name": "GIG READY Opener",
-            "why": "holds 1 track(s) this run neither read nor added since the plan",
-        }
-    ]
+    assert moved == [{
+        "side": "account", "playlist_id": made, "name": "GIG READY Opener",
+        "why": "holds 1 track(s) this run neither read nor added since the plan",
+    }]
     assert "nothing more was written" in refused["cause"]["message"]
     assert world.account.playlists[made] == ["t9"], "the playlist was written over"
 
@@ -246,9 +233,7 @@ def test_a_title_taken_in_the_folder_before_the_continue_refuses_stale_naming_it
 # The gate's forecast.
 
 
-def test_a_gate_whose_ceiling_is_below_the_expected_calls_says_so_with_the_calls_value(
-    made_world,
-):
+def test_a_gate_whose_ceiling_is_below_the_expected_calls_says_so_with_the_calls_value(made_world):
     first = exited(drive(["--calls", "10", *VERB]), ExitCode.DECISION_REQUIRED)
     shown = first["cause"]["detail"]["shown"]
     run_id = first["run_id"]
@@ -281,8 +266,7 @@ def test_a_stop_in_a_run_whose_plan_was_not_held_says_it_cannot_be_continued(
     world, _playlists = made_world
     monkeypatch.setattr(pair_cli, "_hold", lambda *args: "the plan could not be written")
     run_id, _first = to_the_write(VERB)
-    code, stopped = write(run_id, VERB, 10)
-    assert code == CEILING, stopped
+    stopped = exited(write(run_id, VERB, 10), CEILING)
     cause = stopped["cause"]
     assert "cannot be continued" in cause["message"]
     assert "run_id" not in cause["detail"]
@@ -299,16 +283,8 @@ def test_made_here_reads_only_a_pair_made_for_this_playlist_in_this_folder():
     object.__setattr__(one, "place", pair_cli.Place("GIG READY", "t", pair_cli.FOLDER_CREATE))
 
     def pair(**changed) -> Pair:
-        fields = {
-            "account_id": "pl-1",
-            "rekordbox_id": "rb-1",
-            "name": "t",
-            "marked": "2026-11-05",
-            "made": True,
-            "folder": "GIG READY",
-        }
-        fields.update(changed)
-        return Pair(**fields)
+        fields = {"account_id": "pl-1", "rekordbox_id": "rb-1", "name": "t", "marked": "2026-11-05"}
+        return Pair(**{**fields, "made": True, "folder": "GIG READY", **changed})
 
     assert pair_write._made_here(pair(), one)
     assert not pair_write._made_here(None, one)
@@ -321,8 +297,7 @@ def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):
     """The first pair made and moved, its fill refused: what the continue is named for."""
     world, _playlists = made_world
     run_id, _first = to_the_write(VERB)
-    code, stopped = write(run_id, VERB, 3)
-    assert code == CEILING, stopped
+    stopped = exited(write(run_id, VERB, 3), CEILING)
     # The check: the made playlist and its unpaged read (U226), the root folders once.
     check = pair_calls.judged_calls(0) + pair_calls.READ_FOLDER
     # The write: the first pair filled, the other four made and filled, each
@@ -350,8 +325,8 @@ def test_a_pair_the_stopped_command_finished_is_not_read_again_by_the_continue(m
 
 @pytest.fixture
 def small_hour(made_world, cfg, monkeypatch):
-    """The made world with an hour of fifty calls, so the ``--calls`` named for
-    the rest of the write is above it. ``config.load`` answers the world's config."""
+    """The made world with an hour of fifty calls, so the ``--calls`` named for the rest of the
+    write is above it; ``config.load`` answers the world's config."""
     import dataclasses  # noqa: PLC0415
 
     from cratekit.core import config  # noqa: PLC0415
@@ -364,8 +339,7 @@ def small_hour(made_world, cfg, monkeypatch):
 def test_a_ceiling_continue_above_the_hour_names_the_hour_and_finishes_the_run(small_hour):
     world, _playlists = small_hour
     run_id, _first = to_the_write(VERB)
-    code, stopped = write(run_id, VERB, 10)
-    assert code == CEILING, stopped
+    stopped = exited(write(run_id, VERB, 10), CEILING)
     words = shlex.split(stopped["cause"]["detail"]["continue"])
     higher = int(words[words.index("--calls") + 1])
     assert higher > 50, ("the world no longer names a --calls above the hour", words)
