@@ -1,0 +1,4469 @@
+name = "u333-replay-after-4"
+pass_kind = "replay"
+
+[[rows]]
+id = "u177.C1_label_fold"
+source = { table = "u177.json", id = "C1_label_fold" }
+description = "_read_label: drop the NFC fold, so one label spelled two ways makes two folders"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''
+    named = _folded(str(stored or "").strip())
+'''
+new = '''
+    named = str(stored or "").strip()
+'''
+
+[[rows]]
+id = "u177.C2_no_label_filed"
+source = { table = "u177.json", id = "C2_no_label_filed" }
+description = "plan_for_tags: file a file with no label tag under an empty label, not under none"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''
+        if not label or year is None:
+            unfiled.append(
+                Unfiled(
+                    target=str(target),
+                    reason=landing.NO_LABEL,
+                    sentence=(
+                        f"{target.name} was filed under no "
+'''
+new = '''
+        if label and year is None:
+            unfiled.append(
+                Unfiled(
+                    target=str(target),
+                    reason=landing.NO_LABEL,
+                    sentence=(
+                        f"{target.name} was filed under no "
+'''
+
+[[rows]]
+id = "r1677.L2_rehearsal_room_silent"
+source = { table = "r1677.json", id = "L2_rehearsal_room_silent" }
+description = "land_cli: a rehearsal check whose copy found no room is told as a failed integrity check"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+        if no_room is not None:
+            raise no_room from failed
+        sound = False'''
+new = '        sound = False'
+
+[[rows]]
+id = "r1677.L3_rehearsal_other_failure_sound"
+source = { table = "r1677.json", id = "L3_rehearsal_other_failure_sound" }
+description = "land_cli: a rehearsal check whose copy failed for another reason is reported sound, integrity ok without a check"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+            raise no_room from failed
+        sound = False'''
+new = '''
+            raise no_room from failed
+        sound = True'''
+
+[[rows]]
+id = "r501-b.L1_unretired_name"
+source = { table = "r501-b.json", id = "L1_unretired_name" }
+description = "land_cli.unretired_name: return the name unchanged, so sync mark cannot find its pass from a retired intake file"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py"]
+old = '    return _RETIRED_TAIL.sub("", name)'
+new = '    return name'
+
+[[rows]]
+id = "r677-b.V4_after_the_stale_test"
+source = { table = "r677-b.json", id = "V4_after_the_stale_test" }
+description = "any gate refusal, a stale answer included, is replaced by the preflight refusal"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '        if unusable is not None and exc.cause.remediation.remedy is Remedy.ANSWER_DECISION:'
+new = '        if unusable is not None:'
+
+[[rows]]
+id = "r677.V1_no_preflight_before_the_gate"
+source = { table = "r677.json", id = "V1_no_preflight_before_the_gate" }
+description = "the original defect: the plan read never asks the engine, so a missing export reaches the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+    if planned.items:
+        try:'''
+new = '''
+    if False:
+        try:'''
+
+[[rows]]
+id = "r677.V2_preflight_on_a_plan_of_nothing"
+source = { table = "r677.json", id = "V2_preflight_on_a_plan_of_nothing" }
+description = "an empty staging folder is refused over the export instead of shown as a plan of nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+    if planned.items:
+        try:'''
+new = '''
+    if True:
+        try:'''
+
+[[rows]]
+id = "r677.V3_refusal_never_replaces_the_gate"
+source = { table = "r677.json", id = "V3_refusal_never_replaces_the_gate" }
+description = "the preflight refusal is caught and dropped, so the gate is offered over an unusable export"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+        if unusable is not None and exc.cause.remediation.remedy is Remedy.ANSWER_DECISION:
+            raise unusable from None'''
+new = '''
+        if False:
+            raise unusable from None'''
+
+[[rows]]
+id = "r677.V5_preflight_raises_directly"
+source = { table = "r677.json", id = "V5_preflight_raises_directly" }
+description = "the preflight refusal is raised at once, so a recorded abort over a missing export refuses instead of ending in nothing done"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+        except CratekitError as exc:
+            unusable = exc'''
+new = '''
+        except CratekitError as exc:
+            raise exc'''
+
+[[rows]]
+id = "r677.V6_manifest_rows_not_handed_over"
+source = { table = "r677.json", id = "V6_manifest_rows_not_handed_over" }
+description = "the plan read asks the export check without the manifest's label rows, so a label layout the export cannot take reaches the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '                label_rows=manifest.rows if manifest is not None else (),'
+new = '                label_rows=(),'
+
+[[rows]]
+id = "r770-b.B1_landing_never_takes_the_native_path"
+source = { table = "r770-b.json", id = "B1_landing_never_takes_the_native_path" }
+description = "intake_land: ignore the switch, so a native intake tree is landed through the bridge"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '    if medium.native:'
+new = '    if False:'
+
+[[rows]]
+id = "u110-b.B1_pass_names_file"
+source = { table = "u110-b.json", id = "B1_pass_names_file" }
+description = "--pass no longer names the intake file, so sync mark cannot find the pass"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_names.py"]
+old = '''
+    if pass_name is not None:
+        return pass_name
+    if name'''
+new = '    if name'
+
+[[rows]]
+id = "u110-b.B2_name_names_file"
+source = { table = "u110-b.json", id = "B2_name_names_file" }
+description = "--name alone no longer names the intake file, breaking a landing typed the old way"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_names.py"]
+old = '''
+    if name is not None:
+        return name
+    return default_name'''
+new = '    return default_name'
+
+[[rows]]
+id = "u110-b.B3_check_pass"
+source = { table = "u110-b.json", id = "B3_check_pass" }
+description = "A --pass holding a slash or nothing is not refused before the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_names.py"]
+old = '''
+    _check_pass(pass_name)
+'''
+new = ''
+
+[[rows]]
+id = "u110-b.B4_recheck_xml"
+source = { table = "u110-b.json", id = "B4_recheck_xml" }
+description = "The xml landing does not ask again under the lock whether its default name is still free"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_names.py"]
+old = '''
+            _still_free(cfg, batch)
+'''
+new = '''
+            pass
+'''
+
+[[rows]]
+id = "u110-b.B5_recheck_native"
+source = { table = "u110-b.json", id = "B5_recheck_native" }
+description = "The native landing does not ask again under the lock whether its default name is still free"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+                _still_free(cfg, planned.batch)
+'''
+new = '''
+                pass
+'''
+
+[[rows]]
+id = "u110-b.B6_intake_lock"
+source = { table = "u110-b.json", id = "B6_intake_lock" }
+description = "The landing takes only the batch lock and not the intake file's"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_names.py"]
+old = '    with landing.batch_lock(batch), landing.intake_lock(stem):'
+new = '    with landing.batch_lock(batch):'
+
+[[rows]]
+id = "u110-b.B7_name_overrides"
+source = { table = "u110-b.json", id = "B7_name_overrides" }
+description = "--name is ignored and the default name is always taken"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_names.py", "tests/test_intake_land_native.py"]
+old = '''
+        ctx.args.name
+        if ctx.args.name is not None
+        else batch_name.readable('''
+new = '        batch_name.readable('
+
+[[rows]]
+id = "u110-b.B8_shown_playlist"
+source = { table = "u110-b.json", id = "B8_shown_playlist" }
+description = "The xml gate screen no longer names the batch playlist"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_names.py"]
+old = '''
+        "playlist": planned.batch,
+'''
+new = ''
+
+[[rows]]
+id = "u113-b.B7_digest_blind_to_split"
+source = { table = "u113-b.json", id = "B7_digest_blind_to_split" }
+description = "The xml gate's digest does not cover the split, so an answer given for one carries out another"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '        identity["playlists"] = [claimed.identity() for claimed in split]'
+new = '        pass'
+
+[[rows]]
+id = "u113-b.B8_pending_names_unheld"
+source = { table = "u113-b.json", id = "B8_pending_names_unheld" }
+description = "Names an intake file still waiting on its import holds are not held"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '    taken = (*(held if isinstance(held, tuple) else ()), *account_playlists.pending_names(cfg))'
+new = '    taken = held if isinstance(held, tuple) else ()'
+
+[[rows]]
+id = "u120.C2_hearts_not_claimed"
+source = { table = "u120.json", id = "C2_hearts_not_claimed" }
+description = "intake_land: no file is a heart"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '    hearted = account_playlists.hearted(cfg, pass_name, planned.items)'
+new = '    hearted = ()'
+
+[[rows]]
+id = "u127.L6_bridge_ignores_calibration"
+source = { table = "u127.json", id = "L6_bridge_ignores_calibration" }
+description = "The bridge names the vocals verb as owed on an uncalibrated library"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+    if cut is None:
+        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"'''
+new = '''
+    if False:
+        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"'''
+
+[[rows]]
+id = "u128-b.B3_owned_unresolved_at_gate"
+source = { table = "u128-b.json", id = "B3_owned_unresolved_at_gate" }
+description = "The bridge verb does not find the owned tracks in the export before the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '    split, emptied = landing.owned_in_export(cfg, split, export)'
+new = '    emptied = ()'
+
+[[rows]]
+id = "u128.L1_bridge_warning_unsaid"
+source = { table = "u128.json", id = "L1_bridge_warning_unsaid" }
+description = "The bridge landing does not put the left rows on its warnings"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '            *account_playlists.left_warning((*emptied, *landed.left)),'
+new = '            *account_playlists.left_warning(()),'
+
+[[rows]]
+id = "u146-c.L2_empty_landing_no_op"
+source = { table = "u146-c.json", id = "L2_empty_landing_no_op" }
+description = "_land_native: an empty landing ends NO_OP as before, its owned hearts never placed"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''
+        if owned:
+            return _place_owned('''
+new = '''
+        if owned and False:
+            return _place_owned('''
+
+[[rows]]
+id = "u156.L23_label_beside_manifest"
+source = { table = "u156.json", id = "L23_label_beside_manifest" }
+description = "_label_flag: accept --label beside --manifest, so one of two answers silently wins"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''
+    if manifest is not None:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} and --manifest'''
+new = '''
+    if False:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} and --manifest'''
+
+[[rows]]
+id = "u156.L24_label_on_the_bridge"
+source = { table = "u156.json", id = "L24_label_on_the_bridge" }
+description = "_label_flag: accept --label on the bridge, where the landing files nothing from it"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''
+    if not medium.native:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} files the batch'''
+new = '''
+    if False:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} files the batch'''
+
+[[rows]]
+id = "u162.L10_interrupt_cancel"
+source = { table = "u162.json", id = "L10_interrupt_cancel" }
+description = "_rehearse_native: an interrupt reported as internal-error rather than cancelled"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '            "cancelled",'
+new = '            "internal-error",'
+
+[[rows]]
+id = "u162.L12_rehearsal_equal"
+source = { table = "u162.json", id = "L12_rehearsal_equal" }
+description = "rehearsal_facts: report every rehearsal as equal to the live plan"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '    equal = found.get("digest") == digest'
+new = '    equal = True'
+
+[[rows]]
+id = "u162.L1_bridge_refusal"
+source = { table = "u162.json", id = "L1_bridge_refusal" }
+description = "intake_land: drop the refusal of --rehearse on an intake tree on the xml bridge"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '    if rehearse and not medium.native:'
+new = '    if False:'
+
+[[rows]]
+id = "u162.L2_area_plan_compare"
+source = { table = "u162.json", id = "L2_area_plan_compare" }
+description = "_rehearse_in: drop the refusal of an area plan that is not the live plan, so a differing plan is applied"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+        if differ:
+            raise refuse('''
+new = '''
+        if False:
+            raise refuse('''
+
+[[rows]]
+id = "u162.L4_occupied_hold"
+source = { table = "u162.json", id = "L4_occupied_hold" }
+description = "_rehearse_in: drop the hold of the live batch folder's names at the area (round one's fix)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '            if (target / item.name).exists() or (target / item.name).is_symlink():'
+new = '            if False:'
+
+[[rows]]
+id = "u162.L6_gridless_read_back"
+source = { table = "u162.json", id = "L6_gridless_read_back" }
+description = "_rehearse_in: drop the gridless read back of the landed rows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+            native.assert_rows_gridless(landed.collection)
+            native.assert_rows_identified(landed.collection)
+            rows_after'''
+new = '''
+            native.assert_rows_identified(landed.collection)
+            rows_after'''
+
+[[rows]]
+id = "u162.L7_identified_read_back"
+source = { table = "u162.json", id = "L7_identified_read_back" }
+description = "_rehearse_in: drop the file id read back of the landed rows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+            native.assert_rows_gridless(landed.collection)
+            native.assert_rows_identified(landed.collection)
+            rows_after'''
+new = '''
+            native.assert_rows_gridless(landed.collection)
+            rows_after'''
+
+[[rows]]
+id = "u162.L8_success_witness"
+source = { table = "u162.json", id = "L8_success_witness" }
+description = "_rehearse_native: drop the witness on the success path, so a rehearsal that touched the live library reports clean"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+    rehearsal.assert_untouched(before, kept=area.paths)
+    rehearsal.remove(area)'''
+new = '    rehearsal.remove(area)'
+
+[[rows]]
+id = "u162.L9_kept_area_named"
+source = { table = "u162.json", id = "L9_kept_area_named" }
+description = "_rehearse_native: a refusal inside the rehearsal no longer carries the kept area in its detail"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '            detail={**dict(inner.detail), "rehearsal_area": [str(path) for path in area.paths]},'
+new = '            detail=dict(inner.detail),'
+
+[[rows]]
+id = "u164.H1_watch_recorded"
+source = { table = "u164.json", id = "H1_watch_recorded" }
+description = "_filed_watch: watch today's year folder alone, never the recorded folder"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '        watched.extend((Path(again).parent, Path(again)))'
+new = '        pass'
+
+[[rows]]
+id = "u164.H2_scratch_folder"
+source = { table = "u164.json", id = "H2_scratch_folder" }
+description = "_rehearse_in: map the scratch plan back from the live folder instead of its own"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '        scratch_target = _folder(scratch_rows)'
+new = '        scratch_target = landing.target_dir(area.cfg, planned.batch)'
+
+[[rows]]
+id = "u165.L3_filing_tail"
+source = { table = "u165.json", id = "L3_filing_tail" }
+description = "_land_native: never file after the landing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py"]
+old = '''
+    if predicted is not None:
+        # THE FILING'''
+new = '''
+    if False:
+        # THE FILING'''
+
+[[rows]]
+id = "u177.C3_flag_beside_label"
+source = { table = "u177.json", id = "C3_flag_beside_label" }
+description = "_label_flag: drop the refusal of --label-from-tags beside --label, so one label for every file silently wins"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''
+    if from_tags and given is not None:
+        raise refuse(
+'''
+new = '''
+    if False:
+        raise refuse(
+'''
+
+[[rows]]
+id = "u188.M10_detail_mapped_dropped"
+source = { table = "u188.json", id = "M10_detail_mapped_dropped" }
+description = "_rehearse_in: carry no mapped pairs in the refusal's detail"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '                detail={"differs": differ, "mapped": [list(pair) for pair in pairs]},'
+new = '                detail={"differs": differ},'
+
+[[rows]]
+id = "u188.M11_fields_last_part"
+source = { table = "u188.json", id = "M11_fields_last_part" }
+description = "_fields_of: name a field by its last part alone, so a vox row's path reads as rows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '        names.append(path.split(".", 1)[-1])'
+new = '        names.append(path.rsplit(".", 1)[-1])'
+
+[[rows]]
+id = "u188.M12_fields_keep_indices"
+source = { table = "u188.json", id = "M12_fields_keep_indices" }
+description = "_fields_of: keep the indices, so one field is named once per row"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '        path = re.sub(r"\[\d+\]", "", line[2:].split(" = ", 1)[0])'
+new = '        path = line[2:].split(" = ", 1)[0]'
+
+[[rows]]
+id = "u188.M13_fields_repeated"
+source = { table = "u188.json", id = "M13_fields_repeated" }
+description = "_fields_of: keep every repeat, so a field ten rows differ in is named ten times"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+moved = "the same return of _fields_of, still in land_cli.py; only the function after it changed, since _place_owned moved to land_native.py"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+    return list(dict.fromkeys(names))
+
+
+def rehearsal_facts('''
+new = '''
+    return names
+
+
+def rehearsal_facts('''
+
+[[rows]]
+id = "u188.M1_stored_pair_dropped"
+source = { table = "u188.json", id = "M1_stored_pair_dropped" }
+description = "_mapped_back: leave the stored spelling pair out, so FolderPath on a renamed drive is never mapped back (the defect)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+                (str(scratch_target), str(target)),
+                stored,
+            )'''
+new = '''
+                (str(scratch_target), str(target)),
+            )'''
+
+[[rows]]
+id = "u188.M2_scratch_stored_under_the_mount"
+source = { table = "u188.json", id = "M2_scratch_stored_under_the_mount" }
+description = "_mapped_back: spell the area's folder with no base drive, so the scratch side of the stored pair is the mounted spelling"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+            base_drive=scratch_rows.base_drive,
+            current_drive=scratch_rows.current_drive,'''
+new = '''
+            base_drive=None,
+            current_drive=scratch_rows.current_drive,'''
+
+[[rows]]
+id = "u188.M3_live_stored_under_the_mount"
+source = { table = "u188.json", id = "M3_live_stored_under_the_mount" }
+description = "_mapped_back: spell the live folder with no base drive, so the area's FolderPath maps to the mounted spelling the live rows do not carry"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '            target, base_drive=rows.base_drive, current_drive=rows.current_drive'
+new = '            target, base_drive=None, current_drive=rows.current_drive'
+
+[[rows]]
+id = "u188.M4_staging_pair_dropped"
+source = { table = "u188.json", id = "M4_staging_pair_dropped" }
+description = "_mapped_back: leave the staging pair out, so every from line keeps the area's staging"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),'''
+new = '                (str(scratch_target), str(target)),'
+
+[[rows]]
+id = "u188.M6_mapped_as_lines"
+source = { table = "u188.json", id = "M6_mapped_as_lines" }
+description = "_rehearse_in: map the area's plan after it is printed, so a JSON escaped accent or quote is never mapped (the review's round one)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+        back = rehearsal.lines(
+            rehearsal.mapped(
+                plan_identity(staged, scratch_rows, target=scratch_target, archived=archived),
+                pairs,
+            )
+        )'''
+new = '''
+        back = rehearsal.mapped(
+            plan_lines(staged, scratch_rows, target=scratch_target, archived=archived), pairs
+        )'''
+
+[[rows]]
+id = "u188.M7_signs_swapped"
+source = { table = "u188.json", id = "M7_signs_swapped" }
+description = "_rehearse_in: compare live first, so a minus line is the live plan's and the refusal's legend is false"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '        differ = rehearsal.differing(back, lines)'
+new = '        differ = rehearsal.differing(lines, back)'
+
+[[rows]]
+id = "u188.M8_fields_left_out"
+source = { table = "u188.json", id = "M8_fields_left_out" }
+description = "_rehearse_in: name no field in the refusal"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''f"{len(differ)} line(s), in {', '.join(_fields_of(differ))}, so nothing "'''
+new = 'f"{len(differ)} line(s), in the plan, so nothing "'
+
+[[rows]]
+id = "u188.M9_pairs_left_out"
+source = { table = "u188.json", id = "M9_pairs_left_out" }
+description = "_rehearse_in: state no pair in the refusal, so the spellings compared are not named"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '                + ", ".join(f"{scratch} to {live}" for scratch, live in pairs)'
+new = '''                + "the area's paths"'''
+
+[[rows]]
+id = "u307.R20_land_only_by_default"
+source = { table = "u307.json", id = "R20_land_only_by_default" }
+description = "land_cli flags table: --land-only stores false, so every landing skips filing unless the flag is given"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py"]
+old = '    ("--land-only", {"action": "store_true"},'
+new = '    ("--land-only", {"action": "store_false"},'
+
+[[rows]]
+id = "u307.R21_unrunnable_reason_lost"
+source = { table = "u307.json", id = "R21_unrunnable_reason_lost" }
+description = "land_cli._unrunnable: a command line the landing cannot run is refused as internal-error, not intake-list-unusable"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_rehearse.py"]
+old = '        "intake-list-unusable", message, remedy=Remedy.FIX_COMMAND_LINE, steps=steps,'
+new = '        "internal-error", message, remedy=Remedy.FIX_COMMAND_LINE, steps=steps,'
+
+[[rows]]
+id = "u307.R4_land_cli_getattr_answers_none"
+source = { table = "u307.json", id = "R4_land_cli_getattr_answers_none" }
+description = "land_cli.__getattr__: answer None for every native medium name read on the verb's module, so ask_then_write, the warning codes and the analysis step read as nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_owned_hearts_native.py", "tests/test_intake_writers_native.py"]
+old = '    return getattr(land_native, name)'
+new = '    return None'
+
+[[rows]]
+id = "u331.S06_landing_room_check_dropped"
+source = { table = "u331.json", id = "S06_landing_room_check_dropped" }
+description = "intake land: the rehearsal's room check is not called through session before its copy (fixed sample, re-routed from snapshot)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+    session.assert_room_for_check(area.database)
+'''
+new = ''
+
+[[rows]]
+id = "u72-b.M18_refused_unmarked"
+source = { table = "u72-b.json", id = "M18_refused_unmarked" }
+description = "The payload marks every planned item landed, refused ones included"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '        entry = refused.get(item["from"])'
+new = '        entry = None'
+
+[[rows]]
+id = "u72-b.M20_shown_files"
+source = { table = "u72-b.json", id = "M20_shown_files" }
+description = "The gate context lists no file names"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '        "files": [item.name for item in planned.items],'
+new = '        "files": [],'
+
+[[rows]]
+id = "u72-b.M21_empty_to_engine"
+source = { table = "u72-b.json", id = "M21_empty_to_engine" }
+description = "An empty folder goes to the engine, which refuses it"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '    if folder.is_dir() and not landing.listing(folder):'
+new = '    if False:'
+
+[[rows]]
+id = "u72-b.M22_listing_without_isdir"
+source = { table = "u72-b.json", id = "M22_listing_without_isdir" }
+description = "The empty check lists a folder that may not exist"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '    if folder.is_dir() and not landing.listing(folder):'
+new = '    if not landing.listing(folder):'
+
+[[rows]]
+id = "u72.M10_default_folder"
+source = { table = "u72.json", id = "M10_default_folder" }
+description = "The default folder is the library root, not download staging"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '    folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)'
+new = '    folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.library.root)'
+
+[[rows]]
+id = "u72.M1_abort_applies"
+source = { table = "u72.json", id = "M1_abort_applies" }
+description = "An abort no longer stops the verb: only an empty plan returns NO_OP"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '    if option != "apply" or not planned.items:'
+new = '    if not planned.items:'
+
+[[rows]]
+id = "u72.M2_empty_plan_applied"
+source = { table = "u72.json", id = "M2_empty_plan_applied" }
+description = "An empty plan is handed to the engine after the answer instead of returning NO_OP"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '    if option != "apply" or not planned.items:'
+new = '    if option != "apply":'
+
+[[rows]]
+id = "u72.M3_digest_drops_where"
+source = { table = "u72.json", id = "M3_digest_drops_where" }
+description = "The digest drops the batch, the target and the intake file, so an answer for one name applies under another"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+        "batch": planned.batch,
+        "target": str(target),
+        "destination": str(destination),
+'''
+new = ''
+
+[[rows]]
+id = "u72.M4_digest_drops_files"
+source = { table = "u72.json", id = "M4_digest_drops_files" }
+description = "The digest drops the engine's file fingerprint, so a file arriving after the answer is landed"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+        "files": planned.digest,
+'''
+new = ''
+
+[[rows]]
+id = "u72.M5_digest_drops_export"
+source = { table = "u72.json", id = "M5_digest_drops_export" }
+description = "The digest drops the export path"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+        "export": str(export),
+'''
+new = ''
+
+[[rows]]
+id = "u72.M6_digest_drops_folder"
+source = { table = "u72.json", id = "M6_digest_drops_folder" }
+description = "The digest drops the folder path, so a twin folder with the same names applies"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+        "folder": str(planned.folder),
+        "batch": planned.batch,'''
+new = '        "batch": planned.batch,'
+
+[[rows]]
+id = "u72.M7_gate_digest_none"
+source = { table = "u72.json", id = "M7_gate_digest_none" }
+description = "The gate is asked with no digest, so no answer is ever stale"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '        digest=payload["digest"],'
+new = '        digest=None,'
+
+[[rows]]
+id = "u72.M9_default_name_colons"
+source = { table = "u72.json", id = "M9_default_name_colons" }
+description = "The default batch name keeps the run id's colons"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '    return run_id.replace(":", "")'
+new = '    return run_id'
+
+[[rows]]
+id = "u77-c.C6_gate_manifest_bytes"
+source = { table = "u77-c.json", id = "C6_gate_manifest_bytes" }
+description = "_payload: leave the manifest's bytes out of the plan identity, so the gate accepts an answer given against other rows (the gate layer alone, the engine's own check left in place)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = 'identity["manifest_bytes"] = manifest.digest'
+new = 'identity["manifest_bytes"] = ""'
+
+[[rows]]
+id = "u77-c.C7_digest_handed_to_engine"
+source = { table = "u77-c.json", id = "C7_digest_handed_to_engine" }
+description = "intake_land: hand the engine no fingerprint, so a manifest rewritten between the gate and the first move is filed"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = 'manifest_digest=manifest.digest if manifest is not None else None,'
+new = 'manifest_digest=None,'
+
+[[rows]]
+id = "u77-c.C8_unfiled_rows_warned"
+source = { table = "u77-c.json", id = "C8_unfiled_rows_warned" }
+description = "intake_land: warn about refused files only, so a label row filed under nothing is named nowhere a person reads"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = 'for entry in (*landed.refused, *landed.unlabelled)'
+new = 'for entry in (*landed.refused,)'
+
+[[rows]]
+id = "r770-b.B2_gate_asked_before_the_acknowledgment"
+source = { table = "r770-b.json", id = "B2_gate_asked_before_the_acknowledgment" }
+description = "ask_then_write: ask the gate without reading the backup acknowledgment first, on both verbs"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same acknowledgment read before the gate is asked, in the shared ask then write of the native landing, which U307 moved from land_cli.py to land_native.py"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''
+        session.assert_backup_acknowledged(cfg)
+'''
+new = ''
+
+[[rows]]
+id = "r770-b.B3_an_abort_writes"
+source = { table = "r770-b.json", id = "B3_an_abort_writes" }
+description = "ask_then_write: write whatever the answer was"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_an_abort_moves_nothing_and_writes_nothing, test_an_abort_writes_nothing, were folded by the trim into test_the_gate_screen_names_every_row_its_columns_the_playlist_and_the_database, test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database, the abort test's steps and checks, verbatim at the end of each file's gate screen test"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '        if option != "apply":'
+new = '        if option == "never":'
+
+[[rows]]
+id = "u120.C1_no_skip_note"
+source = { table = "u120.json", id = "C1_no_skip_note" }
+description = "favorites_notes: a skipped placement is not said"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''
+    if skipped:
+        return [
+            {
+                "code": FAVORITES_SKIPPED,'''
+new = '''
+    if False:
+        return [
+            {
+                "code": FAVORITES_SKIPPED,'''
+
+[[rows]]
+id = "u126.P3_gate_fact"
+source = { table = "u126.json", id = "P3_gate_fact" }
+description = "Rename the content link fact on the gate screen, so the value and its count are not where the person reads them"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '        "content link": ('
+new = '        "link": ('
+
+[[rows]]
+id = "u127.L1_screen_line_blind"
+source = { table = "u127.json", id = "L1_screen_line_blind" }
+description = "The native screen counts no tagged row"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_the_screen_counts_the_tagged_rows_against_the_cut, were folded by the trim into test_the_screen_counts_the_tagged_rows_and_the_digest_moves_with_a_tag_and_the_cut, its check of the vox line counting the tagged rows against the cut, with the rescore across the cut added"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '        f"{len(rows.vox_tagged())} of {len(adding)} added row(s), each whose voxlevel "'
+new = '        f"{len(adding)} of {len(adding)} added row(s), each whose voxlevel "'
+
+[[rows]]
+id = "u127.L2_items_carry_no_vox"
+source = { table = "u127.json", id = "L2_items_carry_no_vox" }
+description = "The gate items carry no score and no answer"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '        if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:'
+new = '        if False:'
+
+[[rows]]
+id = "u127.L3_totals_from_writer"
+source = { table = "u127.json", id = "L3_totals_from_writer" }
+description = "Count the written associations as tagged instead of what adoption reads back"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '    voxed = sum(1 for row in landed.collection.added if row.vox)'
+new = '    voxed = landed.collection.vox_written'
+
+[[rows]]
+id = "u127.L4_missing_unsaid"
+source = { table = "u127.json", id = "L4_missing_unsaid" }
+description = "Say nothing when a planned tag does not read back"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '    if collection.vox_missing:'
+new = '    if False:'
+
+[[rows]]
+id = "u127.L5_unscored_unsaid"
+source = { table = "u127.json", id = "L5_unscored_unsaid" }
+description = "Say nothing about a file with no score"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_a_file_with_no_score_gets_no_tag_and_is_named, were folded by the trim into test_the_tag_is_written_under_the_vocals_category_and_a_file_with_no_score_is_named, its check that the screen names the file with no score and tags the scored one"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '    if not collection.vox_unscored:'
+new = '    if True:'
+
+[[rows]]
+id = "u127.L7_land_warnings_unsaid"
+source = { table = "u127.json", id = "L7_land_warnings_unsaid" }
+description = "intake land gives no vox warning"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py"]
+old = '    warnings.extend(vox_warnings(landed.collection))'
+new = '    warnings.extend([])'
+
+[[rows]]
+id = "u128-b.N3_native_owned_not_found"
+source = { table = "u128-b.json", id = "N3_native_owned_not_found" }
+description = "The native verb asks no candidate row for the owned tracks, so every one is left"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '        cfg, named, native.candidate_rows(db, names)'
+new = '        cfg, named, ()'
+
+[[rows]]
+id = "u128.L2_native_warning_unsaid"
+source = { table = "u128.json", id = "L2_native_warning_unsaid" }
+description = "The native landing does not put the left rows on its warnings"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '    warnings.extend(account_playlists.left_warning(landed.collection.left))'
+new = '    warnings.extend(account_playlists.left_warning(()))'
+
+[[rows]]
+id = "u146-c.L3_gate_asked_for_nothing"
+source = { table = "u146-c.json", id = "L3_gate_asked_for_nothing" }
+description = "_place_owned: a pass whose owned hearts are all placed opens the database to write and asks the gate over nothing"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_a_pass_whose_owned_hearts_are_all_placed_asks_nothing_and_ends_no_op, test_an_owned_heart_all_favorites_holds_without_a_month_is_no_write_for_an_empty_landing, test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess, test_an_owned_heart_whose_job_froze_no_date_key_is_left_to_the_backfill, were folded by the trim into test_an_owned_track_hearted_today_joins_all_favorites_and_its_month_with_nothing_downloaded, test_owned_hearts_an_empty_landing_cannot_place_alone_are_no_write, the four owned heart cases that ask nothing and end no_op, now read through the files' shared _no_op helper"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''
+    if not first.writes:
+        return ctx.envelope(data=empty, outcome=Outcome.NO_OP)'''
+new = ''
+
+[[rows]]
+id = "u146-c.L4_missing_source_refuses"
+source = { table = "u146-c.json", id = "L4_missing_source_refuses" }
+description = "_place_owned: a library with no All Favorites refuses the empty landing instead of ending NO_OP and saying why"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''
+        if exc.cause.reason != placement.SOURCE_MISSING:
+            raise
+        return ctx.envelope(
+            data=empty,'''
+new = '''
+        raise
+        return ctx.envelope(
+            data=empty,'''
+
+[[rows]]
+id = "u153.L1_facts_colour_count"
+source = { table = "u153.json", id = "L1_facts_colour_count" }
+description = "land_cli favorites_facts: count only the items, so the owned hearts are left out of the Pink total shown"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_an_owned_heart_beside_a_landed_file_takes_pink_in_the_same_commit, were folded by the trim into test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one, its check that both hearts take Pink in the one commit, with the count on the screen"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '        facts["rows to colour Pink"] = len(plan.items) + len(plan.colour)'
+new = '        facts["rows to colour Pink"] = len(plan.items)'
+
+[[rows]]
+id = "u153.L3_notes_colour_skipped"
+source = { table = "u153.json", id = "L3_notes_colour_skipped" }
+description = "land_cli favorites_notes: never emit the missing-Pink note, so a landing that coloured nothing says nothing"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_with_no_pink_row_the_landing_places_the_heart_and_warns, were folded by the trim into test_two_hearts_of_two_months_and_an_existing_month_is_added_to_not_made, the no Pink row case, which still places the hearts, leaves them uncoloured and warns with the same code"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''
+    if placed.colour_skipped:
+        notes.append(
+            {
+                "code": colour_mod.PINK_COLOUR_MISSING,'''
+new = '''
+    if False:
+        notes.append(
+            {
+                "code": colour_mod.PINK_COLOUR_MISSING,'''
+
+[[rows]]
+id = "u157.L1_selection_counts"
+source = { table = "u157.json", id = "L1_selection_counts" }
+description = "awaiting_analysis: count no row as carrying dyn"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_the_warning_names_both_selections_and_counts_each, were folded by the trim into test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_each_selection, the warning naming both selections and counting each, now over two rows"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '''
+    dyned = sum(1 for row in collection.added if row.dyn)
+    normal'''
+new = '''
+    dyned = 0
+    normal'''
+
+[[rows]]
+id = "u157.L2_blocked_unnamed"
+source = { table = "u157.json", id = "L2_blocked_unnamed" }
+description = "dyn_warnings: a blocked landing names none of its variable rows"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '''
+    if collection.dyn_blocked:
+        untagged.update(collection.dyn_variable)
+'''
+new = ''
+
+[[rows]]
+id = "u161.L1_landing_pins_nothing"
+source = { table = "u161.json", id = "L1_landing_pins_nothing" }
+description = "ask_then_write: pin nothing, so every native write's answer is free of the file again"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_an_answer_given_over_one_file_is_stale_when_the_continuation_opens_another, were folded by the trim into test_the_same_files_against_a_copy_at_another_path_digest_equal_and_each_screen_names_its_path, the continuation over another file refused stale, each screen naming the file it reads and writes"
+tests = ["tests/test_intake_land_native.py"]
+old = '            spec, plan=data, context=shown(rows), pinned={DATABASE_PIN: str(opened)}'
+new = '            spec, plan=data, context=shown(rows), pinned={}'
+
+[[rows]]
+id = "u161.P6_screen_drops_path"
+source = { table = "u161.json", id = "P6_screen_drops_path" }
+description = "collection_facts: show the root's name where the database path was, so the screen no longer says which file is written"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_native.py"]
+old = '        "reads and writes": str(rows.database),'
+new = '        "reads and writes": str(rows.root_name),'
+
+[[rows]]
+id = "u165.L1_bridge_skip"
+source = { table = "u165.json", id = "L1_bridge_skip" }
+description = "_land_native: predict a filing on a routing tree still on the bridge"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py"]
+old = '            if medium.files_natively'
+new = '            if True'
+
+[[rows]]
+id = "u165.L2_land_only"
+source = { table = "u165.json", id = "L2_land_only" }
+description = "planner: predict and file under --land-only too"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py"]
+old = '''
+            if unfiled:
+                return made'''
+new = '''
+            if False:
+                return made'''
+
+[[rows]]
+id = "u165.L4_files_into"
+source = { table = "u165.json", id = "L4_files_into" }
+description = "_native_payload: drop each item's files into"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_filing.py"]
+old = '        if str(row.target) in sorted_into:'
+new = '        if False:'
+
+[[rows]]
+id = "u166.A11_warning_names_batch"
+source = { table = "u166.json", id = "A11_warning_names_batch" }
+description = "awaiting_analysis: name the batch playlist again instead of Analyze"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_writers_native.py"]
+old = '                f"{collection.analyze_name} playlist, which holds every row waiting "'
+new = '                f"{collection.playlist} playlist, which holds every row waiting "'
+
+[[rows]]
+id = "u177.C4_flag_ignored"
+source = { table = "u177.json", id = "C4_flag_ignored" }
+description = "label_plan: ignore --label-from-tags, so the batch lands filed under nothing"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''
+            if label_from_tags:
+                return label_filing.plan_for_tags(db, medium, files=files)
+'''
+new = '''
+            if False:
+                return label_filing.plan_for_tags(db, medium, files=files)
+'''
+
+[[rows]]
+id = "u181.L1_half_is_a_warning"
+source = { table = "u181.json", id = "L1_half_is_a_warning" }
+description = "land_cli vox_plan_warnings: warn at exactly half the added rows unscored"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_half_a_batch_unscored_is_said_on_the_line_and_is_no_warning, were folded by the trim into test_a_batch_mostly_unscored_carries_a_warning_with_its_code_on_the_gate_screen, the bound of more than half unscored, where one in two is the line's alone, beside the warning case"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '    if not adding or 2 * len(unscored) <= len(adding):'
+new = '    if not adding or 2 * len(unscored) < len(adding):'
+
+[[rows]]
+id = "u181.L2_coefficient"
+source = { table = "u181.json", id = "L2_coefficient" }
+description = "land_cli vox_plan_warnings: halve the coefficient, so only an unscored batch above the whole warns"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '    if not adding or 2 * len(unscored) <= len(adding):'
+new = '    if not adding or 1 * len(unscored) <= len(adding):'
+
+[[rows]]
+id = "u307.R22_colour_notes_drop_held"
+source = { table = "u307.json", id = "R22_colour_notes_drop_held" }
+description = "land_native._colour_notes: leave out the note naming the rows that keep a colour a person chose"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '    if placed.held:'
+new = '    if False:'
+
+[[rows]]
+id = "u319.M8_ok_on_any_field"
+source = { table = "u319.json", id = "M8_ok_on_any_field" }
+description = "land_cli: the short path's OK offered whatever the dialog shows"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the same line of the short path's visit wording, which U307 moved from land_cli.py to land_native.py with the native landing"
+tests = ["tests/test_drift.py"]
+old = '    "on its Auto Analysis dialog only when it shows every one of those Normal "'
+new = '    "on its Auto Analysis dialog whatever it shows of those Normal "'
+
+[[rows]]
+id = "u319.M9_warning_drops_the_short_path"
+source = { table = "u319.json", id = "M9_warning_drops_the_short_path" }
+description = "land_cli: the awaiting analysis warning names one path again"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_the_warning_names_both_selections_and_counts_each, were folded by the trim into test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_each_selection, the warning naming both selections and counting each, now over two rows"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '                f"for analysis, and {selections}; {AUTO_ANALYSIS_STEP}; then "'
+new = '                f"for analysis, and {selections}; then "'
+
+[[rows]]
+id = "u954.M1_no_dyn_case"
+source = { table = "u954.json", id = "M1_no_dyn_case" }
+description = "awaiting_analysis: never take the no dyn branch, so a landing with no dyn row is told a Dynamic run first on 0 rows and a Normal run last"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '''
+    normal = len(collection.added) - dyned
+    if not dyned:'''
+new = '''
+    normal = len(collection.added) - dyned
+    if False:'''
+
+[[rows]]
+id = "u954.M2_every_row_dyn_case"
+source = { table = "u954.json", id = "M2_every_row_dyn_case" }
+description = "awaiting_analysis: never take the every row dyn branch, so a batch of only dyn rows is told a Normal run last on 0 rows that leaves the mode Normal (round one's blocking finding)"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '    elif not normal:'
+new = '    elif False:'
+
+[[rows]]
+id = "u954.M3_mixed_order"
+source = { table = "u954.json", id = "M3_mixed_order" }
+description = "awaiting_analysis: the mixed batch told Normal first and Dynamic last, the order that leaves the mode on Dynamic"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '''
+            f"run Analyze Tracks first on the {dyned} row(s) carrying the dyn My Tag "
+            f"with {drift.DYNAMIC_SETTINGS} as the Normal run's, then last on the "'''
+new = '''
+            f"run Analyze Tracks last on the {dyned} row(s) carrying the dyn My Tag "
+            f"with {drift.DYNAMIC_SETTINGS} as the Normal run's, then first on the "'''
+
+[[rows]]
+id = "u954.M5_auto_step_condition_landing"
+source = { table = "u954.json", id = "M5_auto_step_condition_landing" }
+description = "AUTO_ANALYSIS_STEP in land_native: the closing Normal run told whatever the rows, with no dyn row or no row without it"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_drift.py"]
+old = '    f"{drift.DYNAMIC_SETTINGS}, and then, when they did and a row lacks the tag, one "'
+new = '    f"{drift.DYNAMIC_SETTINGS}, and then, whatever the rows carry, always one "'
+
+[[rows]]
+id = "u954.M7_untagged_rows_order"
+source = { table = "u954.json", id = "M7_untagged_rows_order" }
+description = "dyn_warnings: the untagged variable rows told to run Dynamic after the Normal run, which leaves the mode on Dynamic"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '            f"{drift.DYNAMIC_SETTINGS}, before any Normal run and left out of it, "'
+new = '            f"{drift.DYNAMIC_SETTINGS}, after the Normal run and left out of it, "'
+
+[[rows]]
+id = "r432-a.A1_key_casefold"
+source = { table = "r432-a.json", id = "A1_key_casefold" }
+description = "lock_key: drop the casefold, so two spellings of one folder on a case insensitive volume each get their own lock"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '    folded = unicodedata.normalize("NFC", batch.casefold())'
+new = '    folded = unicodedata.normalize("NFC", batch)'
+
+[[rows]]
+id = "r432-a.A3_lock_never_taken"
+source = { table = "r432-a.json", id = "A3_lock_never_taken" }
+description = "batch_lock: hand back the lock's path without taking it, so nothing is excluded"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '        path = lock.__enter__()'
+new = '        path = jobs.lock_path(key, root=root)'
+
+[[rows]]
+id = "r432-a.A5_not_retryable"
+source = { table = "r432-a.json", id = "A5_not_retryable" }
+description = "batch_lock: mark the held refusal as not retryable, though the holder ending is exactly what a retry waits for"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+            retryable=True,
+            origin=_ORIGIN,
+            detail={"batch": batch, "lock": str(held), "holder": who},'''
+new = '''
+            retryable=False,
+            origin=_ORIGIN,
+            detail={"batch": batch, "lock": str(held), "holder": who},'''
+
+[[rows]]
+id = "r432-a.A8_holder_left_out"
+source = { table = "r432-a.json", id = "A8_holder_left_out" }
+description = "batch_lock: leave the holder out of the message, so a person is told a landing is running and not which"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '            f"another landing under the batch name {batch!r} is running ({who}), "'
+new = '            f"another landing under the batch name {batch!r} is running, "'
+
+[[rows]]
+id = "r432-b.A4c_lock_outlives_its_with"
+source = { table = "r432-b.json", id = "A4c_lock_outlives_its_with" }
+description = "What the release tests do hold: drop the release AND keep the lock object alive, which is what a leaked lock is once the collector cannot free it"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '        lock.__exit__(None, None, None)'
+new = '        globals().setdefault("_LEAKED", []).append(lock)'
+
+[[rows]]
+id = "r677.E1_export_asked_before_the_library"
+source = { table = "r677.json", id = "E1_export_asked_before_the_library" }
+description = "the preflight asks the export before the library, so an unmounted volume is named as a missing export"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py"]
+old = '''
+    _check_batch(plan.batch)
+    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))'''
+new = '''
+    _check_batch(plan.batch)
+    _check_export(export, destination, tree_registry.read(cfg), label_rows)
+    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))'''
+
+[[rows]]
+id = "r677.E2_library_check_dropped"
+source = { table = "r677.json", id = "E2_library_check_dropped" }
+description = "the preflight never asks the library"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))
+    if destination.exists():'''
+new = '    if destination.exists():'
+
+[[rows]]
+id = "r677.E3_intake_file_check_dropped"
+source = { table = "r677.json", id = "E3_intake_file_check_dropped" }
+description = "the preflight never asks whether the intake file is already there"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+    if destination.exists():
+        raise refuse(
+            "output-exists",'''
+new = '''
+    if False:
+        raise refuse(
+            "output-exists",'''
+
+[[rows]]
+id = "r746-b.N8_unsupported_file_moved_anyway"
+source = { table = "r746-b.json", id = "N8_unsupported_file_moved_anyway" }
+description = "apply_native: a file the database has no type for is not refused per file and moves"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        if row.action == native.UNSUPPORTED
+    }'''
+new = '''
+        if False
+    }'''
+
+[[rows]]
+id = "r746-b.N9_placement_check_dropped_from_the_screen"
+source = { table = "r746-b.json", id = "N9_placement_check_dropped_from_the_screen" }
+description = "_screen: a file whose tags resolve to no sub is moved on both media"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '            named.get(item) or _unplaceable(item, declared) or _occupied(item, target / item.name)'
+new = '            named.get(item) or _occupied(item, target / item.name)'
+
+[[rows]]
+id = "r770-c.C3_failure_past_the_gate_loses_its_reason"
+source = { table = "r770-c.json", id = "C3_failure_past_the_gate_loses_its_reason" }
+description = "write: report every failure past the gate as internal-error, whatever refused"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+moved = "the same reason kept for a failure past the gate, now in landing.refuse_past, which U307 made of the copies in file_cli.py and the other landing verbs; file_cli.py calls it"
+tests = ["tests/test_intake_writers_native.py"]
+old = '        inner.reason if inner is not None else "internal-error",'
+new = '        "internal-error",'
+
+[[rows]]
+id = "r770-c.C4_failure_past_the_gate_loses_its_remedy"
+source = { table = "r770-c.json", id = "C4_failure_past_the_gate_loses_its_remedy" }
+description = "write: drop the inner refusal's remedy, so the reason's default answers"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+moved = "the same remedy kept for a failure past the gate, now in landing.refuse_past, which U307 made of the copies in file_cli.py and the other landing verbs; file_cli.py calls it"
+tests = ["tests/test_intake_writers_native.py"]
+old = '        remedy=inner.remediation.remedy if inner is not None else None,'
+new = '        remedy=None,'
+
+[[rows]]
+id = "u110-c.C1_apply_playlist"
+source = { table = "u110-c.json", id = "C1_apply_playlist" }
+description = "The xml landing no longer hands its batch name to the splice, so the playlist is the intake file's stem again"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_names.py"]
+old = '''
+            playlist=plan.batch,
+'''
+new = ''
+
+[[rows]]
+id = "u110-c.C7_intake_lock_prefix"
+source = { table = "u110-c.json", id = "C7_intake_lock_prefix" }
+description = "The intake lock shares its key with a batch of the same name"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py", "tests/test_intake_land_names.py"]
+old = 'lock_key("intake file\0" + stem)'
+new = 'lock_key(stem)'
+
+[[rows]]
+id = "u110-c.C8_plain_dot"
+source = { table = "u110-c.json", id = "C8_plain_dot" }
+description = "A name starting with a dot passes the plain name rule"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_names.py"]
+old = '''
+        and not text.startswith(".")
+'''
+new = ''
+
+[[rows]]
+id = "u113-b.B5_export_clash_unasked"
+source = { table = "u113-b.json", id = "B5_export_clash_unasked" }
+description = "A name the export came to hold since it was chosen is not refused before the moves"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '    clash = sorted(set(names) & set(held))'
+new = '    clash: list[str] = []'
+
+[[rows]]
+id = "u113-b.B6_root_names_unheld"
+source = { table = "u113-b.json", id = "B6_root_names_unheld" }
+description = "Names at the export's playlist root, where an import lands first, are not held"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '    return (*held, *at_root)'
+new = '    return held'
+
+[[rows]]
+id = "u113-c.C6_names_checked_after_moves"
+source = { table = "u113-c.json", id = "C6_names_checked_after_moves" }
+description = "The native landing no longer asks whether a chosen name was taken before its first move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '    native.assert_names_still_free(db, rows)'
+new = '    pass'
+
+[[rows]]
+id = "u128-b.B1_engine_stale_unchecked"
+source = { table = "u128-b.json", id = "B1_engine_stale_unchecked" }
+description = "The bridge engine does not read the owned entries again before its first move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '    if now != planned:'
+new = '    if False:'
+
+[[rows]]
+id = "u128-b.B2_foreign_host_indexed"
+source = { table = "u128-b.json", id = "B2_foreign_host_indexed" }
+description = "Index an export entry whose Location names another machine, which raises out of the index"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '''
+        try:
+            locations.location_to_path(recorded)
+        except locations.LocationDecodeError:
+            continue
+        found.append'''
+new = '        found.append'
+
+[[rows]]
+id = "u164.W1_apply_folder"
+source = { table = "u164.json", id = "W1_apply_folder" }
+description = "apply_native: move into the music folder's batch path whatever the plan chose"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py"]
+old = '    target = rows.folder if rows.folder is not None else target_dir(cfg, plan.batch)'
+new = '    target = target_dir(cfg, plan.batch)'
+
+[[rows]]
+id = "u164.W2_preflight_target"
+source = { table = "u164.json", id = "W2_preflight_target" }
+description = "apply_native: check the library against the music folder rather than the chosen folder"
+file = "src/cratekit/intake/landing.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_filed.py"]
+old = '    preflight_native(plan, cfg=cfg, target=target)'
+new = '    preflight_native(plan, cfg=cfg)'
+
+[[rows]]
+id = "u307.R6_refuse_past_drops_inner_message"
+source = { table = "u307.json", id = "R6_refuse_past_drops_inner_message" }
+description = "landing.refuse_past: leave the inner failure's own sentence out of the message, so a person reads what was left but not what failed"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '        f"{head} ({inner.message if inner is not None else exc}); {tail}",'
+new = '        f"{head}; {tail}",'
+
+[[rows]]
+id = "u72-b.M23_listing_unfiltered"
+source = { table = "u72-b.json", id = "M23_listing_unfiltered" }
+description = "The engine's public listing returns every entry, not only audio"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+    return _list(folder)
+
+
+def _digest('''
+new = '''
+    return tuple(folder.iterdir())
+
+
+def _digest('''
+
+[[rows]]
+id = "u77-a.A6_no_landed_file_guard"
+source = { table = "u77-a.json", id = "A6_no_landed_file_guard" }
+description = "_file_labels: file a row that resolved to no file this run placed, so a year playlist is written for a track the intake file gave no id"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+        if not landed:
+            # TRUE OF BOTH ROWS'''
+new = '''
+        if landed is None:
+            # TRUE OF BOTH ROWS'''
+
+[[rows]]
+id = "r502-a.G5_no_adjudicate"
+source = { table = "r502-a.json", id = "G5_no_adjudicate" }
+description = "Skip reading a person's answer back, so a row answered as another track reads as a fresh question and drops out"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    if asked:
+        with review.open_store(cfg) as items:
+            for handler_key, at in asked.items():'''
+new = '''
+    if False:
+        with review.open_store(cfg) as items:
+            for handler_key, at in asked.items():'''
+
+[[rows]]
+id = "r502-a.G6_no_mount_guard"
+source = { table = "r502-a.json", id = "G6_no_mount_guard" }
+description = "Drop the absent music folder refusal before the library walk"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    if not music.is_dir():
+        raise refuse(
+            "library-volume-unmounted",
+            f"this library's music folder {str(music)!r} is not there, so no track "'''
+new = '''
+    if False:
+        raise refuse(
+            "library-volume-unmounted",
+            f"this library's music folder {str(music)!r} is not there, so no track "'''
+
+[[rows]]
+id = "r502-a2.G7_frozen_config"
+source = { table = "r502-a2.json", id = "G7_frozen_config" }
+description = "Ask the library at the root the first job froze rather than the current configuration (the review's finding)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    cfg = intake_cli._load()
+    music = Path(cfg.library.root) / cfg.library.music_dir'''
+new = '''
+    cfg = jobs.frozen_config(origins[0])
+    music = Path(cfg.library.root) / cfg.library.music_dir'''
+
+[[rows]]
+id = "r502-b.E2_nothing_written_refusal"
+source = { table = "r502-b.json", id = "E2_nothing_written_refusal" }
+description = "Existing guard sample: drop the refusal for missing tracks none of which could be written"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py"]
+old = '    if missing and not listed and not in_file:'
+new = '    if False:'
+
+[[rows]]
+id = "r502-b.G10_since_keys_swapped"
+source = { table = "r502-b.json", id = "G10_since_keys_swapped" }
+description = "Count a row held since under suppressed_since and a row deleted since under owned_since"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    match.MatchState.MATCHED: "owned_since",
+    match.MatchState.SUPPRESSED: "suppressed_since",'''
+new = '''
+    match.MatchState.MATCHED: "suppressed_since",
+    match.MatchState.SUPPRESSED: "owned_since",'''
+
+[[rows]]
+id = "r502-b.G12_since_check_detail"
+source = { table = "r502-b.json", id = "G12_since_check_detail" }
+description = "Reword the since check so it no longer names the rows in the library since"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''            f"{since['owned_since']} in the library since, {since['suppressed_since']} "'''
+new = '''            f"{since['owned_since']} held now, {since['suppressed_since']} "'''
+
+[[rows]]
+id = "r502-b.G9_missing_count_stale"
+source = { table = "r502-b.json", id = "G9_missing_count_stale" }
+description = "Report the job's missing count rather than the count still missing now"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+        counts["missing"] = len(missing)
+'''
+new = ''
+
+[[rows]]
+id = "r502-b2.G13_written_line_for_gained"
+source = { table = "r502-b2.json", id = "G13_written_line_for_gained" }
+description = "Drop the written line's gained branch, so a job whose rows were all gained reads as a job with nothing missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    elif gained:
+        said = ('''
+new = '''
+    elif False:
+        said = ('''
+
+[[rows]]
+id = "r503-a.G10_owned_key"
+source = { table = "r503-a.json", id = "G10_owned_key" }
+description = "File an answered row now owned under answered_missing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py"]
+old = '    match.MatchState.MATCHED: "answered_owned",'
+new = '    match.MatchState.MATCHED: "answered_missing",'
+
+[[rows]]
+id = "r503-a.G1_no_lookup"
+source = { table = "r503-a.json", id = "G1_no_lookup" }
+description = "Read no answer at all, so every offered row stays offered whatever a person said (R-503 as filed)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    answered = iter(_answered(offered))'
+new = '    answered = iter([False] * len(offered))'
+
+[[rows]]
+id = "r503-a.G2_found_is_answered"
+source = { table = "r503-a.json", id = "G2_found_is_answered" }
+description = "Treat an item that exists as answered, so an unanswered row is asked again and offered again from the listing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '            said.append(held is not None and held.resolved)'
+new = '            said.append(held is not None)'
+
+[[rows]]
+id = "r503-a.G4_offered_not_decremented"
+source = { table = "r503-a.json", id = "G4_offered_not_decremented" }
+description = "Leave an answered row in the offered count, so a rejected row still reads offered 1"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+                counts["offered"] -= 1
+'''
+new = ''
+
+[[rows]]
+id = "r503-a.G5_state_not_counted"
+source = { table = "r503-a.json", id = "G5_state_not_counted" }
+description = "Do not count an answered row under the word it resolved to, so an accepted row is not owned"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+                counts[_WORD[one.state]] += 1
+'''
+new = ''
+
+[[rows]]
+id = "r503-a.G6_answered_not_counted"
+source = { table = "r503-a.json", id = "G6_answered_not_counted" }
+description = "Do not count answered rows under answered_*"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+                now_answered[_ANSWERED[one.state]] += 1
+'''
+new = ''
+
+[[rows]]
+id = "r503-a.G7_answered_read_as_since"
+source = { table = "r503-a.json", id = "G7_answered_read_as_since" }
+description = "Count an answered row as a missing row would be counted, under since, rather than as answered"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+            if report["state"] == "offered":
+                # COUNTED'''
+new = '''
+            if report["state"] == "never":
+                # COUNTED'''
+
+[[rows]]
+id = "r503-a.G8_rejected_not_kept"
+source = { table = "r503-a.json", id = "G8_rejected_not_kept" }
+description = "Keep only rows the job found missing, so a rejected row is counted and never listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+            if one.state is match.MatchState.MISSING:
+                kept.append(n)'''
+new = '''
+            if one.state is match.MatchState.MISSING and report["state"] == "missing":
+                kept.append(n)'''
+
+[[rows]]
+id = "r503-a.G9_answered_last"
+source = { table = "r503-a.json", id = "G9_answered_last" }
+description = "Ask answered rows after missing ones, so a rejected row is listed out of its playlist order"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    asking = [
+        (job, report)
+        for job, report in rows_in
+        if report["state"] == "missing" or next(answered)
+    ]'''
+new = '''
+    asking = sorted(
+        [
+            (job, report)
+            for job, report in rows_in
+            if report["state"] == "missing" or next(answered)
+        ],
+        key=lambda pair: pair[1]["state"] == "offered",
+    )'''
+
+[[rows]]
+id = "r503-b.E2_offered_listed"
+source = { table = "r503-b.json", id = "E2_offered_listed" }
+description = "Existing: list every offered report as missing without asking, the shape the brief forbids"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '        if report["state"] == "missing" or next(answered)'
+new = '        if report["state"] == "missing" or next(answered) or True'
+
+[[rows]]
+id = "r503-b.G11_summary"
+source = { table = "r503-b.json", id = "G11_summary" }
+description = "Drop the answered_* counts from the summary"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+        **now_answered,
+'''
+new = ''
+
+[[rows]]
+id = "r503-b.G12_answered_check"
+source = { table = "r503-b.json", id = "G12_answered_check" }
+description = "Reword the answered check's breakdown"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''            f"missing, {now_answered['answered_owned']} in the library, "'''
+new = '''            f"listed, {now_answered['answered_owned']} owned, "'''
+
+[[rows]]
+id = "r503-b.G13_offered_check"
+source = { table = "r503-b.json", id = "G13_offered_check" }
+description = "Reword the offered check's route back to this listing"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '            f"see: crate review list, then list this again",'
+new = '            f"see: crate review list",'
+
+[[rows]]
+id = "r503-b.G14_no_gone"
+source = { table = "r503-b.json", id = "G14_no_gone" }
+description = "Never name the tracks the earlier list holds and this one does not"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    if gone:
+        why.append('''
+new = '''
+    if False:
+        why.append('''
+
+[[rows]]
+id = "r503-b.G15_no_new"
+source = { table = "r503-b.json", id = "G15_no_new" }
+description = "Never name the tracks this list holds and the earlier one does not"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    if new:
+        why.append('''
+new = '''
+    if False:
+        why.append('''
+
+[[rows]]
+id = "r503-b.G16_json_uncaught"
+source = { table = "r503-b.json", id = "G16_json_uncaught" }
+description = "Let an earlier file that is not JSON escape the hint as an internal error"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+    except (OSError, ValueError, KeyError, TypeError):
+        return []'''
+new = '''
+    except (OSError, KeyError, TypeError):
+        return []'''
+
+[[rows]]
+id = "r503-b.G17_no_hint"
+source = { table = "r503-b.json", id = "G17_no_hint" }
+description = "Drop the hint read from the earlier file altogether"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '        why = _changed_since(out, name, rows)'
+new = '        why = []'
+
+[[rows]]
+id = "u110-c.C5_missing_hint"
+source = { table = "u110-c.json", id = "C5_missing_hint" }
+description = "intake missing --run prints --name RUN again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = 'f"--pass {name}, adding'
+new = 'f"--name {name}, adding'
+
+[[rows]]
+id = "u207.I1_missing_never_screens"
+source = { table = "u207.json", id = "I1_missing_never_screens" }
+description = "intake missing: the askable codes are never screened"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py"]
+old = '''
+        found.screen_isrcs(askable)
+'''
+new = ''
+
+[[rows]]
+id = "u212.M10_left_out"
+source = { table = "u212.json", id = "M10_left_out" }
+description = "missing_cli._listed: drop the staged clause of the left out refusal, so a run with a failed job and every finished row staged refuses"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '    if left_out and not listed and not unlisted and not staged_rows:'
+new = '    if left_out and not listed and not unlisted:'
+
+[[rows]]
+id = "u212.M1_staged_match"
+source = { table = "u212.json", id = "M1_staged_match" }
+description = "missing_cli._staged: never record a staged row, so a track a staged file carries is listed and downloaded again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '''
+        if held:
+            found.append((n, held[0].path))'''
+new = '''
+        if held and False:
+            found.append((n, held[0].path))'''
+
+[[rows]]
+id = "u212.M2_own_rows_both"
+source = { table = "u212.json", id = "M2_own_rows_both" }
+description = "missing_cli._staged: drop the own rows rule, so a continued pass subtracts its own staged downloads and its list is refused over its earlier copy"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '''
+        if (ref and ref in ids) or token in isrcs:
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u212.M3_own_rows_by_id"
+source = { table = "u212.json", id = "M3_own_rows_by_id" }
+description = "missing_cli._staged: the own rows rule by ISRC alone, the provider id half removed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '        if (ref and ref in ids) or token in isrcs:'
+new = '        if token in isrcs:'
+
+[[rows]]
+id = "u212.M4_own_rows_by_isrc"
+source = { table = "u212.json", id = "M4_own_rows_by_isrc" }
+description = "missing_cli._staged: the own rows rule by provider id alone, the ISRC half removed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '        if (ref and ref in ids) or token in isrcs:'
+new = '        if ref and ref in ids:'
+
+[[rows]]
+id = "u212.M5_unread_is_empty"
+source = { table = "u212.json", id = "M5_unread_is_empty" }
+description = "missing_cli._staged: an unreadable staging folder read as one holding nothing, so the staged row says nothing failed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '        return _Staged(folder, unread=str(exc.strerror or exc))'
+new = '        return _Staged(folder)'
+
+[[rows]]
+id = "u212.M6_absent_folder"
+source = { table = "u212.json", id = "M6_absent_folder" }
+description = "missing_cli._staged: drop the absent folder guard, so a machine with no staging folder yet reports the folder unreadable"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '        if not folder.exists():'
+new = '        if False:'
+
+[[rows]]
+id = "u212.M7_outcome_staged"
+source = { table = "u212.json", id = "M7_outcome_staged" }
+description = "missing_cli._listed: every row staged answers no_op, so a pass ends before the landing that takes them"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '        outcome=Outcome.OK if listed or unlisted or staged_rows else Outcome.NO_OP,'
+new = '        outcome=Outcome.OK if listed or unlisted else Outcome.NO_OP,'
+
+[[rows]]
+id = "u212.M8_summary_count"
+source = { table = "u212.json", id = "M8_summary_count" }
+description = "missing_cli._listed: the summary's staged count read as zero, the number the pass reads"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '        "staged": len(staged_rows),'
+new = '        "staged": 0,'
+
+[[rows]]
+id = "u212.M9_unread_status"
+source = { table = "u212.json", id = "M9_unread_status" }
+description = "missing_cli._staged_check: an unreadable staging folder said on an info row rather than a failing one"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_staged.py"]
+old = '''
+            "staged",
+            "fail",'''
+new = '''
+            "staged",
+            "info",'''
+
+[[rows]]
+id = "u307.R12_summary_head_written_zero"
+source = { table = "u307.json", id = "R12_summary_head_written_zero" }
+description = "missing_cli._summary_head: report written as zero, so the summary says nothing was listed when rows were written"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py"]
+old = '    head.update(written=len(written.listed))'
+new = '    head.update(written=0)'
+
+[[rows]]
+id = "u307.R13_named_by_isrc_resolves_unasked"
+source = { table = "u307.json", id = "R13_named_by_isrc_resolves_unasked" }
+description = "missing_cli._named_by_isrc: resolve the catalogue even when no row carries an askable ISRC, so a job with none spends a login"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py"]
+old = '''
+    if askable:
+        found = (resolve or _catalogue_once())()'''
+new = '''
+    if True:
+        found = (resolve or _catalogue_once())()'''
+
+[[rows]]
+id = "u69-b.M10_out_not_a_folder"
+source = { table = "u69-b.json", id = "M10_out_not_a_folder" }
+description = "Drop the refusal of an --out that exists and is not a folder"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if out.exists() and not out.is_dir():'
+new = '    if False:'
+
+[[rows]]
+id = "u69-b.M12_unlisted_status"
+source = { table = "u69-b.json", id = "M12_unlisted_status" }
+description = "Report unlisted missing tracks as a note instead of a failing check"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '"fail" if unlisted else "ok",'
+new = '"info" if unlisted else "ok",'
+
+[[rows]]
+id = "u69-b.M16_next_command"
+source = { table = "u69-b.json", id = "M16_next_command" }
+description = "Drop the literal next command from the written check a person reads"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = 'written to {written.list_path}; next: {command}"'
+new = 'written to {written.list_path}"'
+
+[[rows]]
+id = "u69-b.M17_lists_folder"
+source = { table = "u69-b.json", id = "M17_lists_folder" }
+description = "Write into download staging itself rather than its lists folder"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = 'out = intake_cli._load().paths.download_staging / LISTS_DIR'
+new = 'out = intake_cli._load().paths.download_staging'
+
+[[rows]]
+id = "u69-b.M18_inner_cause"
+source = { table = "u69-b.json", id = "M18_inner_cause" }
+description = "Drop the failed job's own cause from the refusal"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '            inner=job.cause,'
+new = '            inner=None,'
+
+[[rows]]
+id = "u69-b.M19_resume_step"
+source = { table = "u69-b.json", id = "M19_resume_step" }
+description = "Drop the resume command from an open job's refusal"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '            f"finish it with: crate {argv}" if job.is_open() else'
+new = '            "finish it first" if job.is_open() else'
+
+[[rows]]
+id = "u69.M1_handler_key"
+source = { table = "u69.json", id = "M1_handler_key" }
+description = "Drop the refusal of a job queued under another verb's handler key"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if job.handler_key not in intake_cli.INTAKE_KEYS:'
+new = '    if False:'
+
+[[rows]]
+id = "u69.M2_succeeded_only"
+source = { table = "u69.json", id = "M2_succeeded_only" }
+description = "Drop the refusal of a job that is not succeeded (open, failed, cancelled)"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if job.state is not jobs.JobState.SUCCEEDED:'
+new = '    if False:'
+
+[[rows]]
+id = "u69.M4_report_coverage"
+source = { table = "u69.json", id = "M4_report_coverage" }
+description = "Drop the refusal when the reports do not cover the items one for one"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if sorted(reported) != sorted(wanted):'
+new = '    if False:'
+
+[[rows]]
+id = "u69.M5_by_count"
+source = { table = "u69.json", id = "M5_by_count" }
+description = "Compare reports to items by count instead of by identifier"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if sorted(reported) != sorted(wanted):'
+new = '    if len(reported) != len(wanted):'
+
+[[rows]]
+id = "u69.M6_state_word"
+source = { table = "u69.json", id = "M6_state_word" }
+description = "Drop the refusal of a report whose state word this verb cannot read"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '        if report.get("state") not in _WORDS or not isinstance(report.get("track"), Mapping):'
+new = '        if not isinstance(report.get("track"), Mapping):'
+
+[[rows]]
+id = "u73-b.B2_every_ref_kept"
+source = { table = "u73-b.json", id = "B2_every_ref_kept" }
+description = "Stop accumulating every reference an id came from"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '            refs.append(said)'
+new = '            pass'
+
+[[rows]]
+id = "u73-b.B3_first_source_wins"
+source = { table = "u73-b.json", id = "B3_first_source_wins" }
+description = "Let the last job an id came from win its provenance instead of the first"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '        first.setdefault(ref, job)'
+new = '        first[ref] = job'
+
+[[rows]]
+id = "u73.A10_every_job_skipped"
+source = { table = "u73.json", id = "A10_every_job_skipped" }
+description = "Drop the refusal of a run whose every job failed, left to the layer after it"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if not kept:'
+new = '    if False:'
+
+[[rows]]
+id = "u73.A1_blank_run"
+source = { table = "u73.json", id = "A1_blank_run" }
+description = "Drop the refusal of a blank --run, so a blank run is compared as it stands"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if not run_id.strip():'
+new = '    if False:'
+
+[[rows]]
+id = "u73.A2_library_filter"
+source = { table = "u73.json", id = "A2_library_filter" }
+description = "Drop the library half of the run selection, so the run alone picks jobs"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = 'and job.library_id == library_id'
+new = 'and True'
+
+[[rows]]
+id = "u73.A3_run_filter"
+source = { table = "u73.json", id = "A3_run_filter" }
+description = "Drop the run half of the selection, so every intake job for the library is listed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '(job.payload or {}).get(RUN_ID) == run_id'
+new = 'True'
+
+[[rows]]
+id = "u73.A4_intake_key_filter"
+source = { table = "u73.json", id = "A4_intake_key_filter" }
+description = "Drop the intake handler key filter, so a labels or favourites job in the run is selected"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '            if job.handler_key in intake_cli.INTAKE_KEYS'
+new = '            if True'
+
+[[rows]]
+id = "u73.A5_oldest_first"
+source = { table = "u73.json", id = "A5_oldest_first" }
+description = "Reverse the job order, newest first, so first source wins picks the later playlist"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = 'key=lambda job: (job.created, job.job_id),'
+new = 'key=lambda job: (job.created, job.job_id), reverse=True,'
+
+[[rows]]
+id = "u73.A7_open_refuses"
+source = { table = "u73.json", id = "A7_open_refuses" }
+description = "Drop the refusal of a run holding an open job"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if still_open:'
+new = '    if False:'
+
+[[rows]]
+id = "u73.A8_failed_refuses"
+source = { table = "u73.json", id = "A8_failed_refuses" }
+description = "Drop the refusal of a run holding a failed or cancelled job"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if unfinished and not skip_failed:'
+new = '    if False:'
+
+[[rows]]
+id = "u73.A9_skip_failed_ignored"
+source = { table = "u73.json", id = "A9_skip_failed_ignored" }
+description = "Ignore --skip-failed, so a failed job refuses the run whatever the flag says"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '    if unfinished and not skip_failed:'
+new = '    if unfinished:'
+
+[[rows]]
+id = "u78-a.A3_several_listed"
+source = { table = "u78-a.json", id = "A3_several_listed" }
+description = "An ISRC filed under several tracks lists the first, the guess R-356 forbids"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py"]
+old = '        elif len(answer) == 1:'
+new = '        elif len(answer) >= 1:'
+
+[[rows]]
+id = "u78-a.A5_outage_read_as_none"
+source = { table = "u78-a.json", id = "A5_outage_read_as_none" }
+description = "A provider that could not answer is read as filing no track, so the row is handed on and the verb writes"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py"]
+old = '''
+            except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed
+                raise refuse('''
+new = '''
+            except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed
+                answers[code] = ()
+                continue
+                raise refuse('''
+
+[[rows]]
+id = "u78-a.A6_blank_id_dropped"
+source = { table = "u78-a.json", id = "A6_blank_id_dropped" }
+description = "A track with no identifier in the answer is dropped, so one named and one unnamed reads as one id"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py"]
+old = '    if any(not one for one in ids):'
+new = '''
+    ids = [one for one in ids if one]
+    if False:'''
+
+[[rows]]
+id = "u78-b.B1_unwritable_refuses_whole"
+source = { table = "u78-b.json", id = "B1_unwritable_refuses_whole" }
+description = "The per row text line check before writing is removed, so one unwritable row refuses the verb again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py"]
+old = '''
+            try:
+                listdoc.text_line(row)
+            except listdoc.ListDocRefused:'''
+new = '''
+            try:
+                pass
+            except listdoc.ListDocRefused:'''
+
+[[rows]]
+id = "u78-b.B3_ids_unsorted"
+source = { table = "u78-b.json", id = "B3_ids_unsorted" }
+description = "The identifiers in a several reason are written in provider order"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py"]
+old = '''f"({', '.join(sorted(answer))}), and which release to download is "'''
+new = '''f"({', '.join(answer)}), and which release to download is "'''
+
+[[rows]]
+id = "u78-d.A4_cratekit_error_passthrough_again"
+source = { table = "u78-d.json", id = "A4_cratekit_error_passthrough_again" }
+description = "A product refusal raised by the catalogue is relabelled unavailable-transient"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_isrc.py"]
+old = '''
+            except CratekitError:
+                raise
+            except Exception as exc:'''
+new = '            except Exception as exc:'
+
+[[rows]]
+id = "u79-c.C2_owned_row_searched"
+source = { table = "u79-c.json", id = "C2_owned_row_searched" }
+description = "A row the library holds is counted missing and searched for"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+moved = "Anchored where u325-replay-after.json replayed it: Same loop in _missing_for_list; U298 replaced its three state branches with a lookup in match_cli.SETTLED_WORDS, whose MATCHED entry is owned, so excluding owned sends a matched row to the missing branch, which is what disabling the MATCHED branch did"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+        word = match_cli.SETTLED_WORDS.get(settled.state)
+        if word is not None:
+            counts[word] += 1'''
+new = '''
+        word = match_cli.SETTLED_WORDS.get(settled.state)
+        if word is not None and word != "owned":
+            counts[word] += 1'''
+
+[[rows]]
+id = "u79-c.C3_accepted_held_listed_again"
+source = { table = "u79-c.json", id = "C3_accepted_held_listed_again" }
+description = "An accepted candidate the library now holds is listed for download again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+            if now.state in (match.MatchState.MATCHED, match.MatchState.SUPPRESSED):
+                proposals[n]'''
+new = '''
+            if False:
+                proposals[n]'''
+
+[[rows]]
+id = "u79-c.C4_nothing_found_is_a_no_op"
+source = { table = "u79-c.json", id = "C4_nothing_found_is_a_no_op" }
+description = "Missing rows with no route to any of them end as nothing to do"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '    if unfound and not listed and not asked:'
+new = '    if False:'
+
+[[rows]]
+id = "u79-c.C5_foreign_ref_names_a_row"
+source = { table = "u79-c.json", id = "C5_foreign_ref_names_a_row" }
+description = "Another service's identifier is read as the provider's, and the row is in no file"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '    return str(wanted.ref or "").strip() if wanted.origin == match.TIDAL else ""'
+new = '    return str(wanted.ref or "").strip()'
+
+[[rows]]
+id = "u79-c.C6_isrc_named_keeps_origin"
+source = { table = "u79-c.json", id = "C6_isrc_named_keeps_origin" }
+description = "A foreign row named by ISRC keeps its origin, so the emitter takes the ref off again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '                named.append(replace(one, ref=answer, origin=match.TIDAL))'
+new = '                named.append(replace(one, ref=answer))'
+
+[[rows]]
+id = "u79-c.C7_fixed_name"
+source = { table = "u79-c.json", id = "C7_fixed_name" }
+description = "The found list takes one fixed name, so the run after an answer is refused"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''    return f"{stem or 'tracklist'}{FOUND_SUFFIX}-{digest}"'''
+new = '''    return f"{stem or 'tracklist'}{FOUND_SUFFIX}"'''
+
+[[rows]]
+id = "u79-c.C8_asked_is_a_no_op"
+source = { table = "u79-c.json", id = "C8_asked_is_a_no_op" }
+description = "A run that only put a question to a person ends as nothing to do"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '        outcome=Outcome.OK if listed or asked else Outcome.NO_OP,'
+new = '        outcome=Outcome.OK if listed else Outcome.NO_OP,'
+
+[[rows]]
+id = "r1037.N1_landed_not_recorded"
+source = { table = "r1037.json", id = "N1_landed_not_recorded" }
+description = "_record_landing_commit: never write collection_landed, so no landed row is ever offered"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_intake_land_native.py"]
+old = '''
+    if landed is not None:
+        record.detail[LANDED_ROWS_KEY] = dict(landed)'''
+new = '''
+    if False:
+        record.detail[LANDED_ROWS_KEY] = dict(landed)'''
+
+[[rows]]
+id = "r1037.N2_joined_not_made"
+source = { table = "r1037.json", id = "N2_joined_not_made" }
+description = "_landed_rows: record every playlist the rows joined, made or already there"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py"]
+old = '    playlists = sorted({str(one) for one in joined if one and str(one) not in before})'
+new = '    playlists = sorted({str(one) for one in joined if one})'
+
+[[rows]]
+id = "r1037.N3_identity_wrong"
+source = { table = "r1037.json", id = "N3_identity_wrong" }
+description = "_landed_rows: record no database identity"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py"]
+old = '        "database_identity": plan.master_db_id,'
+new = '        "database_identity": "",'
+
+[[rows]]
+id = "r1037.N4_size_not_read"
+source = { table = "r1037.json", id = "N4_size_not_read" }
+description = "_landed_rows: record no file size, so no landed file can be proved by its size"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py"]
+old = '                    "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS},'
+new = '                    "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS if name != "FileSize"},'
+
+[[rows]]
+id = "r1037.N5_count_before_commit"
+source = { table = "r1037.json", id = "N5_count_before_commit" }
+description = "_landed_rows: record a count short of the one the commit left"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py"]
+old = '        sequence = int(db.get_local_usn())'
+new = '        sequence = int(db.get_local_usn()) - 1'
+
+[[rows]]
+id = "r1037.N6_before_empty"
+source = { table = "r1037.json", id = "N6_before_empty" }
+description = "apply_rows: read no playlist before the landing, so a playlist already there is recorded as made"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py"]
+old = '        playlists_before = frozenset(str(row.ID) for row in db.get_playlist())'
+new = '        playlists_before = frozenset()'
+
+[[rows]]
+id = "r1844.N13_landing_writes_no_uuid"
+source = { table = "r1844.json", id = "N13_landing_writes_no_uuid" }
+description = "native landing: the record names each row with an empty UUID"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py"]
+old = '                    LANDED_UUID_KEY: str(getattr(content, "UUID", None) or ""),'
+new = '                    LANDED_UUID_KEY: "",'
+
+[[rows]]
+id = "r746-b.N3_folder_path_not_restamped"
+source = { table = "r746-b.json", id = "N3_folder_path_not_restamped" }
+description = "_restamp: the row keeps the path the binding stored, the planned path is never put on it"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+    if str(content.FolderPath) != row.folder_path:
+        content.FolderPath = row.folder_path'''
+new = '''
+    if False:
+        content.FolderPath = row.folder_path'''
+
+[[rows]]
+id = "r746-b.N4_device_not_restamped"
+source = { table = "r746-b.json", id = "N4_device_not_restamped" }
+description = "_restamp: the row keeps the device the binding chose"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+    if str(content.DeviceID) != plan.device_id:
+        content.DeviceID = plan.device_id'''
+new = '''
+    if False:
+        content.DeviceID = plan.device_id'''
+
+[[rows]]
+id = "r777.N16_pass_not_recorded"
+source = { table = "r777.json", id = "N16_pass_not_recorded" }
+description = "The native landing's commit no longer records the pass"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+    if plan.pass_name:
+        record.detail[PASS_KEY] = plan.pass_name'''
+new = '''
+    if False:
+        record.detail[PASS_KEY] = plan.pass_name'''
+
+[[rows]]
+id = "r923.N1_landing_sets_nothing"
+source = { table = "r923.json", id = "N1_landing_sets_nothing" }
+description = "The native landing no longer sets rekordbox's defaults on a row it creates"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '        if getattr(content, column, None) is None:'
+new = '        if False:'
+
+[[rows]]
+id = "u113-c.C1_native_batch_always"
+source = { table = "u113-c.json", id = "C1_native_batch_always" }
+description = "The native write always makes the batch playlist, empty when every row was claimed"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '            if ordered or not accounts:'
+new = '            if True:'
+
+[[rows]]
+id = "u113-c.C2_native_batch_keeps_claimed"
+source = { table = "u113-c.json", id = "C2_native_batch_keeps_claimed" }
+description = "The native batch playlist holds the claimed rows too"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+moved = "the same guard, the claimed test of the batch walk, now one comprehension in native.py's _batch_order (U307 folded the loop)"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '        dict.fromkeys(by_target[one] for one in targets if one in by_target and one not in claimed)'
+new = '        dict.fromkeys(by_target[one] for one in targets if one in by_target)'
+
+[[rows]]
+id = "u113-c.C3_native_found_by_name"
+source = { table = "u113-c.json", id = "C3_native_found_by_name" }
+description = "An account playlist is found by its name under INBOX and added to, rather than created"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '                created = db.create_playlist(one.name, parent=anchor)'
+new = '                created = rb_writer.ensure_playlist(db, one.name, anchor)'
+
+[[rows]]
+id = "u113-c.C4_native_record_unnamed"
+source = { table = "u113-c.json", id = "C4_native_record_unnamed" }
+description = "The native landing record does not list the account playlists by identifier"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '        record.detail[INBOX_PLAYLISTS_KEY] = ['
+new = '        record.detail["inbox_playlists_unread"] = ['
+
+[[rows]]
+id = "u115.F1_landing_keeps_random_id"
+source = { table = "u115.json", id = "F1_landing_keeps_random_id" }
+description = "The native landing keeps the random rb_file_id the binding minted instead of the landed file's inode"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''
+    setattr(content, rb_writer.FILE_ID_COLUMN, file_id_of(row.target))
+'''
+new = ''
+
+[[rows]]
+id = "u120.N3_identity_without_hearts"
+source = { table = "u120.json", id = "N3_identity_without_hearts" }
+description = "identity: the digest leaves the hearts out"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '    favorites = {"favorites": plan.favorites.identity()} if plan.favorites is not None else {}'
+new = '    favorites = {}'
+
+[[rows]]
+id = "u126.F3_counts_undigested"
+source = { table = "u126.json", id = "F3_counts_undigested" }
+description = "Digest the value alone, so the counts the screen shows can change under an approval"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '            {"value": plan.link.value, "carriers": plan.link.carriers, "rows": plan.link.rows}'
+new = '            {"value": plan.link.value}'
+
+[[rows]]
+id = "u126.P2_not_shown"
+source = { table = "u126.json", id = "P2_not_shown" }
+description = "Drop ContentLink from a row's columns, so the screen and the row's part of the digest omit it"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''
+            **(
+                {rb_writer.CONTENT_LINK_COLUMN: self.content_link}
+                if self.content_link is not None
+                else {}
+            ),'''
+new = ''
+
+[[rows]]
+id = "u126.R1_binding_value_kept"
+source = { table = "u126.json", id = "R1_binding_value_kept" }
+description = "Drop the restamp of ContentLink, so the row keeps the binding's value"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '    setattr(content, rb_writer.CONTENT_LINK_COLUMN, row.content_link)'
+new = '    pass'
+
+[[rows]]
+id = "u126.R2_fill_if_null"
+source = { table = "u126.json", id = "R2_fill_if_null" }
+description = "Set ContentLink only when the binding left it NULL, which it never does"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '    setattr(content, rb_writer.CONTENT_LINK_COLUMN, row.content_link)'
+new = '''
+    if getattr(content, rb_writer.CONTENT_LINK_COLUMN, None) is None:
+        setattr(content, rb_writer.CONTENT_LINK_COLUMN, row.content_link)'''
+
+[[rows]]
+id = "u126.R3_check_skipped"
+source = { table = "u126.json", id = "R3_check_skipped" }
+description = "Skip the read back's ContentLink check"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '        if landed.content_link is None or row.content_link != landed.content_link'
+new = '        if False'
+
+[[rows]]
+id = "u126.R5_read_back_file_id"
+source = { table = "u126.json", id = "R5_read_back_file_id" }
+description = "Read back the file id column where the link should be"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '        None if row[3] is None else int(row[3]),'
+new = '        None if row[2] is None else int(row[2]),'
+
+[[rows]]
+id = "u126.S1_file_id_kept"
+source = { table = "u126.json", id = "S1_file_id_kept" }
+description = "Sample, U115: drop the file id restamp, so the row keeps the binding's random id"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '    setattr(content, rb_writer.FILE_ID_COLUMN, file_id_of(row.target))'
+new = '    pass'
+
+[[rows]]
+id = "u126.S2_defaults_left_null"
+source = { table = "u126.json", id = "S2_defaults_left_null" }
+description = "Sample, R-923: drop the defaults fill, so the binding's NULLs stay"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        if getattr(content, column, None) is None:
+            setattr(content, column, value)'''
+new = '        pass'
+
+[[rows]]
+id = "u127-b.N6b_digest_blind_to_vox"
+source = { table = "u127-b.json", id = "N6b_digest_blind_to_vox" }
+description = "Drop each added row's score and answer from the digest, after the engine test"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '                "rows": [[str(row.target), row.voxlevel, row.vox] for row in plan.to_add()],'
+new = '                "rows": [[str(row.target)] for row in plan.to_add()],'
+
+[[rows]]
+id = "u127.N10_record_silent"
+source = { table = "u127.json", id = "N10_record_silent" }
+description = "Record no commit under the vocals key, so a restore cannot count the tags"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '    if vox_written > 0:'
+new = '    if vox_written > 10**6:'
+
+[[rows]]
+id = "u127.N11_missing_unreported"
+source = { table = "u127.json", id = "N11_missing_unreported" }
+description = "Never report a planned tag that adoption does not read back"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '            row.target for row, content_id in added_ids if row.vox and content_id not in voxed'
+new = '            row.target for row, content_id in added_ids if False'
+
+[[rows]]
+id = "u127.N12_unscored_dropped"
+source = { table = "u127.json", id = "N12_unscored_dropped" }
+description = "Name no unscored file on the landed record"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '    unscored = {row.target for row in plan.vox_unscored()}'
+new = '    unscored = set()'
+
+[[rows]]
+id = "u127.N14_read_back_skipped"
+source = { table = "u127.json", id = "N14_read_back_skipped" }
+description = "Never read the tag back, so every landed row reports untagged"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py"]
+old = '            _vox_read_back(db) if any(row.vox for row, _ in added_ids) else (frozenset(), "")'
+new = '            (frozenset(), "") if any(row.vox for row, _ in added_ids) else (frozenset(), "")'
+
+[[rows]]
+id = "u127.N7_digest_blind_to_cut"
+source = { table = "u127.json", id = "N7_digest_blind_to_cut" }
+description = "Drop the cut from the digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '                "cut": plan.vox_cut,'
+new = '                "cut": None,'
+
+[[rows]]
+id = "u127.N8_tag_never_written"
+source = { table = "u127.json", id = "N8_tag_never_written" }
+description = "Write no tag at the apply, the defect R-841 measured"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py"]
+old = '            vox_written = _tag_vox(db, added_ids)'
+new = '            vox_written = 0'
+
+[[rows]]
+id = "u127.N9_tag_every_added"
+source = { table = "u127.json", id = "N9_tag_every_added" }
+description = "Write the tag on every added row, not only those the plan tagged"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py"]
+old = '    content_ids = [content_id for row, content_id in added if row.vox]'
+new = '    content_ids = [content_id for row, content_id in added]'
+
+[[rows]]
+id = "u128-b.N1_native_owned_unwritten"
+source = { table = "u128-b.json", id = "N1_native_owned_unwritten" }
+description = "The native commit joins no owned row to its playlist, the new rows alone"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '''
+                        member.content_id
+                        if member.target is None'''
+new = '''
+                        ""
+                        if member.target is None'''
+
+[[rows]]
+id = "u128-b.N2_native_record_no_pass"
+source = { table = "u128-b.json", id = "N2_native_record_no_pass" }
+description = "The native landing's record names no pass, so a rerun cannot find what it mirrored"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '                ingest.INBOX_PASS_KEY: plan.pass_name or "",'
+new = '                ingest.INBOX_PASS_KEY: "",'
+
+[[rows]]
+id = "u146-c.N2_owned_not_written"
+source = { table = "u146-c.json", id = "N2_owned_not_written" }
+description = "apply_rows: the owned hearts are planned and shown and never written"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '                pairs.extend((one.content_id, one.month) for one in plan.favorites.owned)'
+new = ''
+
+[[rows]]
+id = "u146-e.N3_owned_out_of_digest"
+source = { table = "u146-e.json", id = "N3_owned_out_of_digest" }
+description = "FavoritesPlan.identity: the owned hearts are not digested, so an answer given for one set of them stands for another"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''
+        if self.owned:
+            identity["owned"] = ['''
+new = '''
+        if self.owned and False:
+            identity["owned"] = ['''
+
+[[rows]]
+id = "u150.F2_record_provider"
+source = { table = "u150.json", id = "F2_record_provider" }
+description = "native._record_commit: write no provider tracks on the landing's record"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '        record.detail[label_filing.PROVIDER_KEY] = dict(labels_written.provider)'
+new = '        pass'
+
+[[rows]]
+id = "u153.N1_restamp_id_text"
+source = { table = "u153.json", id = "N1_restamp_id_text" }
+description = "native _restamp: do not coerce the minted ID to text, so a colour on an existing row cannot flush beside a new one"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py", "tests/test_intake_land_owned_hearts_native.py"]
+old = '    content.ID = str(content.ID)'
+new = '    content.ID = content.ID'
+
+[[rows]]
+id = "u153.N3_landing_colour_owned"
+source = { table = "u153.json", id = "N3_landing_colour_owned" }
+description = "native apply: drop the owned hearts from the colour set, so an owned heart is placed but not coloured"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '                to_colour.extend(plan.favorites.colour)'
+new = '                to_colour.extend([])'
+
+[[rows]]
+id = "u156.L18_digest_native"
+source = { table = "u156.json", id = "L18_digest_native" }
+description = "native.identity: leave the label plan out of the landing's digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '    filed = {"labels": label_filing.identity(plan.labels)} if plan.labels is not None else {}'
+new = '    filed = {}'
+
+[[rows]]
+id = "u156.L19_write_called"
+source = { table = "u156.json", id = "L19_write_called" }
+description = "apply_rows: plan the labels and never write them"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '                labels_written = label_filing.write(db, plan.labels, by_target=by_target)'
+new = '                labels_written = None'
+
+[[rows]]
+id = "u156.L20_recorded"
+source = { table = "u156.json", id = "L20_recorded" }
+description = "_record_landing_commit: write the labels and record nothing of them on the session"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''
+    if labels_written is not None:
+        label_filing.record_commit(record, labels_written, cfg)'''
+new = '''
+    if False:
+        label_filing.record_commit(record, labels_written, cfg)'''
+
+[[rows]]
+id = "u157.N2_digest_rows"
+source = { table = "u157.json", id = "N2_digest_rows" }
+description = "identity: the dyn block names each row's answer only, not its drift or verdict"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '[str(row.target), row.drift, row.drift_verdict, row.dyn]'
+new = '[str(row.target), row.dyn]'
+
+[[rows]]
+id = "u157.N3_no_write"
+source = { table = "u157.json", id = "N3_no_write" }
+description = "apply: the dyn tag is never written"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '            dyn_written = _tag_dyn(db, added_ids)'
+new = '            dyn_written = 0'
+
+[[rows]]
+id = "u157.N4_trust_the_writer"
+source = { table = "u157.json", id = "N4_trust_the_writer" }
+description = "apply: report each row's dyn from the plan, not the read back"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '                    dyn=content_id in dyned,'
+new = '                    dyn=row.dyn,'
+
+[[rows]]
+id = "u157.N5_no_record"
+source = { table = "u157.json", id = "N5_no_record" }
+description = "_record_landing_commit: record no dyn tags on the session"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '''
+    if dyn_written > 0:
+        session.record_commit('''
+new = '''
+    if False:
+        session.record_commit('''
+
+[[rows]]
+id = "u161.P1_path_back_in_digest"
+source = { table = "u161.json", id = "P1_path_back_in_digest" }
+description = "native.identity: digest str(plan.database) again, the line U161 removed, so a copy rehearsal can never match"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''
+        "database": str(plan.database),
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+
+[[rows]]
+id = "u161.P2_parent_in_digest"
+source = { table = "u161.json", id = "P2_parent_in_digest" }
+description = "native.identity: digest the database's folder under another key, a path the old key's name check would not see"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''
+        "where": str(plan.database.parent),
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+
+[[rows]]
+id = "u161.P3_file_name_in_digest"
+source = { table = "u161.json", id = "P3_file_name_in_digest" }
+description = "native.identity: digest the database's file name alone, which a copy named differently from master.db would not share"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''
+        "file": plan.database.name,
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+
+[[rows]]
+id = "u161.P4_device_out"
+source = { table = "u161.json", id = "P4_device_out" }
+description = "native.identity: drop the device, so an answer for one library is not stale for another with the same master id"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '        "master_db_id": plan.master_db_id,'
+
+[[rows]]
+id = "u161.P5_master_out"
+source = { table = "u161.json", id = "P5_master_out" }
+description = "native.identity: drop the master id, the other half of the library identity that replaced the path"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '        "device": plan.device_id,'
+
+[[rows]]
+id = "u161.S1_playlist_out"
+source = { table = "u161.json", id = "S1_playlist_out" }
+description = "native.identity: drop the batch playlist's name from the engine digest (sample of an existing guard)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+        "playlist": plan.playlist,
+        "batch_playlist": plan.batch_playlist_id,'''
+new = '        "batch_playlist": plan.batch_playlist_id,'
+
+[[rows]]
+id = "u161.S2_columns_out"
+source = { table = "u161.json", id = "S2_columns_out" }
+description = "native.identity: drop each row's columns from the engine digest (sample of an existing guard)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+                "content_id": row.content_id,
+                "columns": row.columns(),'''
+new = '                "content_id": row.content_id,'
+
+[[rows]]
+id = "u163.W12_readback_active"
+source = { table = "u163.json", id = "W12_readback_active" }
+description = "_words_back: read the artist through any row, tombstones included"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py"]
+old = '            f"LEFT JOIN {rb_writer.ARTIST_TABLE} a ON a.ID = c.{ARTIST_COLUMN} AND a.{active} "'
+new = '            f"LEFT JOIN {rb_writer.ARTIST_TABLE} a ON a.ID = c.{ARTIST_COLUMN} "'
+
+[[rows]]
+id = "u163.W13_identified_words"
+source = { table = "u163.json", id = "W13_identified_words" }
+description = "assert_rows_identified: never compare the words read back"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py"]
+old = '        if row.words.get(column) != want'
+new = '        if False'
+
+[[rows]]
+id = "u163.W14_album_artist_link"
+source = { table = "u163.json", id = "W14_album_artist_link" }
+description = "_Mints._mint: mint an album with no album artist"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py"]
+old = '''
+        if word.table == rb_writer.ALBUM_TABLE:
+            columns[ALBUM_ARTIST]'''
+new = '''
+        if False:
+            columns[ALBUM_ARTIST]'''
+
+[[rows]]
+id = "u163.W4_year_written"
+source = { table = "u163.json", id = "W4_year_written" }
+description = "_Mints.link: drop the ReleaseYear write"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py"]
+old = '''
+        if row.year is not None:
+            setattr(content, YEAR_COLUMN, row.year)'''
+new = '''
+        if False:
+            setattr(content, YEAR_COLUMN, row.year)'''
+
+[[rows]]
+id = "u163.W7_unmoved"
+source = { table = "u163.json", id = "W7_unmoved" }
+description = "_assert_words_unmoved: never refuse a word that moved since the plan"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py"]
+old = '            if _rows_of(now) != _rows_of(word):'
+new = '            if False:'
+
+[[rows]]
+id = "u163.W8_mint_once"
+source = { table = "u163.json", id = "W8_mint_once" }
+description = "_Mints.id_of: mint a new word again for every row"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py"]
+old = '''
+        if key not in self._made:
+            self._made[key] = self._mint(word)'''
+new = '''
+        if True:
+            self._made[key] = self._mint(word)'''
+
+[[rows]]
+id = "u163.W9_creations_named"
+source = { table = "u163.json", id = "W9_creations_named" }
+description = "apply_rows: name only the content table in creations, so a mint is refused"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_words.py"]
+old = '                db, creations=(rb_writer.CONTENT_TABLE, *mints.tables())'
+new = '                db, creations=(rb_writer.CONTENT_TABLE,)'
+
+[[rows]]
+id = "u164.R1_record_filed"
+source = { table = "u164.json", id = "R1_record_filed" }
+description = "_record_landing_commit: never record the filed batch and its folder"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+    if plan.folder is not None and plan.batch:
+        record.detail[FILED_BATCH_KEY]'''
+new = '''
+    if False:
+        record.detail[FILED_BATCH_KEY]'''
+
+[[rows]]
+id = "u165.N1_digest"
+source = { table = "u165.json", id = "N1_digest" }
+description = "identity: leave the predictions out of the digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py"]
+old = '        {"filing": [one.identity() for one in plan.filing]} if plan.filing is not None else {}'
+new = '        {}'
+
+[[rows]]
+id = "u166.A4_no_add"
+source = { table = "u166.json", id = "A4_no_add" }
+description = "apply_rows: add nothing to Analyze"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''
+            if added_ids:
+                analyze = _analyze_row(db, plan, anchor)'''
+new = '''
+            if False:
+                analyze = _analyze_row(db, plan, anchor)'''
+
+[[rows]]
+id = "u166.A5_present_rows_too"
+source = { table = "u166.json", id = "A5_present_rows_too" }
+description = "apply_rows: add every row the plan names, present ones too"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '                        db, analyze, [content_id for _row, content_id in added_ids]'
+new = '                        db, analyze, list(by_target.values())'
+
+[[rows]]
+id = "u166.A6_always_create"
+source = { table = "u166.json", id = "A6_always_create" }
+description = "_analyze_row: make a new Analyze every landing"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '    return found if found is not None else db.create_playlist(ANALYZE, parent=anchor)'
+new = '    return db.create_playlist(ANALYZE, parent=anchor)'
+
+[[rows]]
+id = "u166.A7_record_count"
+source = { table = "u166.json", id = "A7_record_count" }
+description = "apply_rows: record the batch's memberships only on success"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''
+        _record_landing_commit(
+            record,
+            plan,
+            len(added_ids),
+            memberships + analyze_added,'''
+new = '''
+        _record_landing_commit(
+            record,
+            plan,
+            len(added_ids),
+            memberships,'''
+
+[[rows]]
+id = "u166.A8_digest_key"
+source = { table = "u166.json", id = "A8_digest_key" }
+description = "identity: leave the found Analyze out of the digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '    analyze = {"analyze": plan.analyze_playlist_id} if plan.to_add() else {}'
+new = '    analyze = {}'
+
+[[rows]]
+id = "u307.R23_batch_order_keeps_claimed"
+source = { table = "u307.json", id = "R23_batch_order_keeps_claimed" }
+description = "native._batch_order: rows an account playlist claimed join the batch playlist as well"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = 'by_target[one] for one in targets if one in by_target and one not in claimed)'
+new = 'by_target[one] for one in targets if one in by_target)'
+
+[[rows]]
+id = "u954.M8_no_category_order"
+source = { table = "u954.json", id = "M8_no_category_order" }
+description = "DYN_NO_CATEGORY: the refusal's by hand Dynamic run placed after the Normal run"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '    "rows this landing names with Analysis Mode Dynamic by hand, before any Normal "'
+new = '    "rows this landing names with Analysis Mode Dynamic by hand, after any Normal "'
+
+[[rows]]
+id = "r746-b.N2_base_drive_swap_disabled"
+source = { table = "r746-b.json", id = "N2_base_drive_swap_disabled" }
+description = "stored_folder_path: the mounted path is stored whatever the property table records"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_native.py"]
+old = '        if text == current or text.startswith(current + os.sep):'
+new = '        if False:'
+
+[[rows]]
+id = "r746-b.N5_present_file_planned_as_an_add"
+source = { table = "r746-b.json", id = "N5_present_file_planned_as_an_add" }
+description = "plan_rows: a file the collection already holds is planned as an add, so it would be added twice"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_native.py"]
+old = '            action, why = (ADD if held is None else PRESENT), ""'
+new = '            action, why = ADD, ""'
+
+[[rows]]
+id = "r770-d.C7_unresolved_target_planned_as_an_add"
+source = { table = "r770-d.json", id = "C7_unresolved_target_planned_as_an_add" }
+description = "native.plan_rows: read a target the matcher could not resolve as a file the collection does not hold"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_writers_native.py"]
+old = '        if match.outcome is trees.MatchOutcome.UNRESOLVED:'
+new = '        if False:'
+
+[[rows]]
+id = "r777.N15_any_pass"
+source = { table = "r777.json", id = "N15_any_pass" }
+description = "landings_of_pass counts a landing of another pass"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_native.py"]
+old = '''
+            and record.detail.get(PASS_KEY) == name
+'''
+new = ''
+
+[[rows]]
+id = "u113-c.C5_removed_node_holds_name"
+source = { table = "u113-c.json", id = "C5_removed_node_holds_name" }
+description = "A removed node under INBOX still holds its name, so a free exact name takes a count"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '        if not rb_writer.node_removed(row):'
+new = '        if True:'
+
+[[rows]]
+id = "u120.N4_skipped_is_raised"
+source = { table = "u120.json", id = "N4_skipped_is_raised" }
+description = "_favorites_plan: a home that cannot be resolved raises through the landing"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''
+    try:
+        home = placement.resolve_home(db, source)
+    except CratekitError as exc:'''
+new = '''
+    try:
+        home = placement.resolve_home(db, source)
+    except ValueError as exc:'''
+
+[[rows]]
+id = "u126.F1_read_always"
+source = { table = "u126.json", id = "F1_read_always" }
+description = "Read the library's link whatever the plan adds, so a landing of held files refuses on a split library"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_native.py"]
+old = '        row_link.library_link(db) if any(row.action == ADD for row in rows) else None'
+new = '        row_link.library_link(db)'
+
+[[rows]]
+id = "u126.P1_no_read"
+source = { table = "u126.json", id = "P1_no_read" }
+description = "Skip the library read and plan a fixed value, the binding's shape of a guess"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '        row_link.library_link(db) if any(row.action == ADD for row in rows) else None'
+new = '''
+        row_link.LibraryLink(value=7, carriers=0, rows=0)
+        if any(row.action == ADD for row in rows)
+        else None'''
+
+[[rows]]
+id = "u127.N1_cut_strict"
+source = { table = "u127.json", id = "N1_cut_strict" }
+description = "Compare the score strictly above the cut, so a file exactly at the cut is not tagged"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py"]
+old = '''
+        values = metadata_cli.vocal_tag_values(level, None, cut)
+        scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))'''
+new = '''
+        values = metadata_cli.vocal_tag_values(level, None, cut + 0.5)
+        scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))'''
+
+[[rows]]
+id = "u127.N2_every_add_tagged"
+source = { table = "u127.json", id = "N2_every_add_tagged" }
+description = "Tag every added row whatever its score, the guess the brief forbids"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '        scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))'
+new = '        scored.append(replace(row, voxlevel=level, vox=True))'
+
+[[rows]]
+id = "u127.N3_default_cut_when_uncalibrated"
+source = { table = "u127.json", id = "N3_default_cut_when_uncalibrated" }
+description = "Tag from the vocals verb's default cut on a library with no calibration instead of blocking"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py"]
+old = '''
+    if cut is None:
+        return rows, None, VOX_UNCALIBRATED'''
+new = '''
+    if cut is None:
+        cut = metadata_cli.DEFAULT_VOCAL_THRESHOLD'''
+
+[[rows]]
+id = "u127.N4_unreadable_refuses"
+source = { table = "u127.json", id = "N4_unreadable_refuses" }
+description = "Let an unreadable calibration refuse the landing rather than block the tag"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the vox guard moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_an_unreadable_calibration_tags_nothing_and_lands_the_batch, is now the _unreadable case of test_a_tag_that_cannot_be_written_tags_nothing_says_why_and_lands_the_batch in the same file, parametrized over the three blocked shapes with the same input and the same checks"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '''
+    except CratekitError as exc:
+        # AN UNREADABLE CALIBRATION BLOCKS THE TAG, NOT THE LANDING. The'''
+new = '''
+    except ValueError as exc:
+        # AN UNREADABLE CALIBRATION BLOCKS THE TAG, NOT THE LANDING. The'''
+
+[[rows]]
+id = "u127.N5_no_category_check"
+source = { table = "u127.json", id = "N5_no_category_check" }
+description = "Skip the writer's question at plan time, so a library with no category fails after the moves"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the vox guard moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_a_library_with_no_category_to_copy_tags_nothing_and_lands_the_batch, is now the _no_category case of test_a_tag_that_cannot_be_written_tags_nothing_says_why_and_lands_the_batch in the same file, the same input and the same checks"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '''
+    if not rb_writer.my_tag_writable(db):
+        return rows, cut, VOX_NO_CATEGORY'''
+new = '''
+    if False:
+        return rows, cut, VOX_NO_CATEGORY'''
+
+[[rows]]
+id = "u128-b.N4_native_dropped_left_lost"
+source = { table = "u128-b.json", id = "N4_native_dropped_left_lost" }
+description = "A native playlist holding nothing writable drops its left rows"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '            dropped.extend((one.name, row) for row in left)'
+new = '            pass'
+
+[[rows]]
+id = "u146-c.N1_owned_held_planned"
+source = { table = "u146-c.json", id = "N1_owned_held_planned" }
+description = "_favorites_plan: an owned heart All Favorites holds is planned again beside a landing, and its month made"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '        if one.content_id in in_source or one.content_id in seen:'
+new = '        if one.content_id in seen:'
+
+[[rows]]
+id = "u146-c.N4_owned_needs_a_heart_file"
+source = { table = "u146-c.json", id = "N4_owned_needs_a_heart_file" }
+description = "_favorites_plan: owned hearts are placed only when a landed file is a heart too"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '    if not (kept or owned) or not source:'
+new = '    if not kept or not source:'
+
+[[rows]]
+id = "u157.N1_writable_unasked"
+source = { table = "u157.json", id = "N1_writable_unasked" }
+description = "_dyn_plan: skip the writer's own question, so a library with no category to copy plans a tag the commit refuses"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_dyn_native.py"]
+old = '''
+    if not rb_writer.my_tag_writable(db):
+        return read, cut, DYN_NO_CATEGORY
+'''
+new = ''
+
+[[rows]]
+id = "u163.W10_search_convention"
+source = { table = "u163.json", id = "W10_search_convention" }
+description = "_Resolver._shaped: store NULL in SearchStr whatever the library's convention"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_words.py"]
+old = '        return replace(word, search=word.name if convention == SEARCH_NAME else convention)'
+new = '        return replace(word, search=None)'
+
+[[rows]]
+id = "u163.W11_search_tie"
+source = { table = "u163.json", id = "W11_search_tie" }
+description = "search_convention: answer the first ranked convention on a tie"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_words.py"]
+old = '    if not ranked or (len(ranked) > 1 and ranked[0][1] == ranked[1][1]):'
+new = '    if not ranked:'
+
+[[rows]]
+id = "u163.W1_words_planned"
+source = { table = "u163.json", id = "W1_words_planned" }
+description = "plan_rows: never plan the words, so no row carries artist, album, genre or year"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_words.py"]
+old = '''
+    rows = _words_plan(db, rows)
+'''
+new = '''
+    rows = rows
+'''
+
+[[rows]]
+id = "u163.W2_first_value"
+source = { table = "u163.json", id = "W2_first_value" }
+description = "_word: keep the NUL joined ID3 value whole (round one's fix)"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_words.py"]
+old = '    first = (value or "").split("\x00")[0]'
+new = '    first = value or ""'
+
+[[rows]]
+id = "u163.W3_year_digits"
+source = { table = "u163.json", id = "W3_year_digits" }
+description = "year_of: accept any four characters as a year"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_words.py"]
+old = '    if len(head) != 4 or not head.isdigit() or int(head) == 0:'
+new = '    if len(head) != 4:'
+
+[[rows]]
+id = "u163.W5_album_artist_mint"
+source = { table = "u163.json", id = "W5_album_artist_mint" }
+description = "_active_album_id: look up an album whose album artist is minted, instead of minting it"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the album lookup moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_an_album_whose_album_artist_is_minted_is_minted_beside_a_namesake_with_none, is now the Three.flac case of test_an_album_links_the_one_its_album_artist_holds in the same file, which asserts the minted album artist holds a new album beside the namesake with none"
+tests = ["tests/test_intake_land_words.py"]
+old = '''
+    if album_artist is not None and not album_artist.row_id:
+        return ""'''
+new = '''
+    if False:
+        return ""'''
+
+[[rows]]
+id = "u163.W6_album_by_artist"
+source = { table = "u163.json", id = "W6_album_by_artist" }
+description = "_active_album_id: find the album by name alone, ignoring its album artist"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+tests = ["tests/test_intake_land_words.py"]
+old = '        if str(getattr(row, ALBUM_ARTIST, None) or "") == want'
+new = '        if True'
+
+[[rows]]
+id = "u166.A1_parent_check"
+source = { table = "u166.json", id = "A1_parent_check" }
+description = "analyze_playlist: take a live Analyze anywhere, not only directly under the root"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the ANALYZE lookup moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_an_analyze_playlist_outside_the_root_is_never_written_into, is now the p-elsewhere node of test_a_removed_smart_or_outside_node_named_analyze_is_never_written_into in the same file, the same node and the same check"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '''
+        if str(getattr(row, "ParentID", "") or "") != str(root_id):
+            continue
+        if rb_writer.node_removed(row)'''
+new = '''
+        if False:
+            continue
+        if rb_writer.node_removed(row)'''
+
+[[rows]]
+id = "u166.A2_removed_check"
+source = { table = "u166.json", id = "A2_removed_check" }
+description = "analyze_playlist: take a removed Analyze as the queue"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the ANALYZE lookup moved whole from native.py to native_plan.py with the plan (U307); the tests that killed it are now the p-gone node of test_a_removed_smart_or_outside_node_named_analyze_is_never_written_into and the removed after approval half of test_a_held_row_is_not_added_to_analyze_and_analyze_removed_after_approval_refuses, in the same file, the same inputs and checks"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '        if rb_writer.node_removed(row) or int(getattr(row, "Attribute", -1)) != 0:'
+new = '        if int(getattr(row, "Attribute", -1)) != 0:'
+
+[[rows]]
+id = "u166.A3_plain_check"
+source = { table = "u166.json", id = "A3_plain_check" }
+description = "analyze_playlist: take a folder or smart playlist named Analyze as the queue"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the ANALYZE lookup moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_a_removed_or_smart_node_named_analyze_is_never_written_into, is now test_a_removed_smart_or_outside_node_named_analyze_is_never_written_into in the same file, its p-smart node the same input and check"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '        if rb_writer.node_removed(row) or int(getattr(row, "Attribute", -1)) != 0:'
+new = '        if rb_writer.node_removed(row):'
+
+[[rows]]
+id = "u166.A9_reserved_batch"
+source = { table = "u166.json", id = "A9_reserved_batch" }
+description = "plan_rows: let a batch take the name Analyze"
+file = "src/cratekit/intake/native_plan.py"
+surface = "user"
+moved = "the reserved batch name check moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_a_batch_named_analyze_is_refused_before_the_gate_and_nothing_moves, is now the second half of test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused in the same file, the same staging, verb and checks"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '    if batch == ANALYZE:'
+new = '    if False:'
+
+[[rows]]
+id = "r1255.F1_refill_plan_unlisted"
+source = { table = "r1255.json", id = "F1_refill_plan_unlisted" }
+description = "plan_refill: leave the plan's log_unlisted at its default, so the warning counts a record"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '        log_unlisted=session.log_unlisted(unreadable, cfg),'
+new = '        log_unlisted=False,'
+
+[[rows]]
+id = "u134-a.A10_shared_playlist"
+source = { table = "u134-a.json", id = "A10_shared_playlist" }
+description = "Let two jobs share one playlist unless three do"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = 'counts[one.playlist_id] > 1'
+new = 'counts[one.playlist_id] > 2'
+
+[[rows]]
+id = "u134-a.A11_pass_unknown"
+source = { table = "u134-a.json", id = "A11_pass_unknown" }
+description = "Drop the refusal of a pass with no account playlist job"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''
+    if not named:
+        raise _pass_unknown(cfg, pass_name)
+'''
+new = ''
+
+[[rows]]
+id = "u134-a.A1_outside_inbox"
+source = { table = "u134-a.json", id = "A1_outside_inbox" }
+description = "Drop the refusal of a recorded mirror that is live outside INBOX"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '        if str(mirror.ID) not in under:'
+new = '        if False:'
+
+[[rows]]
+id = "u134-a.A2_mirror_is_first"
+source = { table = "u134-a.json", id = "A2_mirror_is_first" }
+description = "Take the newest recorded entry of the pass as the mirror instead of the oldest"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '        mirror = _live_playlist(db, recorded[0])'
+new = '        mirror = _live_playlist(db, recorded[-1])'
+
+[[rows]]
+id = "u134-a.A3_gone_listed"
+source = { table = "u134-a.json", id = "A3_gone_listed" }
+description = "Fall through to the name match when the recorded mirror is gone"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''
+    if recorded:
+        mirror = _live_playlist(db, recorded[0])'''
+new = '''
+    if recorded and _live_playlist(db, recorded[0]) is not None:
+        mirror = _live_playlist(db, recorded[0])'''
+
+[[rows]]
+id = "u134-a.A4_others_excluded"
+source = { table = "u134-a.json", id = "A4_others_excluded" }
+description = "Let the name match take a playlist a record gives another pass"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '            if key not in others'
+new = '            if True'
+
+[[rows]]
+id = "u134-a.A5_unreadable"
+source = { table = "u134-a.json", id = "A5_unreadable" }
+description = "Trust a name match while a session record could not be read"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '        if unreadable:'
+new = '        if False:'
+
+[[rows]]
+id = "u134-a.A6_pre_u128_exact_name"
+source = { table = "u134-a.json", id = "A6_pre_u128_exact_name" }
+description = "Match a pre U128 entry by pass alone, so the Name 2 twin counts"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '    return entry.account == account if entry.account else entry.name == name'
+new = '    return entry.account == account if entry.account else True'
+
+[[rows]]
+id = "u134-a.A7_pass_matched"
+source = { table = "u134-a.json", id = "A7_pass_matched" }
+description = "Drop the pass comparison, so another pass's record names the mirror"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''
+    if entry.pass_name != pass_name:
+        return False
+'''
+new = ''
+
+[[rows]]
+id = "u134-a.A8_only_what_it_lacks"
+source = { table = "u134-a.json", id = "A8_only_what_it_lacks" }
+description = "Plan every distinct member as an add whatever the playlist holds"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = 'if one not in present)'
+new = 'if True)'
+
+[[rows]]
+id = "u134-b.B1c_composite_short_write"
+source = { table = "u134-b.json", id = "B1c_composite_short_write" }
+description = "What B1 holds: the write adds all but the first planned membership"
+file = "src/cratekit/intake/refill.py"
+surface = "maintainer"
+tests = ["tests/test_inbox_refill.py"]
+old = '                    rb_writer.add_memberships(db, playlist, target.adds)'
+new = '                    rb_writer.add_memberships(db, playlist, target.adds[1:])'
+
+[[rows]]
+id = "u134-b.B2c_composite_reversed_write"
+source = { table = "u134-b.json", id = "B2c_composite_reversed_write" }
+description = "What B2 holds: the write adds the planned memberships in reverse"
+file = "src/cratekit/intake/refill.py"
+surface = "maintainer"
+tests = ["tests/test_inbox_refill.py"]
+old = '                    rb_writer.add_memberships(db, playlist, target.adds)'
+new = '                    rb_writer.add_memberships(db, playlist, target.adds[::-1])'
+
+[[rows]]
+id = "u134-b.B4_record_on_success"
+source = { table = "u134-b.json", id = "B4_record_on_success" }
+description = "Drop the success path's record of the commit"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''
+        _record_refill_commit(record, plan, added, cfg)
+        convergence.record_fingerprint(cfg, db)'''
+new = '        convergence.record_fingerprint(cfg, db)'
+
+[[rows]]
+id = "u134-b.B7_again_action"
+source = { table = "u134-b.json", id = "B7_again_action" }
+description = "Show a repeated track's second row as held, not again"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '            if one.content_id in seen:'
+new = '            if False:'
+
+[[rows]]
+id = "u175.F1_bridge_name_unasked"
+source = { table = "u175.json", id = "F1_bridge_name_unasked" }
+description = "refill.locate: ask only the account's bare name again, so a dated playlist an intake file recorded by name alone is called unfound"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '        asked = {name, recorded_name} - {"", native.ANALYZE}'
+new = '        asked = {name} - {"", native.ANALYZE}'
+
+[[rows]]
+id = "u175.F2_bridge_names_any_account"
+source = { table = "u175.json", id = "F2_bridge_names_any_account" }
+description = "refill.bridge_names: take an intake file's entry of any account, so another account playlist's dated name is asked"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '                and str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "") == account'
+new = '                and True'
+
+[[rows]]
+id = "u175.F3_analyze_asked"
+source = { table = "u175.json", id = "F3_analyze_asked" }
+description = "refill.locate: stop excluding the reserved Analyze from the names asked"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '        asked = {name, recorded_name} - {"", native.ANALYZE}'
+new = '        asked = {name, recorded_name} - {""}'
+
+[[rows]]
+id = "u175.F4_bridge_names_any_state"
+source = { table = "u175.json", id = "F4_bridge_names_any_state" }
+description = "refill.bridge_names: read an intake record that no longer stands, so an abandoned landing's name is asked"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''
+        if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in _STANDING:
+            continue
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
+            if ('''
+new = '''
+        if record.workflow != ingest.INTAKE_WORKFLOW:
+            continue
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
+            if ('''
+
+[[rows]]
+id = "u175.F5_bridge_names_by_id_order"
+source = { table = "u175.json", id = "F5_bridge_names_by_id_order" }
+description = "refill.bridge_names: order the records by identifier alone, so a later landing whose identifier sorts first is asked as the first"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''
+    names: list[str] = []
+    for record in sorted(records, key=lambda one: (one.started, one.session_id)):'''
+new = '''
+    names: list[str] = []
+    for record in sorted(records, key=lambda one: one.session_id):'''
+
+[[rows]]
+id = "r1255.F2_refill_warning_wording"
+source = { table = "r1255.json", id = "F2_refill_warning_wording" }
+description = "warnings_of: word an unlisted log as a count of records"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '                        if plan.log_unlisted'
+new = '                        if False'
+
+[[rows]]
+id = "u134-b.B5_no_writes_no_op"
+source = { table = "u134-b.json", id = "B5_no_writes_no_op" }
+description = "Apply a plan that adds nothing instead of ending no_op"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '    if not plan.writes:'
+new = '    if False:'
+
+[[rows]]
+id = "u134-b.B6_ack_before_gate"
+source = { table = "u134-b.json", id = "B6_ack_before_gate" }
+description = "Drop the backup acknowledgment read before the plan and the gate"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''
+    session.assert_backup_acknowledged(cfg)
+'''
+new = ''
+
+[[rows]]
+id = "u307.R10_refill_writing_watches_nothing"
+source = { table = "u307.json", id = "R10_refill_writing_watches_nothing" }
+description = "refill_cli.writing: hand the write no analysis roots, so refill and analyzed apply with an empty analysis watch"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '        return apply(db, analysis_store.watch_roots(cfg))'
+new = '        return apply(db, ())'
+
+[[rows]]
+id = "u331.S09_rehearsal_origin_renamed"
+source = { table = "u331.json", id = "S09_rehearsal_origin_renamed" }
+description = "intake/rehearsal: print the package it moved to as the rehearsal's refusal origin"
+file = "src/cratekit/intake/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '_ORIGIN = ("core", "rehearsal")'
+new = '_ORIGIN = ("intake", "rehearsal")'
+
+[[rows]]
+id = "u331.S10_check_engine_imports_analysis_at_top"
+source = { table = "u331.json", id = "S10_check_engine_imports_analysis_at_top" }
+description = "intake/rekordbox_check: import the analysis package at the top again, so analyze check cannot build with the analysis toggle off"
+file = "src/cratekit/intake/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_import_rules.py"]
+old = '''
+from typing import Any, Iterable, Mapping, Sequence
+
+from cratekit.core import analysis_store,'''
+new = '''
+from typing import Any, Iterable, Mapping, Sequence
+
+from cratekit.analysis import agreement  # noqa: F401
+from cratekit.core import analysis_store,'''
+
+[[rows]]
+id = "r1255.R1_rotation_unlisted_from_scan"
+source = { table = "r1255.json", id = "R1_rotation_unlisted_from_scan" }
+description = "landings: never read the listing off the scan, so the classifier's reason counts one record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '    unlisted = session.log_unlisted(unreadable, cfg)'
+new = '    unlisted = False'
+
+[[rows]]
+id = "r1255.R2_plan_carries_unlisted"
+source = { table = "r1255.json", id = "R2_plan_carries_unlisted" }
+description = "plan_rotation: leave the plan's log_unlisted at its default, so the warning counts a record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '        log_unlisted=found.unlisted,'
+new = '        log_unlisted=False,'
+
+[[rows]]
+id = "u111-c.C3_inboxed_suffix"
+source = { table = "u111-c.json", id = "C3_inboxed_suffix" }
+description = "A name ending _inboxed is no longer recognised as a batch"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '    if name.endswith(INBOXED_SUFFIX):'
+new = '    if False:'
+
+[[rows]]
+id = "u111-c.C4_removal_threshold"
+source = { table = "u111-c.json", id = "C4_removal_threshold" }
+description = "A batch in Old is removed after the stale threshold instead of the expired one"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '        action = REMOVE if age > expired_days else KEEP'
+new = '        action = REMOVE if age > stale_days else KEEP'
+
+[[rows]]
+id = "u111-c.C5_move_threshold"
+source = { table = "u111-c.json", id = "C5_move_threshold" }
+description = "A batch in INBOX moves only after the expired threshold instead of the stale one"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '        action = MOVE if age > stale_days else KEEP'
+new = '        action = MOVE if age > expired_days else KEEP'
+
+[[rows]]
+id = "u111-c.C6_plan_taken_again"
+source = { table = "u111-c.json", id = "C6_plan_taken_again" }
+description = "The write no longer takes the plan again on its own handle and compares digests"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '    if again.digest != plan.digest:'
+new = '    if False:'
+
+[[rows]]
+id = "u111-c.C7_old_creation_planned"
+source = { table = "u111-c.json", id = "C7_old_creation_planned" }
+description = "The folder the write creates for Old is not named to the confinement judge"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '                created.append(str(old.ID))'
+new = '                pass'
+
+[[rows]]
+id = "u111-d.C10_two_olds_refused"
+source = { table = "u111-d.json", id = "C10_two_olds_refused" }
+description = "Two live Old folders under INBOX are no longer refused, the first is used"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '    if len(olds) > 1:'
+new = '    if len(olds) > 99:'
+
+[[rows]]
+id = "u111-d.C9_committed_records_only"
+source = { table = "u111-d.json", id = "C9_committed_records_only" }
+description = "A landing record dates its batch whether or not its commit landed"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '        if str(session.SourceState.COMMITTED) not in {str(v) for v in record.sources.values()}:'
+new = '        if False:'
+
+[[rows]]
+id = "u113-c.C7_unproven_import_names"
+source = { table = "u113-c.json", id = "C7_unproven_import_names" }
+description = "The rotation reads an intake file's recorded names whether or not its import was proven"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate_account_playlists.py"]
+old = '        if session.IMPORT_VERIFIED_KEY in record.detail:'
+new = '        if True:'
+
+[[rows]]
+id = "u113-c.C9_earliest_name_wins"
+source = { table = "u113-c.json", id = "C9_earliest_name_wins" }
+description = "The earliest landing of a recorded name ages it, not the latest"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate_account_playlists.py"]
+old = '                if name not in by_name or landed >= by_name[name][0]:'
+new = '                if name not in by_name or landed <= by_name[name][0]:'
+
+[[rows]]
+id = "u166.R2_rotate_reserved"
+source = { table = "u166.json", id = "R2_rotate_reserved" }
+description = "_classify: let the rotation take Analyze for a batch"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py"]
+old = '    if not in_old and name == native.ANALYZE:'
+new = '    if False:'
+
+[[rows]]
+id = "u175.R1_account_ids_unrecorded"
+source = { table = "u175.json", id = "R1_account_ids_unrecorded" }
+description = "rotate._named_ids: read no account playlist off a native landing record, so a dated playlist is no batch and is neither rotated nor mirrored"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '''
+    accounts = record.detail.get(native.INBOX_PLAYLISTS_KEY)
+    if isinstance(accounts, list):'''
+new = '''
+    accounts = None
+    if isinstance(accounts, list):'''
+
+[[rows]]
+id = "u214.M15_unread_is_not_none"
+source = { table = "u214.json", id = "M15_unread_is_not_none" }
+description = "_classify: say no landing record names an unrecognised playlist even while a session record could not be read"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '''
+            if unread
+            else'''
+new = '''
+            if False
+            else'''
+
+[[rows]]
+id = "u214.M16_old_only_under_inbox"
+source = { table = "u214.json", id = "M16_old_only_under_inbox" }
+description = "_classify: read a folder named Old inside Old as the Old folder too"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '        if not in_old and old_display is not None and name == old_display:'
+new = '        if old_display is not None and name == old_display:'
+
+[[rows]]
+id = "u214.M18_folder_unknown"
+source = { table = "u214.json", id = "M18_folder_unknown" }
+description = "_batch_folder: read a refused batch folder as absent, so a batch is said to have none"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '''
+    except OSError:
+        return None'''
+new = '''
+    except OSError:
+        return False'''
+
+[[rows]]
+id = "u214.M19_folder_unread_reason"
+source = { table = "u214.json", id = "M19_folder_unread_reason" }
+description = "_classify: say no batch folder carries the name even while the music folder could not be read"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '''
+            if folder_unread
+'''
+new = '''
+            if False
+'''
+
+[[rows]]
+id = "u214.M1_old_named_as_old"
+source = { table = "u214.json", id = "M1_old_named_as_old" }
+description = "_classify: never name the declared Old as Old, so it reads as any folder"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '        if not in_old and old_display is not None and name == old_display:'
+new = '        if False:'
+
+[[rows]]
+id = "u214.M20_unread_unlisted"
+source = { table = "u214.json", id = "M20_unread_unlisted" }
+description = "Landings.unread: say nothing of a log that could not be listed"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '        if self.unlisted:'
+new = '        if False:'
+
+[[rows]]
+id = "u214.M2_left_row_count"
+source = { table = "u214.json", id = "M2_left_row_count" }
+description = "_classify: count no rows for a left playlist, so the unrecognised label playlist is named without its 36 rows"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '        tracks = _track_count(db, row) if counted else None'
+new = '        tracks = None'
+
+[[rows]]
+id = "u214.M3_live_left_collected"
+source = { table = "u214.json", id = "M3_live_left_collected" }
+description = "live_batches: collect no left node, so the mirror drops them unsaid again"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '''
+        else:
+            left.append(classified)
+    return Live('''
+new = '''
+        else:
+            pass
+    return Live('''
+
+[[rows]]
+id = "u214.M4_digest_without_count"
+source = { table = "u214.json", id = "M4_digest_without_count" }
+description = "identity: digest each left node with its row count, so adding a track to a person's playlist stales the rotation gate"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '        "left": [node.identity() for node in plan.left],'
+new = '        "left": [node.to_json() for node in plan.left],'
+
+[[rows]]
+id = "u214.M5_rotation_old_display"
+source = { table = "u214.json", id = "M5_rotation_old_display" }
+description = "plan_rotation: pass no Old display, so the rotation plan names Old as a folder and the mirror as Old"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '            old_display=old.display,'
+new = '            old_display=None,'
+
+[[rows]]
+id = "u214.M6_live_old_display"
+source = { table = "u214.json", id = "M6_live_old_display" }
+description = "live_batches: read no Old display, so the mirror names Old as a plain folder"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '    old_display = declared.intake_old.display if declared.intake_old is not None else None'
+new = '    old_display = None'
+
+[[rows]]
+id = "u214.M7_label_rows"
+source = { table = "u214.json", id = "M7_label_rows" }
+description = "Left.label: leave the row count out of the line a person reads"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '        rows = f" ({self.tracks} row(s))" if self.tracks is not None else ""'
+new = '        rows = ""'
+
+[[rows]]
+id = "u307.R8_anchored_root_drops_cutover_step"
+source = { table = "u307.json", id = "R8_anchored_root_drops_cutover_step" }
+description = "rotate.anchored_root: the bridge refusal shared by every INBOX writer no longer names crate tree cutover as its step"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py"]
+old = '''
+                f"run crate tree cutover {tree_id} --export with a Fresh Export to "
+                f"move the intake tree to the database",'''
+new = '                "move the intake tree to the database",'
+
+[[rows]]
+id = "u329.W3_rotate_holds_a_permissive_copy"
+source = { table = "u329.json", id = "W3_rotate_holds_a_permissive_copy" }
+description = "intake.rotate binds a watched_roots of its own that accepts an empty list, the copy the one home replaced"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '''
+from cratekit.write.row_defaults import watched_roots
+'''
+new = '''
+def watched_roots(roots):
+    return [Path(root) for root in roots]
+'''
+
+[[rows]]
+id = "r1255.R3_rotation_warning_gate"
+source = { table = "r1255.json", id = "R3_rotation_warning_gate" }
+description = "records_warnings: never warn, so the rotation ages a batch from its playlist's date unsaid"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '''
+    if not plan.unreadable_records:
+        return []
+    unread = ('''
+new = '''
+    if True:
+        return []
+    unread = ('''
+
+[[rows]]
+id = "r1255.R4_rotation_warning_wording"
+source = { table = "r1255.json", id = "R4_rotation_warning_wording" }
+description = "records_warnings: word an unlisted log as a count of records"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '''
+        if plan.log_unlisted
+        else f"{plan.unreadable_records} session record(s) could not be read, so a "'''
+new = '''
+        if False
+        else f"{plan.unreadable_records} session record(s) could not be read, so a "'''
+
+[[rows]]
+id = "u111-d.D1_empty_plan_asks"
+source = { table = "u111-d.json", id = "D1_empty_plan_asks" }
+description = "A plan that moves and removes nothing returns without asking the gate"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "approve":'
+new = '    if plan.writes and ctx.gate.require(spec, plan=data, context=_facts(plan)) != "approve":'
+
+[[rows]]
+id = "u111-d.D2_ack_before_gate"
+source = { table = "u111-d.json", id = "D2_ack_before_gate" }
+description = "The backup acknowledgment is no longer read before the plan and the gate"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py"]
+old = '''
+    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    session.assert_backup_acknowledged(cfg)'''
+new = '''
+    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    pass'''
+
+[[rows]]
+id = "r1017.M3_landing_open_read"
+source = { table = "r1017.json", id = "M3_landing_open_read" }
+description = "Landing records: read a record that never closed as a landing"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        if record.state is session.SessionState.CLOSED
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+new = '''
+        if record.state is not None
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+
+[[rows]]
+id = "r1017.M4_landing_uncommitted_read"
+source = { table = "r1017.json", id = "M4_landing_uncommitted_read" }
+description = "Landing records: read a record whose source never committed as a landing"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+new = '''
+        and record.sources
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+
+[[rows]]
+id = "r1017.M5_landing_any_job"
+source = { table = "r1017.json", id = "M5_landing_any_job" }
+description = "Landing records: read another job's landing as this job's"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+new = '''
+        and record.detail[RECORD_KEY].get("job") is not None
+    ]
+    return tuple('''
+
+[[rows]]
+id = "r1017.M6_oldest_first"
+source = { table = "r1017.json", id = "M6_oldest_first" }
+description = "Landing records: read them oldest first, which recorded_playlist also depends on"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '        for record in sorted(found, key=lambda one: one.session_id, reverse=True)'
+new = '        for record in sorted(found, key=lambda one: one.session_id, reverse=False)'
+
+[[rows]]
+id = "r1017.M7_names_not_deduplicated"
+source = { table = "r1017.json", id = "M7_names_not_deduplicated" }
+description = "recorded_names: return a name twice when two landings recorded it"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "maintainer"
+tests = ["tests/test_export_set_rename.py"]
+old = '        dict.fromkeys(name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or "")))'
+new = '        list(name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or "")))'
+
+[[rows]]
+id = "u154.G10_read_back_path_unchecked"
+source = { table = "u154.json", id = "G10_read_back_path_unchecked" }
+description = "a row committed with a path other than the planned one is reported as shelved"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+            if str(stored or "") != row.folder_path:
+'''
+new = '''
+            if False:
+'''
+
+[[rows]]
+id = "u154.G11_kept_columns_unchecked"
+source = { table = "u154.json", id = "G11_kept_columns_unchecked" }
+description = "a column the shelve does not own may change without the read back saying so"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+            if before.get(row.content_id) != after.get(row.content_id):
+'''
+new = '''
+            if False:
+'''
+
+[[rows]]
+id = "u154.G14_reserved_folders_are_candidates"
+source = { table = "u154.json", id = "G14_reserved_folders_are_candidates" }
+description = "the processed tree and the sets folder are planned as batches under --all"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+        if entry.name.startswith(".") or entry.name in reserved:
+'''
+new = '''
+        if entry.name.startswith("."):
+'''
+
+[[rows]]
+id = "u154.G15_stored_target_under_mounted_path"
+source = { table = "u154.json", id = "G15_stored_target_under_mounted_path" }
+description = "the confinement check reads under the mounted target and not the stored one"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+            {"prefix": _like_prefix(one.stored_target)},
+'''
+new = '''
+            {"prefix": _like_prefix(str(one.target))},
+'''
+
+[[rows]]
+id = "u154.G17_refusal_before_rename_rewrapped"
+source = { table = "u154.json", id = "G17_refusal_before_rename_rewrapped" }
+description = "a stale plan refusal before any rename is rewrapped as a write failure"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+            if not moved and isinstance(exc, CratekitError):
+'''
+new = '''
+            if False:
+'''
+
+[[rows]]
+id = "u154.G1_policy_not_registered"
+source = { table = "u154.json", id = "G1_policy_not_registered" }
+description = "the path column is written with no field policy registered for the commit"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+            with rb_writer.field_policies_for_commit(rb_writer.SHELVE_POLICY):
+                _assert_confined(db, plan)
+                rb_writer.commit_guarded(db)
+'''
+new = '''
+            if True:
+                _assert_confined(db, plan)
+                rb_writer.commit_guarded(db)
+'''
+
+[[rows]]
+id = "u154.G2_confinement_dropped"
+source = { table = "u154.json", id = "G2_confinement_dropped" }
+description = "the SQL confinement check is skipped before the commit"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+                _assert_confined(db, plan)
+                rb_writer.commit_guarded(db)
+'''
+new = '''
+                rb_writer.commit_guarded(db)
+'''
+
+[[rows]]
+id = "u154.G3_rename_back_dropped"
+source = { table = "u154.json", id = "G3_rename_back_dropped" }
+description = "a failure past the rename leaves the folder at its new name"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''
+            failed = _rename_back(moved)
+'''
+new = '''
+            failed: list[str] = []
+'''
