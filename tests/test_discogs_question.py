@@ -98,6 +98,12 @@ def genre_of(style: str) -> str:
     return written
 
 
+def swept(path: Path):
+    """``tag_one`` over ``path`` with the shipped searcher, and every URL it fetched."""
+    seen: list[str] = []
+    return tag.tag_one(path, searcher=build(typed_fetch(seen))), seen
+
+
 @pytest.fixture(scope="module")
 def silence(tmp_path_factory) -> Path:
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
@@ -119,8 +125,7 @@ def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_p
         tmp_path, silence, "03B - 83 - Earth, Wind & Fire - That's the Way of the World.flac",
         title="03B - 83 - That's the Way of the World", artist="Earth, Wind & Fire",
     )
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     assert discogs_questions(seen)[0]["track"] == "That's the Way of the World"
     assert discogs_questions(seen)[0]["artist"] == "Earth, Wind & Fire"
     assert result.genre_written == genre_of("Funk")
@@ -146,8 +151,7 @@ def test_the_same_title_asked_with_its_head_misses_as_it_did_at_the_sitting():
 def test_an_untagged_file_is_asked_by_the_artist_and_title_its_name_reads_to(tmp_path, silence):
     path = tagged(tmp_path, silence, "9A - 136 - Obiman - On The Rocks (Cafe Del Mar Mix)_PN.flac")
     assert not tags.read_tag(path, "artist") and not tags.read_tag(path, "title")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     (question,) = discogs_questions(seen)
     assert question["artist"] == "Obiman"
     # Past the older naming's _PN tail too (R-1724, ``tests/test_name_tail.py``).
@@ -159,8 +163,7 @@ def test_an_untagged_file_is_asked_by_the_artist_and_title_its_name_reads_to(tmp
 
 def test_an_untagged_file_named_artist_and_title_takes_the_release_that_names_both(tmp_path, silence):
     path = tagged(tmp_path, silence, "8A - 122 - Kerri Chandler - On My Way.flac")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     assert discogs_questions(seen) == [
         {"type": "release", "artist": "Kerri Chandler", "track": "On My Way", "per_page": "10"}
     ]
@@ -169,8 +172,7 @@ def test_an_untagged_file_named_artist_and_title_takes_the_release_that_names_bo
 
 def test_an_mp3_named_untagged_file_carries_no_marker_into_the_question(tmp_path, silence):
     path = tagged(tmp_path, silence, "8A - 124 - [MP3] Lane 8 - Aba.flac")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     (question,) = discogs_questions(seen)
     assert (question["artist"], question["track"]) == ("Lane 8", "Aba")
     assert "MP3" not in " ".join(seen)
@@ -179,16 +181,14 @@ def test_an_mp3_named_untagged_file_carries_no_marker_into_the_question(tmp_path
 
 def test_an_mp3_marked_title_tag_carries_no_marker_into_the_question(tmp_path, silence):
     path = tagged(tmp_path, silence, "x.flac", title="08A - 124 - [MP3] Aba", artist="Lane 8")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     assert discogs_questions(seen)[0]["track"] == "Aba"
     assert result.genre_written == genre_of("Progressive House")
 
 
 def test_a_title_of_a_head_alone_is_asked_as_written_and_the_record_says_so(tmp_path, silence):
     path = tagged(tmp_path, silence, "x.flac", title="08A - 124", artist="Lane 8")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     assert discogs_questions(seen)[0]["track"] == "08A - 124"
     assert result.skipped == tag.NO_HIT
     assert (result.asked_title, result.asked_read) == ("08A - 124", titles.Read.HEAD_ALONE.value)
@@ -196,16 +196,14 @@ def test_a_title_of_a_head_alone_is_asked_as_written_and_the_record_says_so(tmp_
 
 def test_a_head_and_a_marker_alone_are_never_an_empty_track_field(tmp_path, silence):
     path = tagged(tmp_path, silence, "x.flac", title="08A - 124 - [MP3]", artist="Lane 8")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     assert discogs_questions(seen)[0]["track"] == "08A - 124 - [MP3]"
     assert result.asked_read == titles.Read.HEAD_ALONE.value
 
 
 def test_a_name_that_reads_to_no_one_split_is_asked_with_no_artist_and_says_so(tmp_path, silence):
     path = tagged(tmp_path, silence, "8A - 122 - Kerri Chandler - On My Way - Live At Space.flac")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     (question,) = discogs_questions(seen)
     assert question["artist"] == ""
     assert question["track"] == "Kerri Chandler - On My Way - Live At Space"
@@ -265,8 +263,7 @@ def test_a_title_with_no_head_is_asked_exactly_as_before(title, track, query):
 
 def test_a_staged_download_is_asked_and_tagged_as_before(tmp_path, silence):
     path = tagged(tmp_path, silence, "x.flac", title="On My Way (Original Mix)", artist="Kerri Chandler")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     assert discogs_questions(seen)[0]["track"] == "On My Way"
     assert result.genre_written == genre_of("House")
     assert (result.asked_title, result.asked_read) == ("On My Way (Original Mix)", titles.Read.AS_WRITTEN.value)
@@ -274,8 +271,7 @@ def test_a_staged_download_is_asked_and_tagged_as_before(tmp_path, silence):
 
 def test_an_untagged_name_with_no_head_is_asked_as_before(tmp_path, silence):
     path = tagged(tmp_path, silence, "Kerri Chandler - On My Way.flac")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     assert discogs_questions(seen)[0] == {
         "type": "release", "artist": "", "track": "Kerri Chandler - On My Way", "per_page": "10"
     }
@@ -417,8 +413,7 @@ def test_a_title_tag_with_no_artist_tag_is_never_split_by_its_name(tmp_path, sil
         tmp_path, silence, "8A - 122 - Kerri Chandler - On My Way.flac", title="8A - 122 - Kerri Chandler - On My Way"
     )
     assert not tags.read_tag(path, "artist")
-    seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    result, seen = swept(path)
     (question,) = discogs_questions(seen)
     assert (question["artist"], question["track"]) == ("", "Kerri Chandler - On My Way")
     assert (result.asked_artist, result.asked_read) == ("", titles.Read.PAST_HEAD.value)

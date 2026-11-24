@@ -179,22 +179,18 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     cfg, root_id = native_library
     path = _single(cfg, silence)
     before = path.read_bytes()
-
     code, acted, refused = _two_acts(_file(path))
-
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "ok"
     # The plan the person approved is the plan that was applied.
     assert refused["cause"]["detail"]["shown"]["digest"] == acted["data"]["digest"]
     # The file is where it was and as it was: this verb has never moved one.
     assert path.read_bytes() == before
-
     ((content_id, title, folder_path),) = _rows(cfg)
     assert folder_path == str(path.resolve())
     assert title == ingest.read_meta(path, cfg=cfg)["name"]
     assert title.startswith("01A - 124 - ")
-    # The library's own device, and no analysis value on the row, column by
-    # column, nor a cue, mixer or file row naming it.
+    # The library's own device, and no analysis value, cue, mixer or file row for it.
     selected = ", ".join(native.LEFT_EMPTY)
     sql = f"SELECT DeviceID, MasterDBID, {selected} FROM djmdContent WHERE ID = ?"
     ((device_id, master, *values),) = _query(cfg, sql, content_id)
@@ -205,17 +201,14 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     for table in rb_writer.CONTENT_ANALYSIS_TABLES:
         ((count,),) = _query(cfg, f"SELECT COUNT(*) FROM {table} WHERE ContentID = ?", content_id)
         assert count == 0, f"{table} holds a row for the new content row {content_id}"
-
     ((playlist_id, parent, attribute),) = _playlists(cfg, path.stem)
     assert str(parent) == root_id, "the batch playlist was not parented to the adopted root"
     assert int(attribute or 0) == 0, "the batch node is a folder, not a playlist"
     assert _members(cfg, str(playlist_id)) == [str(content_id)]
-
     # NOTHING WAS WRITTEN TO AN EXPORT, and no intake file exists to import.
     assert _xml_anywhere(cfg, tmp_path) == []
     assert tree_registry.pending_intake_xml(cfg) == ()
     assert "pending_human_action" not in acted or acted["pending_human_action"] is None
-
     item, playlist = acted["data"]["items"]
     assert item["action"] == file_cli.ADDED and item["content_id"] == str(content_id)
     assert item["left_empty"] == sorted(native.LEFT_EMPTY)
@@ -224,15 +217,13 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
         "session": playlist["session"],
     }
     assert acted["data"]["totals"] == {"count": 1, "added": 1, "already present": 0, "memberships": 1}
-    # U127: no vocal calibration, so the row joins with no vox My Tag and the
-    # second warning says why.
+    # U127: uncalibrated, the row joins with no vox My Tag and the second warning says why.
     warning, vox = acted["warnings"]
     assert warning["code"] == land_cli.AWAITING_ANALYSIS
     # U166: the one playlist the visit selects, not the batch the row joined.
     assert f"{DECLARED.intake.display} / {native.ANALYZE}" in warning["message"]
     assert vox["code"] == land_cli.VOX_NOT_WRITTEN
     assert native.VOX_UNCALIBRATED in vox["message"]
-
     # What a restore reads and what a revert of the intake cutover refuses over.
     (record,) = session.records(cfg)
     assert record.session_id == playlist["session"]
@@ -252,9 +243,7 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     code, inline = drive(["-d", f"{GATE}=apply", *_file(path)])
     assert code == int(ExitCode.DECISION_REQUIRED), inline
     assert inline["cause"]["detail"]["gate"] == GATE
-
     code, refused = drive(_file(path))
-
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
     assert shown["file"] == str(path.resolve())
@@ -279,7 +268,6 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     # Nothing was written for a plan nobody answered.
     _assert_nothing_written(cfg, tmp_path)
     assert _playlists(cfg, path.stem) == []
-
     run_id = refused["run_id"]
     drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
     code, envelope = drive(["--run", run_id, *_file(path)])
@@ -317,9 +305,7 @@ def test_an_answer_is_stale_once_the_file_changed_after_it(
     run_id = refused["run_id"]
     drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     change(cfg, path)
-
     code, envelope = drive(["--run", run_id, *_file(path)])
-
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     _assert_nothing_written(cfg, tmp_path)
@@ -329,15 +315,12 @@ def test_intake_file_tags_its_row_vox_from_the_files_score(native_library, silen
     """U127 through ``intake file``: a file scoring at the cut joins with the vox My Tag."""
     from cratekit.adopt import placements as adopt_placements
     from tests.test_intake_land_vox_native import _calibrate, _seed_vocals
-
     cfg, _root = native_library
     _calibrate(cfg)
     _seed_vocals(cfg)
     path = _single(cfg, silence)
     assert tags.write_tags(path, {"voxlevel": "5"})
-
     code, acted, refused = _two_acts(_file(path))
-
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["vox My Tag"].startswith("1 of 1 added row(s)")
     ((content_id, _title, _folder),) = _rows(cfg)
@@ -362,9 +345,7 @@ def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
     )
     conn.commit()
     conn.close()
-
     code, acted, refused = _two_acts(_file(path))
-
     shown = refused["cause"]["detail"]["shown"]
     assert shown["adds"] == 0 and shown["already present"] == 1
     assert code == int(ExitCode.OK), acted
@@ -385,9 +366,7 @@ def test_an_export_on_a_native_tree_is_refused_by_name_and_not_as_a_defect(
     cfg, _root = native_library
     path = _single(cfg, silence)
     before = export.read_bytes()
-
     code, envelope = drive(_file(path, "--export", str(export)))
-
     _assert_refused_before_the_gate(envelope, code, "intake-list-unusable")
     cause = envelope["cause"]
     assert cause["remediation"]["remedy"] == "fix-command-line"
@@ -468,7 +447,6 @@ def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
 ):
     """Spelled under the configured root, as landing spells it, however the file was reached."""
     from dataclasses import replace
-
     cfg, _root = native_library
     path = _single(cfg, silence)
     alias = tmp_path / "alias"
@@ -477,9 +455,7 @@ def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
     assert file_cli._in_the_library(path, linked) == alias / cfg.library.music_dir / "Single.flac"
     through = alias / path.relative_to(cfg.library.root)
     assert through.is_file() and str(through) != str(path)
-
     code, acted, _ = _two_acts(_file(through))
-
     assert code == int(ExitCode.OK), acted
     ((_content_id, _title, folder_path),) = _rows(cfg)
     assert folder_path == str(Path(cfg.library.root) / cfg.library.music_dir / "Single.flac")
@@ -512,13 +488,10 @@ def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_re
     """A binding failure says what it leaves, and the skew refusal keeps its own remedy."""
     cfg, root_id = native_library
     path = _single(cfg, silence)
-
     def broken(*args, **kwargs):
         raise ValueError("the binding said no")
-
     monkeypatch.setattr(native, "apply_rows", broken)
     code, acted, _ = _two_acts(_file(path))
-
     assert code != int(ExitCode.OK), acted
     cause = acted["cause"]
     assert cause["reason"] == "internal-error"
@@ -526,14 +499,11 @@ def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_re
     assert "no row was added and Single.flac is where it was" in cause["message"]
     assert path.is_file()
     assert _rows(cfg) == []
-
     def skewed(*args, **kwargs):
         said = "the adopted intake root could not be read back"
         raise tree_registry.RegistrySkew(said, tree_id=INTAKE, root_id=root_id)
-
     monkeypatch.setattr(native, "apply_rows", skewed)
     code, acted, _ = _two_acts(_file(path))
-
     cause = acted["cause"]
     assert cause["reason"] == "tree-unconverged"
     assert cause["remediation"]["remedy"] == "restore-from-snapshot"
@@ -545,9 +515,7 @@ def test_on_the_bridge_the_export_is_spliced_as_before(bridge_library, silence, 
     cfg = bridge_library
     path = _single(cfg, silence)
     before = export.read_bytes()
-
     code, envelope = drive(_file(path, "--export", str(export)))
-
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     intake_file = path.with_name("Single_inboxed.xml")
     assert envelope["pending_human_action"]["artifact"] == str(intake_file)
@@ -578,7 +546,6 @@ def test_on_the_bridge_no_export_is_a_plan_and_asks_no_gate(bridge_library, sile
     assert envelope.get("cause") is None, "the bridge plan asked a gate"
     assert gates.load(envelope["run_id"]).offers == {}
     _assert_nothing_written(cfg, tmp_path)
-
     registry_file = tree_registry.path_for(cfg)
     registry_file.parent.mkdir(parents=True, exist_ok=True)
     registry_file.write_text("{ not json", encoding="utf-8")
@@ -623,12 +590,10 @@ def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
     path = _single(cfg, silence)
     destination = tmp_path / "direct_inboxed.xml"
     before = export.read_bytes()
-
     for given in (export, tmp_path / "no-such.xml"):
         with pytest.raises(CratekitError) as raised:
             ingest.place_files([path], cfg=cfg, export=given, destination=destination)
         _assert_names_the_landing_and_no_defect(raised.value.cause)
-
     assert export.read_bytes() == before
     assert not destination.exists()
     _assert_nothing_written(cfg, tmp_path)
@@ -642,7 +607,6 @@ def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_
     staged = _staged_one(cfg, silence)
     planned = landing.plan(Path(cfg.paths.download_staging), cfg, "2026-09-30_batch")
     destination = land_cli.intake_file(cfg, "2026-09-30_batch")
-
     with pytest.raises(CratekitError) as raised:
         landing.preflight(planned, cfg=cfg, export=tmp_path / "no-such.xml", destination=destination)
     _assert_names_the_landing_and_no_defect(raised.value.cause)
@@ -650,7 +614,6 @@ def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_
     with pytest.raises(CratekitError) as raised:
         landing.apply(planned, cfg=cfg, export=export, destination=destination)
     _assert_names_the_landing_and_no_defect(raised.value.cause)
-
     assert staged.exists() and not destination.exists()
     assert not (Path(cfg.library.root) / cfg.library.music_dir / "2026-09-30_batch").exists()
 def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_builder():
@@ -676,7 +639,6 @@ def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_bu
             named = attrs + [(n.lineno, n.func.id) for n in calls if isinstance(n.func, ast.Name)]
             asked = [line for line, name in named if name == "bridge_intake_tree"]
             callers[key] = (min(emits), asked)
-
     assert set(callers) == {"intake/ingest.py::place_files", "intake/landing.py::_check_export"}
     for key, (first_emit, asked) in callers.items():
         assert asked and min(asked) < first_emit, (
@@ -712,12 +674,10 @@ def test_the_favourites_sweep_queues_and_hearts_on_either_medium(either, monkeyp
     before = exported.read_bytes()
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
     bind_account(monkeypatch, account)
-
     _run, job_id = approve_and_queue(
         ["sync", "favorites", "--export", str(exported)], "sync.favorites.confirm"
     )
     code, resumed = resume_outbound(job_id)
-
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert account.hearted, "the sweep hearted nothing, so this drive proved nothing"
@@ -726,14 +686,12 @@ def test_the_favourites_sweep_queues_and_hearts_on_either_medium(either, monkeyp
 
 def test_the_composed_pass_queues_each_source_on_either_medium(either, monkeypatch):
     from cratekit.sync import cli as sync_cli
-
     cfg = either
     exported = outbound_fakes.write_export(cfg.library.root / "outbound")
     before = exported.read_bytes()
     bind_account(monkeypatch, outbound_fakes.FakeAccount(catalog={}))
     register(*LABELS[:2])
     verb = ["sync", "all", "--export", str(exported)]
-
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["gate"] == sync_cli.CONFIRM
@@ -741,7 +699,6 @@ def test_the_composed_pass_queues_each_source_on_either_medium(either, monkeypat
     decided, envelope = drive(decision)
     assert decided == int(ExitCode.OK), envelope
     code, passed = drive(["--run", refused["run_id"], *verb])
-
     assert code == int(ExitCode.OK), passed
     with jobs.open_store() as store:
         queued = {job.handler_key for job in jobs.list_jobs(store)}
@@ -756,10 +713,8 @@ def test_the_label_batch_sweeps_on_either_medium(either, monkeypatch):
     before = exported.read_bytes()
     register(*LABELS[:2])
     bind_catalogue(monkeypatch, readable(*SLUGS[:2]))
-
     job_id = queued_sweep()
     code, resumed = drive(["sync", "labels", "--job", job_id])
-
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     with jobs.open_store() as store:
@@ -784,8 +739,7 @@ def test_the_switch_reads_the_recorded_mode_and_nothing_else(machine):
     )
     tree_registry.write(cfg, tree_registry.Registry().with_record(genre))
     assert ingest.intake_medium(cfg).native is False
-    # The registry lives under the root: with no root there is no record to read,
-    # and the bridge path is taken as it was before the second medium.
+    # The registry lives under the root: with none there is no record, so the bridge is taken.
     _cut_over_intake(cfg)
     shutil.move(str(cfg.library.root), str(Path(cfg.library.root).with_name("unmounted")))
     medium = ingest.intake_medium(cfg)

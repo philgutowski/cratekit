@@ -105,13 +105,11 @@ def test_the_sitting_files_refuse_a_release_that_lacks_their_mix(head, sitting, 
 
 def test_each_sitting_file_still_takes_a_release_that_carries_its_mix():
     assert matched(
-        "Two Months Off (Tim Green Remix)",
-        release_title="Two Months Off",
+        "Two Months Off (Tim Green Remix)", release_title="Two Months Off",
         tracks=(*TWO_MONTHS_OFF_TRACKS, "Two Months Off (Tim Green Remix)"),
     )
     assert matched(
-        "As You Fly (Mita Gami Extended Mix)",
-        release_title="As You Fly",
+        "As You Fly (Mita Gami Extended Mix)", release_title="As You Fly",
         tracks=("As You Fly (Mita Gami Remix)",),
     ), "the extended form of a remix is that remix, as the reader sheds Extended"
 
@@ -484,13 +482,11 @@ def test_a_maker_is_folded_as_a_name_is(title, row):
 def test_the_single_fallback_reads_no_other_track_of_the_release_as_the_mix():
     """Round one's finding 6: another title's remix is no evidence the single holds one."""
     assert not matched(
-        "Sunrise Mood (Tide Remix)",
-        release_title="Sunrise Mood",
+        "Sunrise Mood (Tide Remix)", release_title="Sunrise Mood",
         tracks=("Sunrise Mood", "Sun Path (Tide Remix)"),
     )
     assert matched(
-        "Sunrise Mood (Tide Remix)",
-        release_title="Sunrise Mood",
+        "Sunrise Mood (Tide Remix)", release_title="Sunrise Mood",
         tracks=("Sunrise Mood", "(Tide Remix)"),
     )
 

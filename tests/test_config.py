@@ -226,11 +226,7 @@ def test_there_are_exactly_two_state_roots():
 def test_every_state_entry_is_assigned_to_exactly_one_root_and_says_why():
     for entry in config.STATE_FILES:
         assert entry.root in config.StateRoot
-        assert len(entry.why) > 60, (
-            f"{entry.key} has no real justification. The rule is that 'why' names "
-            f"what BREAKS under a second install, a reinstall, or the migration "
-            f"overlap; anything shorter is a label, not a reason."
-        )
+        assert len(entry.why) > 60, f"{entry.key}'s why must name what BREAKS, not label it"
 
 
 def test_state_keys_are_unique():
@@ -264,11 +260,7 @@ def test_library_state_never_lands_under_the_installation_root(cfg):
     installation = config.installation_state_dir()
     for entry in config.state_files_for(config.StateRoot.LIBRARY):
         path = config.state_path(entry.key, cfg)
-        assert installation not in path.parents, (
-            f"{entry.key} is declared library-scoped but resolves under the "
-            f"installation state root at {path}. That is the placement KTD21 exists "
-            f"to end: restore per installation, database per library."
-        )
+        assert installation not in path.parents, f"{entry.key} is under the installation (KTD21)"
 
 
 # An entry must resolve where the code that reads and writes it looks.
@@ -292,9 +284,7 @@ def test_every_entry_with_a_named_accessor_resolves_to_the_same_path(split_insta
     """Catches an entry under the wrong installation directory, which the root audits cannot."""
     for key, accessor in _NAMED_ACCESSORS.items():
         assert config.state_path(key) == accessor(), (
-            f"{key} is declared at {config.state_path(key)} but the code that "
-            f"reads and writes it uses {accessor()}. One file, two roots, is the "
-            f"straddling the Definition of Done forbids."
+            f"{key} is declared at {config.state_path(key)} and used at {accessor()}"
         )
 
 
@@ -306,10 +296,7 @@ def test_every_installation_entry_resolves_under_a_directory_the_module_names(
     known = (config.config_dir(), config.installation_state_dir(), config.provider_gate_dir())
     for entry in _file_entries(config.state_files_for(config.StateRoot.INSTALLATION)):
         path = config.state_path(entry.key)
-        assert any(directory in path.parents for directory in known), (
-            f"{entry.key} resolves to {path}, which is under neither the "
-            f"installation config directory nor the installation state directory"
-        )
+        assert any(directory in path.parents for directory in known), f"{entry.key} at {path}"
 
 
 #: Every config function handing out a directory under a state root, kept complete below.
@@ -349,11 +336,7 @@ def test_the_composed_path_lint_catches_a_module_inventing_its_own_state_file(so
 def test_the_composed_path_lint_covers_every_directory_accessor_the_module_exports():
     """The next exported accessor fails the build rather than escaping the guard."""
     missing = {name for name in config.__all__ if name.endswith("_dir")} - _STATE_ROOT_ACCESSORS
-    assert not missing, (
-        f"config exports directory accessors the composed-path lint does not "
-        f"know about: {sorted(missing)}. Add them to _STATE_ROOT_ACCESSORS, or "
-        f"the first module to compose a path onto one is invisible to the guard."
-    )
+    assert not missing, f"add these to _STATE_ROOT_ACCESSORS: {sorted(missing)}"
 
 
 #: The modules that define the roots and resolve the inventory over them.
@@ -403,10 +386,7 @@ def test_the_locks_and_the_snapshot_store_are_not_in_the_coupled_set():
     # Derived as well as named (P3), so a lock added later is covered too.
     for entry in config.STATE_FILES:
         if any(part.startswith("lock") for part in entry.key.split("_")):
-            assert entry.key not in coupled, (
-                f"{entry.key} is a lock inside the coupled set, so a restore swaps the inode a "
-                f"live lock is held on and every holder keeps believing it has exclusive access"
-            )
+            assert entry.key not in coupled, f"a restore would swap the inode {entry.key} locks"
 
 
 _SURVIVES = config.SnapshotRole.SURVIVES_ROLLBACK
@@ -445,18 +425,12 @@ def test_the_coupled_set_is_a_directory_boundary_rather_than_a_list(cfg):
     coupled_dir = config.library_coupled_dir(cfg)
     for entry in config.coupled_state_files():
         path = config.state_path(entry.key, cfg)
-        assert any(path == source or source in path.parents for source in sources), (
-            f"{entry.key} is coupled but resolves to {path}, which no declared "
-            f"snapshot source covers"
-        )
+        assert any(path == source or source in path.parents for source in sources), entry.key
     for entry in _file_entries(config.STATE_FILES):
         if entry.snapshot is config.SnapshotRole.COUPLED:
             continue
         path = config.state_path(entry.key, cfg if entry.root is config.StateRoot.LIBRARY else None)
-        assert coupled_dir not in path.parents, (
-            f"{entry.key} is declared {entry.snapshot} but sits inside the coupled "
-            f"directory, so a restore would replace it anyway"
-        )
+        assert coupled_dir not in path.parents, f"{entry.key} sits inside the coupled directory"
 
 
 def test_the_snapshot_store_does_not_nest_inside_what_it_snapshots(cfg):
@@ -478,10 +452,7 @@ def test_the_capture_set_includes_the_databases_sqlite_sidecars(cfg):
     assert db in sources
     for suffix in ("-wal", "-shm"):
         expected = _sidecar(db, suffix)
-        assert expected in sources, (
-            f"{expected.name} is not in the capture set, so a snapshot taken "
-            f"from it copies a database missing everything still in the log"
-        )
+        assert expected in sources, f"{expected.name} is not in the capture set"
 
 
 def test_the_sidecars_are_declared_on_the_entry_rather_than_listed_by_a_consumer():
@@ -528,18 +499,13 @@ def _restore_source() -> str:
     ids=["capture", "restore"],
 )
 def test_the_snapshot_consumers_derive_their_sets_rather_than_listing_them(read, derivations):
-    """U8 reaches for ``snapshot_sources``, and no consumer types a sidecar suffix of its own.
-
-    A text search only; ``tests/test_restore.py`` drives whether the derivation is used, and
-    which sidecars come back is declared by Sidecar.restored on the rekordbox_db entry."""
+    """U8 reaches for ``snapshot_sources``, and no consumer types a sidecar suffix of its own; a
+    text search only, as ``tests/test_restore.py`` drives whether the derivation is used."""
     source = read()
     assert any(name in source for name in derivations), (
         f"the unit calls none of {derivations}, so its set is a second copy of the inventory"
     )
-    assert not re.search(r"""["'][^"']*-(?:wal|shm)""", source), (
-        "the unit spells a SQLite sidecar suffix itself; the suffixes are declared on the "
-        "rekordbox_db entry and expanded by sidecar_paths"
-    )
+    assert not re.search(r"""["'][^"']*-(?:wal|shm)""", source), "a sidecar suffix spelled out"
 
 
 def test_a_library_scoped_entry_never_declares_an_installation_area():
@@ -591,10 +557,7 @@ def test_a_malformed_acknowledgment_is_named_even_when_the_database_is_contained
 def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_another_one():
     """A deferral with a countdown: dict to dict migrations cannot move a file."""
     assert config.LIBRARY_STATE_LAYOUT_VERSION == 1, (
-        "the library state layout changed. Config migrations are dict-to-dict and cannot move a "
-        "file, so the unit that changed it owns a one-time on-disk reconciliation with its own "
-        "mechanism, run under the same exclusive lock, idempotent, and refusing rather than "
-        "half-moving. Add it, then update this test to cover it."
+        "the layout changed, so its unit owes a locked, idempotent on-disk reconciliation"
     )
 
 
@@ -1040,11 +1003,7 @@ def test_config_exposes_no_module_level_location_constant():
         for name, value in vars(part).items()
         if not name.startswith("_") and isinstance(value, Path)
     ]
-    assert not offenders, (
-        f"configuration exposes module-level Path constants {offenders}. "
-        f"Every location is a function so that a caller cannot bind one at its "
-        f"own import time and stop tracking later changes."
-    )
+    assert not offenders, f"module-level Path constants, which a caller can bind: {offenders}"
 
 
 #: Names a module is likely to bind the config module to.
@@ -1132,11 +1091,7 @@ def test_no_module_composes_its_own_path_under_a_state_root():
             continue
         for hit in _paths_composed_from_a_state_root(source):
             offenders.append(f"{path.relative_to(SRC_ROOT)}: {hit}")
-    assert not offenders, (
-        "paths composed under a state root outside the inventory:\n"
-        + "\n".join(offenders)
-        + "\nDeclare the entry in STATE_FILES (core/state_files.py) and resolve it with state_path()."
-    )
+    assert not offenders, "declare these in STATE_FILES:\n" + "\n".join(offenders)
 
 
 def test_no_module_in_the_package_snapshots_config_at_import_time():
@@ -1436,8 +1391,7 @@ def test_an_absent_presence_index_still_answers_nothing_recorded():
     ids=["refused-for-something-other-than-a-permission", "damaged-says-it-was-read"],
 )
 def test_an_index_refused_or_damaged_keeps_its_own_act(damage, credential, detail):
-    """EISDIR, which no classification claims, shows the site's own declared act, and bytes
-    read that do not say what is recorded are a different repair from a refusal."""
+    """EISDIR, which no classification claims, keeps the site's act; bad bytes another repair."""
     index = _index()
     damage(index)
     cause = _refusal(lambda: secrets.exists(credential))
@@ -1658,10 +1612,7 @@ def test_every_file_and_directory_this_unit_creates_is_private_under_any_umask(
         "created under umask 000 at a mode that depends on the umask:\n" + "\n".join(offenders)
     )
     # A green walk over nothing would only mean the write paths stopped writing.
-    assert seen_files >= 4 and seen_dirs >= 4, (
-        f"the audit only saw {seen_files} files and {seen_dirs} directories, "
-        f"which is too few for the write paths it drove"
-    )
+    assert seen_files >= 4 and seen_dirs >= 4, f"only {seen_files} files, {seen_dirs} directories"
     locks = sorted(config.config_dir().rglob("*.migrate.lock"))
     assert locks, "the migration never took a lock, so this asserts nothing"
     for lock in locks:
@@ -1696,12 +1647,7 @@ def test_every_directory_the_config_module_creates_goes_through_the_private_help
     offenders = [
         hit for part in config_parts() for hit in _bare_mkdir_calls(Path(part.__file__).read_text())
     ]
-    assert not offenders, (
-        "directories created outside mkdir_private:\n"
-        + "\n".join(offenders)
-        + "\nPath.mkdir takes its mode from the umask, and with parents=True it "
-        "creates intermediate levels at 0o777 regardless of the mode given."
-    )
+    assert not offenders, "directories created outside mkdir_private:\n" + "\n".join(offenders)
     assert "one function in the module that creates a directory" not in source, (
         "save's docstring claims to be the only directory creator; three functions create one"
     )
@@ -1834,17 +1780,11 @@ def test_the_recognition_section_round_trips_through_the_file(library):
     assert again.fingerprint() == built.fingerprint()
 
 
-@pytest.mark.parametrize("value", [0, -3, "many", 2.5, True])
-def test_a_monthly_bound_that_is_not_a_positive_call_count_is_refused(library, value):
-    """``True`` is an ``int`` to ``isinstance``; zero, since nothing switches the bound off."""
-    problems = config.validate(valid_data(library, recognition={"monthly_calls": value}))
-    assert len(problems) == 1, problems
-    assert "recognition.monthly_calls" in problems[0]
-
-
-@pytest.mark.parametrize(
-    "value",
-    [
+#: A bound that is not a positive call count (``True`` is an ``int``; nothing switches the bound
+#: off), and a host not a bare name under the service, where the key and its signature travel.
+_REFUSED_RECOGNITION = [("monthly_calls", value) for value in (0, -3, "many", 2.5, True)] + [
+    ("host", value)
+    for value in (
         "https://identify-eu-west-1.acrcloud.com",
         "identify-eu-west-1.acrcloud.com/v1/identify",
         "identify-eu-west-1.acrcloud.com:443",
@@ -1857,13 +1797,15 @@ def test_a_monthly_bound_that_is_not_a_positive_call_count_is_refused(library, v
         "",
         "-bad.acrcloud.com",
         7,
-    ],
-)
-def test_a_host_that_is_not_a_bare_name_under_the_service_is_refused(library, value):
-    """The access key and its signature travel to this host."""
-    problems = config.validate(valid_data(library, recognition={"host": value}))
+    )
+]
+
+
+@pytest.mark.parametrize("key, value", _REFUSED_RECOGNITION)
+def test_a_recognition_value_out_of_its_bounds_is_refused_by_its_key(library, key, value):
+    problems = config.validate(valid_data(library, recognition={key: value}))
     assert len(problems) == 1, problems
-    assert "recognition.host" in problems[0]
+    assert f"recognition.{key}" in problems[0]
 
 
 @pytest.mark.parametrize(

@@ -144,7 +144,7 @@ def test_one_declined_link_reads_as_one_folder_and_not_as_one_folders(tmp_path):
     touch(tmp_path, "track.flac")
     (tmp_path / "linked").symlink_to(tmp_path.parent, target_is_directory=True)
     (warning,) = discovery.walk_warnings(*_omissions(tmp_path))
-    assert "1 folder under this tree is a symbolic link and was not walked" in (warning["message"])
+    assert "1 folder under this tree is a symbolic link and was not walked" in warning["message"]
     assert "1 folders" not in warning["message"]
     assert "and 0 more" not in warning["message"]
 
@@ -195,7 +195,7 @@ def test_an_error_carrying_no_filename_is_still_reported(tmp_path):
 
 
 def test_a_path_outside_the_tree_is_reported_whole_rather_than_dropped(tmp_path):
-    assert discovery._relative_or_absolute(tmp_path, "/elsewhere/locked") == ("/elsewhere/locked")
+    assert discovery._relative_or_absolute(tmp_path, "/elsewhere/locked") == "/elsewhere/locked"
 
 
 # What a resume reads back, because it never re-walks

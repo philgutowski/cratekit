@@ -78,7 +78,6 @@ def scenario(tmp_path, cfg):
 def test_a_job_killed_mid_item_resumes_with_exactly_one_item_reprocessed(scenario):
     """Only the killed item is redone, since "done" means its artifact was already durable."""
     scenario.kill_during("item-002")
-    # Right after the kill one item is stranded in claimed.
     stranded = scenario.item_states()
     assert stranded["item-002"] is jobs.ItemState.CLAIMED
     assert stranded["item-000"] is jobs.ItemState.DONE

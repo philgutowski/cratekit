@@ -743,9 +743,6 @@ def test_a_run_with_nothing_to_send_leaves_an_empty_table_and_asks_nothing(tmp_p
     assert _summary(out)[-1]["tracks"] == "0"
 
 
-# Review round one: what a resume must never pay for twice, and the rest
-
-
 def test_a_folder_moved_between_two_runs_is_not_paid_for_again(chosen, tmp_path, declared, keyed):
     out = tmp_path / "t.tsv"
     _run(_settings(chosen, out, **SEND), declared, Recorded())
@@ -870,9 +867,6 @@ def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, te
                         "--taxonomy", str(template), "--s", "--cap", "10",
                         "--price-per-track", "0.5"])
     assert not (tmp_path / "t.tsv").exists()
-
-
-# Review round two
 
 
 def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(chosen, tmp_path, declared, keyed):

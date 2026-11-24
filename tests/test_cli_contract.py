@@ -60,15 +60,13 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture
 def configured(library, monkeypatch):
-    """A set up machine on the R-13 disposable database, so a verb reaches its own
-    logic; volume identity and the two process refusal are satisfied."""
+    """A set up machine on the R-13 disposable database, every refusal before a verb satisfied."""
     from cratekit.core import preflight, rb_writer
     from tests.test_rb_writer_db import _build_disposable_database
     db_path = library / "db" / "master.db"
     supplied = rb_writer.integration_db_path()
     if supplied is not None:
         import shutil
-
         db_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(supplied, db_path)
         for suffix in rb_writer.db_sidecar_suffixes():
@@ -88,9 +86,8 @@ def configured(library, monkeypatch):
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    # A person is present (U49), so gated verbs are driven through their gate and
-    # ``record_acknowledgment`` does not depend on how pytest was launched. The
-    # refusing direction is tested in tests/test_session_cli.py.
+    # A person is present (U49), so gated verbs reach their gates however pytest was launched;
+    # the refusing direction is tested in tests/test_session_cli.py.
     from cratekit.core import session as core_session
     monkeypatch.setattr(core_session, "has_controlling_terminal", lambda: True)
     return cfg
@@ -129,20 +126,14 @@ def test_no_two_codes_share_a_value_and_none_reaches_the_shell_range():
     values = [int(code) for code in ExitCode]
     assert len(values) == len(set(values)), "two names share one exit code"
     for code in ExitCode:
-        assert 0 <= int(code) < MAX_CODE, (
-            f"{code.name}={int(code)} collides with the shell's own conventions "
-            f"(126, 127, and 128 plus a signal number)"
-        )
+        assert 0 <= int(code) < MAX_CODE, f"{code.name}={int(code)} collides with the shell's own"
         band_of(code)
 
 
 def test_a_retired_value_is_never_reissued():
     live = {int(code) for code in ExitCode}
     reused = sorted(live & set(RETIRED))
-    assert not reused, (
-        f"exit codes {reused} were retired and have been reissued. A stored cause "
-        f"and a shell script both outlive the release that wrote them."
-    )
+    assert not reused, f"exit codes {reused} were retired, and a stored cause outlives a release"
 
 
 def test_the_bands_do_not_overlap_and_leave_growth_room():
@@ -191,8 +182,7 @@ def _modules_declaring_their_own_remedy() -> dict[str, type]:
 
 
 def test_every_module_declaring_its_own_remedies_stays_inside_one_vocabulary():
-    """Module local remediation tokens stay a subset of the canonical vocabulary,
-    rather than becoming a second scheme for one idea."""
+    """Module local remediation tokens stay a subset of the canonical vocabulary."""
     modules = _modules_declaring_their_own_remedy()
     assert modules, "no module-local Remedy was found; the walk is broken, not the tree"
     canonical = {str(member) for member in Remedy}
@@ -201,10 +191,7 @@ def test_every_module_declaring_its_own_remedies_stays_inside_one_vocabulary():
         for name, declared in modules.items()
         if not {str(m) for m in declared} <= canonical
     }
-    assert not strays, (
-        "these modules declare remediation tokens the canonical vocabulary has never heard of, "
-        f"so the CLI cannot render them: {strays}"
-    )
+    assert not strays, f"remediation tokens the canonical vocabulary lacks: {strays}"
 
 
 def test_every_module_local_remedy_renders_to_something_a_user_can_act_on():
@@ -218,10 +205,7 @@ def test_every_module_local_remedy_renders_to_something_a_user_can_act_on():
                 retryable=False,
             )
             body = render.remediation_line(cause).removeprefix("  fix: ")
-            assert body not in generic, (
-                f"{module_name}.{member.name} renders as the exit code's generic summary "
-                f"rather than as its own remediation"
-            )
+            assert body not in generic, f"{module_name}.{member.name} renders as a generic summary"
 
 
 def test_every_remediation_token_renders_to_something_a_user_can_act_on():
@@ -245,8 +229,7 @@ def test_every_remediation_token_renders_to_something_a_user_can_act_on():
 def test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs(
     remedy, forbidden
 ):
-    """U97, R-411: both provider session tokens name three acts, not a dead end login,
-    pinned as literal text since a renderer compared to itself proves nothing."""
+    """U97, R-411: both name three acts, not a dead end login, pinned as literal text."""
     cause = Cause(
         reason="credential-missing", message="no streaming provider session is usable",
         remediation=Remediation(remedy=remedy), scope=Scope.RUN,
@@ -269,8 +252,7 @@ def test_the_document_the_provider_session_remedy_names_ships_and_carries_the_co
 
 
 # ── S4: every refusal the guarded writer raises has a code and a remedy ──────
-#: The refusals the guarded rekordbox writer raises, from U7's surface map, so U7
-#: consumes this vocabulary. Reconciled against the writer by the test below.
+#: The refusals the guarded writer raises, from U7's surface map, reconciled against it below.
 WRITER_REFUSALS: dict[str, str] = {
     "pyrekordbox pin drift": "pyrekordbox-pin-drift",
     "database schema version drift": "db-schema-pin-drift",
@@ -280,8 +262,7 @@ WRITER_REFUSALS: dict[str, str] = {
     "database open failure": "database-open-failed",
     "canary read failure": "canary-read-failed",
     "cloud sync canary tripped": "cloud-sync-active",
-    # "Sync is on" and "we cannot tell whether sync is on" have opposite answers,
-    # so each is reserved separately.
+    # "Sync is on" and "we cannot tell" have opposite answers, so each is reserved.
     "cloud sync state unreadable": "cloud-sync-unreadable",
     "additive whitelist violation": "whitelist-violation",
     "missing tag-category template": "mytag-category-template-missing",
@@ -291,19 +272,14 @@ WRITER_REFUSALS: dict[str, str] = {
 
 @pytest.mark.parametrize("condition, slug", sorted(WRITER_REFUSALS.items()))
 def test_every_guarded_writer_refusal_has_a_reserved_code(condition, slug):
-    assert slug in REASONS, (
-        f"the guarded writer refuses on {condition} and this vocabulary has no "
-        f"slug for it. U7 consumes what is reserved here; a refusal it cannot "
-        f"name collapses to a bare status one hop downstream."
-    )
+    assert slug in REASONS, f"the guarded writer refuses on {condition} with no slug U7 can name"
     code = REASONS[slug]
     assert code is not ExitCode.OK
     assert meaning_of(code).remedy is not None
 
 
 def test_the_two_process_refusal_and_the_lock_contention_are_different_codes():
-    """The two process refusal and lock contention differ, since their remedies are
-    opposite: quit an application, or wait (KTD25)."""
+    """Their remedies are opposite: quit an application, or wait (KTD25)."""
     assert REASONS["rekordbox-running"] is ExitCode.REKORDBOX_OPEN
     assert REASONS["write-lock-held"] is ExitCode.LIBRARY_BUSY
     assert REASONS["session-lock-held"] is ExitCode.LIBRARY_BUSY
@@ -317,23 +293,20 @@ def test_an_unrecorded_application_pin_refuses_rather_than_adopting_what_is_inst
 
 
 def test_an_unreadable_cloud_state_and_an_active_one_are_different_failures():
-    """An unreadable cloud state and an active one are different failures (S4): one
-    is switched off elsewhere, the other needs a person to decide."""
+    """S4: one is switched off elsewhere, the other needs a person to decide."""
     unreadable, active = REASONS["cloud-sync-unreadable"], REASONS["cloud-sync-active"]
     assert unreadable is not active
     assert meaning_of(unreadable).remedy is not meaning_of(active).remedy
     assert meaning_of(unreadable).remedy is Remedy.ANSWER_DECISION
     assert meaning_of(active).remedy is Remedy.DISABLE_CLOUD_SYNC
 
-    # Answering the decision needs the run still there, and the command line layer
-    # decides that by code, so this code makes the refusal resumable.
+    # Answering needs the run still there, which the command line decides by code.
     assert unreadable in gates.GATE_CODES
     assert active not in gates.GATE_CODES
 
 
 def test_the_unreadable_cloud_state_is_not_the_undeclared_gate_reason():
-    """The unreadable cloud state is not ``decision-unknown-gate``, which is a
-    defect, while a declared gate with nothing recorded is the system working."""
+    """``decision-unknown-gate`` is a defect; a declared gate with nothing recorded is not."""
     assert REASONS["cloud-sync-unreadable"] is REASONS["decision-unknown-gate"]
     assert "cloud-sync-unreadable" != "decision-unknown-gate"
 
@@ -359,10 +332,7 @@ def test_the_reason_registry_has_no_duplicate_key():
     keys = [key.value for key in mapping.keys]
     duplicates = sorted({key for key in keys if keys.count(key) > 1})
     assert not duplicates, f"duplicate reason slugs shadowed at parse time: {duplicates}"
-    assert len(keys) == len(REASONS), (
-        f"the literal declares {len(keys)} keys and the runtime mapping has "
-        f"{len(REASONS)}; the difference is entries one of the others shadows"
-    )
+    assert len(keys) == len(REASONS), f"{len(keys)} literal keys, {len(REASONS)} at runtime"
 
 
 def test_every_reason_maps_into_the_vocabulary_and_every_refusal_is_reachable():
@@ -370,16 +340,12 @@ def test_every_reason_maps_into_the_vocabulary_and_every_refusal_is_reachable():
         assert isinstance(code, ExitCode), f"{slug} maps to something that is not a code"
     reachable = {*REASONS.values(), ExitCode.OK, ExitCode.USAGE}
     unreachable = [code.name for code in ExitCode if code not in reachable]
-    assert not unreachable, (
-        f"codes with no reason that produces them: {unreachable}. A code nothing "
-        f"can raise is a code nobody maintains."
-    )
+    assert not unreachable, f"codes with no reason that produces them: {unreachable}"
 
 
 # Part 2: the structured cause
 def test_a_cause_round_trips_through_json_with_its_chain_intact():
-    """A cause survives JSON, since the job engine re-invokes the CLI as a
-    subprocess (KTD26) and would otherwise fall back to exit codes."""
+    """The job engine re-invokes the CLI as a subprocess (KTD26), so a cause survives JSON."""
     inner = Cause(
         reason="unavailable-transient", message="the provider timed out",
         remediation=Remediation(remedy=Remedy.RETRY_LATER), scope=Scope.ITEM, retryable=True,
@@ -423,8 +389,7 @@ def test_the_five_structured_surfaces_r32_names_are_all_declared():
 
 
 def test_the_match_surface_reserves_three_states_from_its_first_version():
-    """The match surface reserves R11's needs review state from its first version,
-    since adding it later would break every consumer keyed on the shape."""
+    """R11's needs review state, since adding it later breaks every consumer of the shape."""
     document = output.schema_document("match")
     assert set(document["required"]) == {"matched", "needs_review", "missing"}
 
@@ -433,15 +398,9 @@ def test_the_match_surface_reserves_three_states_from_its_first_version():
 def test_a_schema_change_without_a_version_bump_fails(name):
     lock = json.loads((SCHEMA_DIR / "lock.json").read_text())
     identifier = output.current_schema(name)
-    assert identifier in lock, (
-        f"{identifier} has no lock entry. A new major is recorded in "
-        f"tests/schemas/lock.json by running scripts/dump_schemas.py, and the "
-        f"previous entry stays so no version is silently retired."
-    )
+    assert identifier in lock, f"{identifier} has no lock entry; run scripts/dump_schemas.py"
     assert output.schema_fingerprint(name) == lock[identifier], (
-        f"the {name!r} payload changed shape but {identifier} did not move. Bump the major in "
-        f"cratekit/cli/output.py and re-run scripts/dump_schemas.py. An additive change needs a "
-        f"bump too: a consumer keyed on field presence cannot tell an addition from a rename."
+        f"the {name!r} payload changed shape but {identifier} did not move; additions need one"
     )
 
 
@@ -450,16 +409,12 @@ def test_every_previous_major_is_still_present_in_the_lock(name):
     lock = json.loads((SCHEMA_DIR / "lock.json").read_text())
     major = int(output.current_schema(name).split("/")[1])
     for earlier in range(1, major):
-        assert f"{name}/{earlier}" in lock, (
-            f"{name}/{earlier} vanished from the lock. A retired version stays recorded, so a "
-            f"consumer holding an old envelope can still find out what it was."
-        )
+        assert f"{name}/{earlier}" in lock, f"{name}/{earlier} vanished from the lock"
 
 
 @pytest.mark.parametrize("name", sorted(output.schema_names()))
 def test_the_committed_golden_validates_against_the_current_schema(name):
-    """The golden still validates, since a version bump does not say whether last
-    version's envelope parses."""
+    """A version bump does not say whether last version's envelope parses."""
     major = output.current_schema(name).split("/")[1]
     golden = json.loads((SCHEMA_DIR / "golden" / f"{name}.v{major}.json").read_text())
     assert output.envelope_problems(golden) == []
@@ -475,8 +430,7 @@ def _diagnostic(**fields) -> output.Envelope:
 
 
 def test_the_declared_envelope_keys_are_exactly_what_is_serialized():
-    """Derived from a real envelope, so the declared keys every verb must carry
-    cannot fall behind the serializer."""
+    """Derived from a real envelope, so the declared keys cannot fall behind the serializer."""
     document = _diagnostic().to_json()
     assert set(document) == set(output.ENVELOPE_KEYS)
 
@@ -549,8 +503,7 @@ def test_a_run_identifier_carries_sixty_four_bits_of_random_tail():
 
 
 # Part 4: gates, and no verb reads standard input (R33)
-#: The only file allowed to touch standard input. Naming a path rather than a
-#: directory keeps the exemption from spreading to a neighbouring file.
+#: The only file allowed standard input, a path so the exemption cannot spread to a neighbour.
 INTERACTIVE_ALLOWLIST = frozenset({"cratekit/cli/prompt.py"})
 
 
@@ -592,11 +545,7 @@ def test_no_module_we_author_reads_standard_input():
         found = standard_input_reads(source)
         if found:
             offenders[relative] = found
-    assert not offenders, (
-        f"standard input is read at {offenders}. A gate is answered by name and resumed from "
-        f"state; a prompt cannot be answered by a detached job, and a terminal check is a "
-        f"behaviour change under a pipe rather than an absence of a read."
-    )
+    assert not offenders, f"standard input is read at {offenders}; a detached job cannot answer"
 
 
 _TO_SLIM = ["--output", "json", "profile", "set", "slim"]
@@ -696,8 +645,7 @@ def test_a_decision_answered_against_a_plan_that_has_since_moved_is_stale(config
     """The property that stops a user approving one plan and running a wider one."""
     run_id = _stopped_at_the_profile_gate()
     drive(["run", "decide", run_id, "profile.set.apply", "apply"])
-    # The world moves between offer and resume: one module is switched off by hand,
-    # so the delta the decision was made against is no longer the one applied.
+    # Between offer and resume one module is switched off by hand, so the delta moved.
     document = config.load().to_toml_dict()
     document["modules"] = {"analysis": False}
     config.save(config.from_dict(document))
@@ -724,14 +672,9 @@ def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
 
 
 def test_the_unreadable_cloud_sync_override_is_a_DECLARED_GATE():
-    """The unreadable cloud sync override is a declared gate a user can answer,
-    looked up through the registry."""
+    """A gate a user can answer, looked up through the registry."""
     owner, spec = registry.gate("write.cloudsync.unreadable")
-    assert spec.explicit, (
-        "R34 forbids a blanket answer for this class: proceeding past a guard "
-        "that could not rule out a concurrent writer is a per-run act by a named "
-        "actor, not a flag that answers it once for everything"
-    )
+    assert spec.explicit, "R34: proceeding past this guard is a per-run act by a named actor"
     assert set(spec.options) == {"proceed", "abort"}
     assert owner.writes & registry.DB_WRITE_SURFACES
 
@@ -748,15 +691,13 @@ def test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision():
     assert not missing, (
         f"verbs that write the database and declare no cloud-sync decision: {missing}"
     )
-    # And the reverse: a verb declaring the decision without writing the database
-    # asks a question its work can never raise.
+    # And the reverse: declaring it without writing asks what its work can never raise.
     spurious = sorted(asking - writing)
     assert not spurious, f"verbs declaring a decision they cannot reach: {spurious}"
 
 
 def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
-    """D2: the core writer and its parts (R-1890) name no verb, gate or flag; the
-    override crosses in as a boolean."""
+    """D2: the core writer and its parts (R-1890) name none; the override crosses as a boolean."""
     from tests._split_modules import source_of
     source = source_of("cratekit.core.rb_writer")
     for leaked in ("write.cloudsync.unreadable", "--decision", "crate "):
@@ -764,8 +705,7 @@ def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
 
 
 def test_no_environment_variable_or_config_key_can_answer_a_gate(configured, monkeypatch):
-    """No environment variable or config key answers a gate, since a blanket
-    answer satisfies every gate at once, which R34 forbids."""
+    """A blanket answer satisfies every gate at once, which R34 forbids."""
     for variable in ("CRATEKIT_YES", "CRATEKIT_DECISION", "CRATEKIT_ASSUME_YES"):
         monkeypatch.setenv(variable, "1")
     code, _, _ = drive(["profile", "set", "slim"])
@@ -829,8 +769,7 @@ def test_a_run_record_belongs_to_the_verb_that_created_it(configured):
 
 # Part 5: the registry, the stub, and parity
 def test_help_succeeds_with_every_heavy_extra_absent(configured, monkeypatch):
-    """Help succeeds with every heavy extra absent, blocked at the import system so
-    this is a test rather than an environment."""
+    """Blocked at the import system, so this is a test rather than an environment."""
     blocked = {module for entry in registry.entries() for module in entry.extras_modules}
     assert blocked, "no entry declares an extras-backed dependency"
 
@@ -882,13 +821,11 @@ def test_a_module_with_missing_extras_becomes_a_stub_that_names_the_install_comm
 
 
 def test_a_defect_in_our_own_module_does_not_masquerade_as_a_missing_extra():
-    """A defect in our own module raises as itself, not as a missing extra, which
-    would send a user to install a package that cannot help."""
+    """It raises as itself, or a user installs a package that cannot help."""
     entry = _analysis_entry(
         "broken", "a verb with a defect of our own", "broken_module", **_BEHIND_AN_EXTRA
     )
-    # Since U248 the defect raises when its verb is chosen, so one broken module
-    # stops no other command; the eager parser still raises it at construction.
+    # Since U248 it raises when its verb is chosen; the eager parser raises at construction.
     parser = cli.build_parser([entry], membership=profiles.resolve("full"))
     with pytest.raises(ImportError) as raised:
         parser.parse_args(["analyze", "broken"])
@@ -956,8 +893,7 @@ def test_the_table_is_every_part_in_order_and_each_file_is_under_the_bar():
 
 
 def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
-    """A planned verb whose module has landed loses its ``planned_in`` marker, walked
-    so an empty set is a valid population (P3)."""
+    """Walked, so an empty set is a valid population (P3)."""
     import importlib.util
     leftover = []
     for entry in registry.entries():
@@ -975,40 +911,28 @@ def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
     assert not leftover, leftover
 
 
-#: Planned verbs whose module ``tests/_pending.PENDING`` also owes, written out
-#: so a change to either register is made where a reviewer reads. Empty since U27.
+#: Planned verbs whose module ``tests/_pending.PENDING`` also owes, written out. Empty since U27.
 EXPECTED_COMPARED: frozenset[str] = frozenset()
 
 
 def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
-    """``Entry.planned_in`` and ``tests/_pending.PENDING`` name the same unit.
-
-    They drifted once. Compared over the intersection; the anti vacuity guard reads the list the
-    comparison reads."""
+    """They drifted once; compared over the intersection, which the vacuity guard reads too."""
     from tests import _pending  # noqa: PLC0415
     compared = [
         entry
         for entry in registry.entries()
         if not entry.landed and entry.module in _pending.PENDING
     ]
-    # Empty since U27, and falsifiable both ways: registering a planned verb's
-    # module fires this, and emptying the register raises in ``_pending.requires``.
+    # Falsifiable both ways: so does a registered module, and an empty register raises.
     assert {entry.name for entry in compared} == EXPECTED_COMPARED, (
-        f"the set of planned verbs the register also owes has moved; it is now "
-        f"{sorted(entry.name for entry in compared)} and this file says it is "
-        f"{sorted(EXPECTED_COMPARED)}. Update the expectation in the same commit "
-        f"as the register, or the comparison below stops covering the new one."
+        f"the planned verbs the register also owes moved: {sorted(e.name for e in compared)}"
     )
     disagreements = {
         entry.name: (entry.planned_in, _pending.PENDING[entry.module][0])
         for entry in compared
         if entry.planned_in != _pending.PENDING[entry.module][0]
     }
-    assert not disagreements, (
-        f"planned_in and tests/_pending.PENDING name different units for the same "
-        f"module: {disagreements}. The register is what scripts/board.py reads, so "
-        f"it wins; repoint the marker."
-    )
+    assert not disagreements, f"repoint planned_in to the register's unit: {disagreements}"
 
 
 # ── the nine conformance properties, over every entry ────────────────────────
@@ -1017,8 +941,7 @@ LANDED = [e for e in ALL_ENTRIES if e.landed]
 
 
 def test_a_handler_key_resolves_without_importing_the_module():
-    """KTD26: a handler key resolves without importing its module, measured in a
-    fresh interpreter that imported only the registry, as the supervisor has."""
+    """KTD26: measured in a fresh interpreter that imported only the registry."""
     result = _import_probe.run_probe(
         """
         import json, sys
@@ -1057,10 +980,7 @@ def test_conformance_1_structured_output_is_actually_emitted(entry, configured, 
     code, out, _ = drive(argv)
     envelope = json.loads(out)
     assert output.envelope_problems(envelope) == [], envelope
-    assert envelope["exit_code"] == code, (
-        "the envelope's exit code and the process status must be the same "
-        "number, or a caller reading one of them has no idea what the other says"
-    )
+    assert envelope["exit_code"] == code, "the envelope's exit code and the status differ"
     assert envelope["verb"] == entry.name
     # Exactly one JSON object on standard output and nothing else.
     assert out.strip().startswith("{") and out.strip().endswith("}")
@@ -1075,29 +995,21 @@ def _written(path: Path, text: str) -> Path:
 
 
 def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
-    """Enough positional arguments to drive one verb; decisions stay root parser flags. File
-    verbs get a path under the ``configured`` library (R1); ``monkeypatch`` serves a lazy sample
-    (U129)."""
+    """Enough arguments to drive one verb, a file under the ``configured`` library (R1);
+    ``monkeypatch`` serves a lazy sample (U129)."""
     library = config.load().library.root
     sample = {
-        "profile.show": [],
-        "profile.set": ["slim"],
-        "run.show": ["no-such-run"],
-        "run.decide": ["no-such-run", "profile.set.apply", "apply"],
-        # U170. Lazy: a run open at its gate for a month gives the confirm a plan; the rest is in
-        # tests/test_run_retire.py.
+        "profile.show": [], "profile.set": ["slim"],
+        "run.show": ["no-such-run"], "run.decide": ["no-such-run", "profile.set.apply", "apply"],
+        # U170. Lazy: a run open at its gate a month gives the confirm a plan; test_run_retire.
         "run.retire": _run_retire_over_one_old_gate,
         # U10. An absent identifier refuses from the vocabulary; an empty queue is a fresh install.
-        "job.list": [],
-        "job.show": ["no-such-job"],
-        "job.resume": ["no-such-job"],
+        "job.list": [], "job.show": ["no-such-job"], "job.resume": ["no-such-job"],
         "job.cancel": ["no-such-job"],
         # U11. Absent identifiers, as above; the file verbs take a path under the library (R1).
-        "review.list": [],
-        "review.show": ["no-such-item"],
+        "review.list": [], "review.show": ["no-such-item"],
         "review.resolve": ["no-such-item", "--verdict", "accepted"],
-        "review.clear": ["no-such-item"],
-        "review.export": [str(library / "review-export.json")],
+        "review.clear": ["no-such-item"], "review.export": [str(library / "review-export.json")],
         "review.import": [str(library / "no-such-export.json")],
         # U36. Read only, it opens the database only for a native tree, so it exits OK.
         "converge": [],
@@ -1108,21 +1020,17 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U16. An absent path, refused from the vocabulary; tests/test_match_states.py.
         "match.run": [str(library / "no-such-list.txt")],
         # U42. Download freezes an absent list unread and audit reads an empty music folder: OK.
-        "acquire.download": [str(library / "no-such-list.txt")],
-        "acquire.audit": [],
+        "acquire.download": [str(library / "no-such-list.txt")], "acquire.audit": [],
         # U80. An absent list, refused before any walk, so nothing reaches the searcher.
         "acquire.fallback": [str(library / "no-such-list.txt")],
         # U81. The same absent list, refused before any walk, queue or download.
         "acquire.fallback-fetch": [str(library / "no-such-list.txt")],
         # U176. No session in the isolated keychain: both refuse auth-failed, before Bandcamp.
-        "acquire.bandcamp": [],
-        "acquire.bandcamp-fetch": [],
+        "acquire.bandcamp": [], "acquire.bandcamp-fetch": [],
         # U23. The census takes no positional (R19) and queues without a database.
-        # U49. The session verbs take no positional or actor flag (R34); ``session ack --as
-        # session`` (U184) is in tests/test_session_ack_by_session.py, the rest in
-        # tests/test_session_cli.py.
-        "session.ack": [],
-        "session.release": [],
+        # U49. The session verbs take no positional or actor flag (R34); ``--as session``
+        # (U184) is in tests/test_session_ack_by_session.py.
+        "session.ack": [], "session.release": [],
         "adopt.scan": [],
         # U27. No positional (R19): its explicit gate is asked over an empty plan, abortable.
         "adopt.apply": [],
@@ -1143,21 +1051,14 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U293. The pass ends on its own first refusal, which the night records; test_sync_night.
         "sync.night": [],
         # U295. conftest reads the platform as Linux, so each refuses before launchd; test_schedule.
-        "schedule.install": [],
-        "schedule.show": [],
-        "schedule.remove": [],
+        "schedule.install": [], "schedule.show": [], "schedule.remove": [],
         # U179. The plan step refuses for want of a Bandcamp session; tests/test_sync_bandcamp.py.
         "sync.bandcamp": [],
         # U20. An empty intake exits OK; rebuild names an actor, or the product answers for one.
-        "route.inbox": [],
-        "route.unplaced": [],
-        "route.resort": [],
-        "route.pending": [],
+        "route.inbox": [], "route.unplaced": [], "route.resort": [], "route.pending": [],
         "rebuild": ["--actor", "a-person"],
         # U27. The wizard answers everything from the recorded file and reaches no prompt.
-        "setup": [],
-        "doctor": [],
-        "status": [],
+        "setup": [], "doctor": [], "status": [],
         # A credential is never an argument, so this drives the refusal naming both ways.
         "login": ["provider-session"],
         # U37. Identify refuses a missing recording before any paid call; set (U129) is lazy.
@@ -1176,8 +1077,7 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
         # R-501. An absent export, refused from the vocabulary.
         "intake.imported": ["--export", str(library / "no-such.xml")],
-        # U82. A pass never run: the gate over an empty plan, NO_OP; lazy (R-235), since its
-        # file under the library would trip the cutover precheck. tests/test_sync_mark.py.
+        # U82. A pass never run: NO_OP; lazy (R-235), or its file trips the cutover precheck.
         "sync.mark": lambda: [
             "--xml",
             str(outbound_fakes.write_export(library / "landed").rename(
@@ -1194,22 +1094,16 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U44. OK: the path is queued unread; the refusal is in tests/test_master_cli.py.
         "master": [str(library / "Music" / "no-such-recording.wav")],
         # U45. Queued off the configured destinations; tests/test_backup_cli.py refuses.
-        "backup.run": [],
-        "name.apply": [],
+        "backup.run": [], "name.apply": [],
         # U102. The confirm gate over an empty queue; unflagged, tests/intake/test_repair.py.
         "repair.paths": ["--apply"],
         # U25. Run and restamp queue, so they still emit a job_state envelope.
-        "analyze.run": [str(library / "Music")],
-        "analyze.calibrate": [],
-        "analyze.validate": [],
-        "analyze.restamp": [str(library / "Music")],
-        "analyze.vocals": [str(library / "Music")],
+        "analyze.run": [str(library / "Music")], "analyze.calibrate": [], "analyze.validate": [],
+        "analyze.restamp": [str(library / "Music")], "analyze.vocals": [str(library / "Music")],
         "metadata.mytags-vocals": [],
         # U26. An empty registry; ``sync labels`` is retired (U109); tests/test_label_workers.py.
-        "label.registry": [],
-        "sync.labels": [],
-        "label.import": ["no-such-label"],
-        "label.harvest": ["https://example.invalid/playlist"],
+        "label.registry": [], "sync.labels": [],
+        "label.import": ["no-such-label"], "label.harvest": ["https://example.invalid/playlist"],
         # U75. An empty review queue accepts nothing, before the catalogue is resolved.
         "label.approved": [],
         # R-798. It lists what the genre gate holds.
@@ -1250,8 +1144,7 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "report.library": [str(library / "no-such-export.xml")],
         "report.intake-aging": [str(library / "no-such-export.xml")],
         # U27. An empty session log restores nothing, so OK with no backup acknowledgment.
-        "restore.list": [],
-        "restore.run": [],
+        "restore.list": [], "restore.run": [],
         # U96. It refuses here, the behaviour under test, and declares no gate.
         "restore.bare-metal": ["--target", str(library / "replacement"), "--accept-replacement"],
         # U33, U51. A real export (R1), since an absent one refuses before the gate.
@@ -1266,8 +1159,7 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U28. A target under the library, or it would write the real agent skills folder.
         "skills.install": ["--into", str(library / "agent-skills")],
         # R-235. Lazy, since each changes library state: a cutover the precheck passes, a revert.
-        "tree.cutover": lambda: _ready_to_cut_over(),
-        "tree.revert": lambda: _already_cut_over(),
+        "tree.cutover": lambda: _ready_to_cut_over(), "tree.revert": lambda: _already_cut_over(),
         # R-745. A new name per drive, since the verb never replaces a file.
         "export.collection": lambda: [
             str(library / "exports" / f"collection-{uuid.uuid4().hex}.xml")
@@ -1307,8 +1199,7 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "inbox.analyzed": _intake_cut_over,
         # U167. The check reads a copy of the fixture's database; tests/test_analyze_check.py.
         "analyze.check": [],
-        # U327. Lazy: cut over, since the bridge refuses; no Analyze playlist, so an empty
-        # scope, gated, NO_OP. It reads the acknowledgment first. tests/test_analyze_adopt.py.
+        # U327. Lazy: cut over, as the bridge refuses; no Analyze playlist, so gated and NO_OP.
         "analyze.adopt": _intake_cut_over,
         # U112. Its database area reads the acknowledgment first; both areas still ask.
         "organize": [],
@@ -1346,8 +1237,7 @@ def _run_retire_over_one_old_gate() -> list[str]:
 
 
 def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
-    """A named local recording, so U129's account gate fires before recognition;
-    tests/test_u129_set_account_playlist.py drives the writing path."""
+    """A named local recording, so U129's account gate fires before recognition."""
     from cratekit.core import secrets
     from cratekit.intake import acrcloud
     from cratekit.label import catalogue
@@ -1388,8 +1278,7 @@ def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
 
 
 def test_intake_set_sample_leaves_account_and_catalogue_seams_real(configured, monkeypatch):
-    """The intake.set sample leaks no fake into later tests on this worker, since
-    ``account.forget`` clears only the opened handle."""
+    """``account.forget`` clears only the opened handle, so no fake may leak past the sample."""
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
     real_account = account.resolve
@@ -1405,10 +1294,7 @@ def test_intake_set_sample_leaves_account_and_catalogue_seams_real(configured, m
         assert catalogue.resolve is not real_catalogue
     seams = (("account", account, real_account), ("catalogue", catalogue, real_catalogue))
     for name, seam, real in seams:
-        assert seam.resolve is real, (
-            f"closing the intake.set sample's monkeypatch context did not restore "
-            f"{name}.resolve; later tests on this worker would miss the guard"
-        )
+        assert seam.resolve is real, f"the intake.set sample left {name}.resolve faked"
 
 
 def _an_account_with_no_year_folder(monkeypatch) -> list[str]:
@@ -1454,8 +1340,7 @@ def _a_pass_with_no_vocal_model_and_nothing_new(monkeypatch) -> list[str]:
 
 
 def _with_the_source_playlist(make) -> list[str]:
-    """The playlist every favourite is in, made by ``make(handle, source)`` when it is not
-    already held. Answers no arguments."""
+    """The playlist every favourite is in, made by ``make(handle, source)`` unless held."""
     from cratekit.core import rb_writer
     cfg = config.load()
     source = taxonomy.default_taxonomy().sub_class("favorites").signal_playlist
@@ -1562,8 +1447,7 @@ def _routing_tree_cut_over_with_a_source() -> list[str]:
     try:
         held = [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]
         playlist = held[0] if held else handle.create_playlist(source)
-        # One track, since an emptied source refuses before the gate, in no genre
-        # folder, so the plan writes nothing.
+        # One track in no genre folder, since an emptied source refuses before the gate.
         if not list(handle.get_playlist_songs(PlaylistID=str(playlist.ID))):
             handle.add_to_playlist(playlist, "1")
         handle.session.commit()
@@ -1587,8 +1471,7 @@ def _routing_tree() -> tuple[str, str]:
 
 
 def _a_file_in_the_library() -> Path:
-    """One empty file with an audio suffix under the configured library, which
-    ``intake file`` reads for tags and finds none."""
+    """One empty file with an audio suffix under the library, holding no tags."""
     path = Path(config.load().library.root) / "Music" / "conformance-single.flac"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.touch()
@@ -1625,8 +1508,7 @@ def _rows_whole() -> list[str]:
 
 
 def _link_rows() -> list[str]:
-    """Every content row made whole with rekordbox's probe values, so ``repair link``
-    plans nothing."""
+    """Every content row made whole with the probe values, so ``repair link`` plans nothing."""
     from cratekit.core import rb_writer
     from tests.test_repair_link import HOUSE
     _rows_whole()
@@ -1687,8 +1569,7 @@ def test_conformance_2_exit_codes_are_from_the_vocabulary_and_never_status_two(
 
 
 def test_conformance_2_only_the_entry_point_may_end_the_process():
-    """Only the entry point ends the process; one boundary converts a cause into a
-    status, since ``SystemExit`` escapes an ``except Exception`` upstream."""
+    """One boundary converts a cause into a status: ``SystemExit`` escapes ``except Exception``."""
     offenders: list[str] = []
     for path, source in package_sources():
         relative = path.relative_to(SRC_ROOT).as_posix()
@@ -1716,131 +1597,87 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
     assert not offenders, f"ExitCode built from a literal: {offenders}"
 
 
-#: Gates that cannot be reached in a test environment, each with the reason. A
-#: listed gate that is reached fails below and says to delete the entry.
+#: Gates no test environment reaches, each with the reason; one reached fails below.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
         "sync.removed.confirm": (
-            "asked only by a plan that offers a row, which needs a pass swept, landed into a "
-            "native intake tree and read again on the account with a track taken off, and the "
-            "conformance fixture downloaded nothing, so the sample asks the account nothing and "
-            "ends NO_OP with no gate, by U288's brief. The gate, its explicit two act answer, the "
-            "removal and its refusals are driven in tests/test_sync_removed.py."
+            "asked only by a plan offering a row, which needs a pass swept, landed native and a "
+            "track taken off on the account; the fixture downloaded nothing, so NO_OP with no gate "
+            "(U288). Driven in tests/test_sync_removed.py."
         ),
         "sync.removed.retire": (
-            "asked only by sync removed --retire over a synced playlist the account no longer "
-            "lists whose id answered not found, and the conformance sample passes no flag and "
-            "downloaded nothing, so it asks the account nothing and ends NO_OP with no gate "
-            "(U320). The gate, its explicit two act answer, the retirement and its abort are "
-            "driven in tests/test_sync_removed_gone.py."
+            "asked only by --retire over a synced playlist whose id answered not found; the "
+            "sample passes no flag, so NO_OP with no gate (U320). Driven in "
+            "tests/test_sync_removed_gone.py."
         ),
         "rebuild.accept": (
-            "asked only by rebuild --tree naming a tree no rebuild can reproduce, the intake tree "
-            "above all, that a restore marked unconverged, and the conformance fixture has no "
-            "native tree, so the sample queues nothing and asks nothing (U219). That path never "
-            "queues, so the queued resume contract has nothing to hold it to. The gate, its "
-            "explicit two act answer and the disposition it records are driven in "
+            "asked only by rebuild --tree naming a tree a restore marked unconverged, and the "
+            "fixture has no native tree, so nothing is queued or asked (U219). Driven in "
             "tests/test_resort_scope.py over a restore the real detection marked."
         ),
         "export.set.rename": (
-            "asked only by export set --rename JOB, which names a succeeded set job, and the "
-            "conformance fixture's queue holds none, so the sample takes the tracklist path, which "
-            "asks export.set.confirm instead. One drive reaches one path. The rename gate, its "
-            "explicit two act answer and its refusals are driven in "
-            "tests/test_export_set_rename.py over a set job and an INSPIRATION playlist."
+            "asked only by --rename naming a succeeded set job; the fixture's queue holds none, so "
+            "the tracklist path asks export.set.confirm instead. Driven in "
+            "tests/test_export_set_rename.py."
         ),
         "favorites.split.approve": (
-            "asked only over a library that still holds a quarter playlist beside All Favorites, "
-            "and approving one writes: the quarter is retired, which the conformance fixture "
-            "refuses for its unpinned rekordbox, since a pin is never adopted on a user's behalf "
-            "(S2). A library with no quarter asks nothing, by U145's brief, so the sample is that "
-            "library and the verb ends NO_OP with no gate. The gate, its explicit two act answer, "
-            "the split and its refusals are driven in tests/test_favorites_split.py."
+            "asked only beside a quarter playlist, and approving writes, refused for the unpinned "
+            "rekordbox (S2); with no quarter it asks nothing (U145), so NO_OP. Driven in "
+            "tests/test_favorites_split.py."
         ),
         "favorites.order.approve": (
-            "asked only over a Favorites folder that is not in order, and approving one writes the "
-            "positions of its playlists, which the conformance fixture refuses for its unpinned "
-            "rekordbox, since a pin is never adopted on a user's behalf (S2). A folder already in "
-            "order asks nothing, by U180's brief, so the sample is that folder and the verb ends "
-            "NO_OP with no gate. The gate, its explicit two act answer, the write and its refusals "
-            "are driven in tests/test_favorites_order.py."
+            "asked only over a Favorites folder out of order, and approving writes, refused for "
+            "the unpinned rekordbox (S2); one in order asks nothing (U180), so NO_OP. Driven in "
+            "tests/test_favorites_order.py."
         ),
         "intake.file.native": (
-            "asked only on a library whose intake tree is recorded database native, for the reason "
-            "intake.land.native gives below: the conformance fixture's intake tree is on the xml "
-            "bridge, where the same verb shows its plan and asks nothing, and the medium is the "
-            "tree's mode, not an argument. The gate, its explicit two act answer and its refusals "
-            "are driven in tests/test_intake_writers_native.py on a library whose intake tree has "
-            "cut over."
+            "asked only where the intake tree is database native, a mode and not an argument, and "
+            "the fixture's is on the xml bridge, where it asks nothing. Driven in "
+            "tests/test_intake_writers_native.py."
         ),
         "intake.land.native": (
-            "asked only on a library whose intake tree is recorded database native, and the "
-            "conformance fixture's intake tree is on the xml bridge, where the same verb asks "
-            "intake.land.confirm instead. One drive reaches one medium, and the medium is the "
-            "tree's mode, not an argument, so no argument list reaches both. The native gate, its "
-            "explicit two act answer and its refusals are driven in "
-            "tests/test_intake_land_native.py on a library whose intake tree has cut over."
+            "asked only where the intake tree is database native, a mode and not an argument, and "
+            "the fixture's is on the xml bridge, which asks intake.land.confirm. Driven in "
+            "tests/test_intake_land_native.py."
         ),
         "intake.shelve.native": (
-            "asked only over a plan that moves a batch, and approving one writes a path on the "
-            "collection, which the conformance fixture refuses for its unpinned rekordbox, since a "
-            "pin is never adopted on a user's behalf (S2). The sample is --report, which plans "
-            "against a read only copy and asks nothing by design (U154). The gate, its explicit "
-            "two act answer, the write and its refusals are driven in tests/test_intake_shelve.py "
-            "on a library whose batch has landed."
+            "asked only over a plan moving a batch, and approving writes, refused for the unpinned "
+            "rekordbox (S2); the sample's --report asks nothing by design (U154). Driven in "
+            "tests/test_intake_shelve.py."
         ),
         "label.playlists.crawl": (
-            "asked only by a full build of a FOLLOWED label whose listing estimates more provider "
-            "calls than playlists_cli.FULL_BUILD_CALLS, and the conformance sample names a label "
-            "nobody follows, which is a plan of nothing decided before a catalogue is resolved and "
-            "asks label.playlists.confirm instead (U191). The crawl gate, its explicit two act "
-            "answer, a decline and a stale answer over a grown listing are driven in "
-            "tests/test_label_playlists_releases.py."
+            "asked only by a full build of a FOLLOWED label over playlists_cli.FULL_BUILD_CALLS; "
+            "the sample's label is followed by nobody, so it asks label.playlists.confirm (U191). "
+            "Driven in tests/test_label_playlists_releases.py."
         ),
         "sync.twins.approve": (
-            "asked only over an account holding a downloaded custom playlist in a year folder that "
-            "has no twin, and approving one writes a folder and a playlist in rekordbox, which the "
-            "conformance fixture refuses for its unpinned rekordbox, since a pin is never adopted "
-            "on a user's behalf (S2). An account with nothing to backfill asks nothing, by U149's "
-            "brief, so the sample is that account and the verb ends NO_OP with no gate. The gate, "
-            "its explicit two act answer, the write and its refusals are driven in "
-            "tests/test_sync_twins.py."
+            "asked only over a year folder playlist with no twin, and approving writes, refused "
+            "for the unpinned rekordbox (S2); nothing to backfill asks nothing (U149), so NO_OP. "
+            "Driven in tests/test_sync_twins.py."
         ),
         "write.cloudsync.unreadable": (
-            "raised by the guarded writer only when rekordbox's Cloud Library Sync state cannot be "
-            "READ, which is a property of the machine rather than of the verb. A test environment "
-            "has no rekordbox installation to have an unreadable sync state, so no drive can "
-            "provoke it and requiring it would refuse every correct verb that declares it. Closes "
-            "with the disposable database fixture R-13 names, which is the first environment able "
-            "to produce the state."
+            "raised only when rekordbox's Cloud Library Sync state cannot be READ, a property of "
+            "the machine no test environment has. Closes with the disposable database fixture R-13 "
+            "names, the first environment able to produce the state."
         ),
     }
 )
 
 
 def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
-    """Every gate the entry declares fired, except the ones named unreachable,
-    since only a drive that counts what fired holds a handler to its declaration."""
+    """Every gate the entry declares fired, except the ones named unreachable."""
     declared = {spec.name for spec in entry.gates}
     exempt = declared & set(UNREACHABLE_GATES)
     silent = sorted(declared - exempt - set(reached))
     assert not silent, (
-        f"{entry.name} declares {silent} and its handler never reached them. A declared gate that "
-        f"cannot fire is a decision the registry promises and the verb does not ask, and for a "
-        f"destructive verb that is the concurrent-writer question going unasked with the suite "
-        f"green. Either reach it, drop the declaration, or name it in UNREACHABLE_GATES with the "
-        f"reason no drive can provoke it."
+        f"{entry.name} declares {silent} and its handler never reached them; reach it, drop it, or "
+        f"name it in UNREACHABLE_GATES"
     )
     surprising = sorted(set(reached) & exempt)
-    assert not surprising, (
-        f"{entry.name} reached {surprising}, which UNREACHABLE_GATES says no "
-        f"drive can provoke. The exemption is stale: delete the entry so every "
-        f"verb declaring that gate is held to reaching it."
-    )
+    assert not surprising, f"{entry.name} reached {surprising}: the exemption is stale"
 
 
-#: Verbs that read the backup acknowledgment before their gate (R-733). Named,
-#: so other gated verbs reaching their gates without one stays under test.
+#: Verbs that read the backup acknowledgment before their gate (R-733), named.
 ACKNOWLEDGED_BEFORE_THE_GATE = {
     name: f"tests/{module}.py::test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     for name, module in {
@@ -1860,8 +1697,7 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
         "tag.set": "test_tag_set",
         "tag.campaign": "test_tag_campaign",
         "intake.inspiration": "test_set_inspiration_playlist",
-        # U112. Only its database area is refused without one; the account area
-        # is still asked, which its own suite drives.
+        # U112. Only its database area is refused without one; its own suite drives the rest.
         "organize": "test_organize",
         "sync.pair": "test_sync_pair",
         "sync.twins": "test_sync_twins",
@@ -1877,8 +1713,7 @@ def _acknowledge_where_the_verb_reads_it_first(entry: registry.Entry, cfg) -> No
 
 
 def test_every_verb_acknowledged_for_conformance_is_refused_without_one_elsewhere():
-    """Each acknowledged verb names the test that drives it without an
-    acknowledgment, and that test exists."""
+    """Each names the test that drives it without an acknowledgment, and that test exists."""
     root = Path(__file__).resolve().parent.parent
     for name, node_id in ACKNOWLEDGED_BEFORE_THE_GATE.items():
         assert registry.entry(name).landed, name
@@ -1889,17 +1724,13 @@ def test_every_verb_acknowledged_for_conformance_is_refused_without_one_elsewher
 
 
 def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
-    """Drive one gated verb to OK the way R34 says it is reached.
-
-    Returns the gates it refused at, asserting they are exactly the entry's minus
-    :data:`UNREACHABLE_GATES`, which holds a handler to its declared gates."""
+    """Drive one gated verb to OK the way R34 says, returning the gates it refused at."""
     declared = {spec.name: spec for spec in entry.gates}
     answered: list[str] = []
     reached: list[str] = []
     run_id: str | None = None
 
-    # One drive per gate plus the one that succeeds; refusing more often than it has
-    # gates means an undeclared refusal, which falling out of the loop makes visible.
+    # One drive per gate and one that succeeds; falling out of the loop shows an extra refusal.
     for _ in range(len(declared) + 1):
         resume = ["--run", run_id] if run_id is not None else []
         argv = ["--output", "json", *answered, *resume, *entry.path, *positional]
@@ -1909,43 +1740,28 @@ def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
             return reached
         assert code == int(ExitCode.DECISION_REQUIRED), err or out
         envelope = json.loads(out)
-        # The gate rides on the cause, not on ``pending_human_action``, which means a
-        # person must act outside the tool and implies PENDING_HUMAN.
+        # The gate rides on the cause, not ``pending_human_action``, which means PENDING_HUMAN.
         detail = envelope["cause"]["detail"]
-        assert detail["gate"] in declared, (
-            f"{entry.name} refused at {detail['gate']!r}, which it does not declare; a gate "
-            f"outside the registry is invisible to every conformance assertion"
-        )
+        assert detail["gate"] in declared, f"{entry.name} refused at undeclared {detail['gate']!r}"
         spec = declared[detail["gate"]]
         assert detail["options"] == list(spec.options)
         assert detail["explicit"] is spec.explicit
         assert envelope["resumable"] is True
         reached.append(spec.name)
         if not spec.explicit:
-            # One act: an ordinary gate is answerable inline, and flags accumulate so a
-            # later gate is reached with the first still answered.
+            # One act: answered inline, and the flags accumulate for a later gate.
             answered += ["-d", f"{spec.name}={spec.options[0]}"]
             continue
-        # Two acts (R34): the inline answer is refused again, since an explicit gate is
-        # satisfied only by a separate act recorded with its actor.
+        # Two acts (R34): refused inline again, satisfied only by a separate act with its actor.
         run_id = envelope["run_id"]
         inline = ["-d", f"{spec.name}={spec.options[0]}"]
         code, _, _ = drive([*answered, *inline, "--run", run_id, *entry.path, *positional])
-        assert code == int(ExitCode.DECISION_REQUIRED), (
-            f"{spec.name} is explicit, and an inline answer satisfied it. R34's whole content is "
-            f"that this class of decision cannot be typed onto the command that was already running"
-        )
-        assert spec.name not in gates.load(run_id).decisions, (
-            "the refused inline answer was recorded anyway, so the second act "
-            "would find the gate already answered by the first"
-        )
+        assert code == int(ExitCode.DECISION_REQUIRED), f"an inline answer satisfied {spec.name}"
+        assert spec.name not in gates.load(run_id).decisions, "the refused answer was recorded"
         answer = ["run", "decide", run_id, spec.name, spec.options[0], "--actor", "a-person"]
         code, _, err = drive(answer)
         assert code == int(ExitCode.OK), err
-        assert gates.load(run_id).decisions[spec.name].actor == "a-person", (
-            "an explicit decision names who asserted it, or the record cannot "
-            "tell a person's answer from the process asking itself"
-        )
+        assert gates.load(run_id).decisions[spec.name].actor == "a-person", "no actor recorded"
 
     raise AssertionError(f"{entry.name} still refuses after every gate it declares was answered")
 
@@ -1973,14 +1789,10 @@ def test_conformance_3_admits_an_explicitly_gated_verb(configured, monkeypatch):
     _swap_in(monkeypatch, promoted)
     assert _conformance_3(promoted, ["slim"]) == ["profile.set.apply"]
     config.reset_cache()
-    assert config.load().profile.name == "slim", (
-        "the verb reported OK without doing its work, so the two acts bought a "
-        "status rather than a profile change"
-    )
+    assert config.load().profile.name == "slim", "the verb reported OK without doing its work"
 
 
-#: A second gate for a one gate verb, explicit, as entries with their own
-#: confirmation plus the shared cloud sync decision carry.
+#: A second, explicit gate for a one gate verb, as entries with the cloud sync decision carry.
 _SECOND_GATE = registry.GateSpec(
     name="profile.set.second", options=("go", "abort"),
     prompt="A second decision on the same verb?", explicit=True,
@@ -1998,22 +1810,17 @@ def _require_every_gate(ctx):
     "explicit_first", [False, True], ids=["plain-then-explicit", "explicit-then-explicit"]
 )
 def test_conformance_3_admits_a_verb_carrying_two_gates(explicit_first, configured, monkeypatch):
-    """Assertion 3 admits a verb carrying two gates, in both orderings; only the
-    handler is synthetic."""
+    """In both orderings; only the handler is synthetic."""
     base = registry.entry("profile.set")
     first = replace(base.gates[0], explicit=explicit_first)
     promoted = replace(base, gates=(first, _SECOND_GATE))
     _swap_in(monkeypatch, promoted)
     monkeypatch.setattr("cratekit.cli.verbs.profile.apply_profile", _require_every_gate)
-    assert _conformance_3(promoted, ["slim"]) == [first.name, _SECOND_GATE.name], (
-        "the verb reached OK without both of its gates refusing first, so one of "
-        "them was answered by something other than a decision"
-    )
+    assert _conformance_3(promoted, ["slim"]) == [first.name, _SECOND_GATE.name]
 
 
 def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
-    """The csv writer guard fires on every import shape, aliased ones included,
-    and stays quiet on an unrelated attribute of that name and on a read (P7)."""
+    """Every import shape, aliased ones included; quiet on a namesake and on a read (P7)."""
     assert constructs_a_csv_writer("import csv\ncsv.writer(handle)\n")
     assert constructs_a_csv_writer("from csv import DictWriter\nDictWriter(handle, [])\n")
     assert constructs_a_csv_writer("import csv as spreadsheet\nspreadsheet.writer(handle)\n"), (
@@ -2030,10 +1837,8 @@ def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
 
 @pytest.mark.parametrize("entry", [e for e in ALL_ENTRIES if e.adjudicates], ids=lambda e: e.name)
 def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configured):
-    """Assertion 4 (U11): adjudication goes through the review queue.
-
-    This drives the shared surface, not the verb, a gap a residual records. The static half walks
-    each landed verb's source for a comma separated writer."""
+    """Assertion 4 (U11). This drives the shared surface, not the verb, a gap a residual
+    records; the static half walks each landed verb's source for a comma separated writer."""
     import importlib
     review = importlib.import_module("cratekit.core.review")
     queue = review.adjudicated_queues()[0]
@@ -2046,10 +1851,7 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configu
         )
         assert item.verdict is None
         addressed = review.list_items(store, handler_key=entry.handler_key).items
-        assert [held.item_id for held in addressed] == [item.item_id], (
-            f"{entry.name} declares that it adjudicates, and the queue cannot "
-            f"show what it produced under its own key"
-        )
+        assert [held.item_id for held in addressed] == [item.item_id], entry.name
 
     verdict = ["--verdict", "accepted", "--option", "opt-one"]
     code, out, err = drive(["--output", "json", "review", "resolve", item.item_id, *verdict])
@@ -2058,21 +1860,14 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configu
         settled = review.get(store, item.item_id)
         assert settled.verdict is review.Verdict.ACCEPTED
         assert review.count_unresolved(store) == 0
-    # The replacement must not be what it replaces; the review directory is walked,
-    # so a second file beside the database is covered (P3).
+    # The replacement must not be what it replaces; walked, so a second file is covered (P3).
     for current, _directories, files in os.walk(config.state_path("review_queue", configured)):
         for name in files:
-            assert not name.endswith(".csv"), (
-                f"the review queue itself wrote {name}, which is the hand edited "
-                f"file this whole surface replaces"
-            )
+            assert not name.endswith(".csv"), f"the review queue itself wrote {name}"
     path = SRC_ROOT / Path(*entry.module.split(".")).with_suffix(".py")
     if path.is_file():
         offenders = constructs_a_csv_writer(path.read_text())
-        assert not offenders, (
-            f"{entry.name} declares that it adjudicates and writes a comma separated file for a "
-            f"person to edit: {offenders}. Adjudication is a persisted review item (R12)."
-        )
+        assert not offenders, f"{entry.name} adjudicates in a csv file (R12): {offenders}"
 
 
 @pytest.mark.parametrize("entry", [e for e in ALL_ENTRIES if e.long_running], ids=lambda e: e.name)
@@ -2106,10 +1901,8 @@ def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
 def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
     entry, configured, tmp_path
 ):
-    """Assertion 6 (U8): destructive verbs refuse without the session gates.
-
-    Three refusals, three codes, zero writes each. The trigger is ``destructive``, not ``writes``
-    (KTD24). This drives the shared gate, a gap a residual records."""
+    """Assertion 6 (U8): three refusals, three codes, no writes; ``destructive`` is the trigger,
+    not ``writes`` (KTD24). This drives the shared gate, a gap a residual records."""
     import importlib
     session = importlib.import_module("cratekit.core.session")
     assert hasattr(session, "assert_gates")
@@ -2122,10 +1915,7 @@ def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
         with pytest.raises(CratekitError) as excinfo:
             with session.assert_gates(configured, workflow=entry.name, **gate_arguments):
                 raise AssertionError("the gates admitted a session they should have refused")
-        assert _state_fingerprint(*roots) == before, (
-            f"{entry.name} wrote to the state tree on a refused path; a refusal "
-            f"that leaves a trace is a refusal that has already done something"
-        )
+        assert _state_fingerprint(*roots) == before, f"{entry.name} wrote on a refused path"
         return excinfo.value.cause.code
 
     # 1. A mismatched volume, first, since it must refuse before any path resolves.
@@ -2167,13 +1957,9 @@ TAXONOMY_DISPLAY_NAMES = frozenset(
 
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
 def test_conformance_7_taxonomy_terms_are_stable_identifiers(entry):
-    """R19: a verb resolves the declared taxonomy, never a display name, since a
-    display name is a persisted key in five places and a rename orphans them."""
+    """R19: a display name is a persisted key in five places, so a rename orphans them."""
     for term in entry.taxonomy_terms:
-        assert term in TAXONOMY_IDS, (
-            f"{entry.name} names {term!r}, which is not a stable taxonomy id in "
-            f"the shipped template"
-        )
+        assert term in TAXONOMY_IDS, f"{entry.name} names {term!r}, not a stable taxonomy id"
         assert term not in TAXONOMY_DISPLAY_NAMES
 
 
@@ -2191,8 +1977,7 @@ def test_conformance_7_no_verb_module_hardcodes_a_taxonomy_display_name():
 
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
 def test_conformance_8_anything_that_writes_declares_a_doctor_precondition(entry):
-    """R3: anything that writes declares a doctor precondition, so health checks
-    gate the work rather than only feeding a report."""
+    """R3: health checks gate the work rather than only feeding a report."""
     if entry.writes:
         assert entry.doctor_checks, (
             f"{entry.name} writes {sorted(entry.writes)} and declares no health check to pass first"
@@ -2209,16 +1994,12 @@ def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry(co
 
 
 def test_conformance_8_every_declared_precondition_can_pass_and_can_refuse(configured):
-    """Every declared precondition passes on a healthy machine, refuses on a broken one.
-
-    No constant answer passes both. If a new precondition cannot fail on ``machines.hostile()``,
-    extend ``hostile()`` rather than relaxing this."""
+    """No constant answer passes both; a precondition ``hostile()`` cannot fail extends it."""
     import importlib
     doctor = importlib.import_module("cratekit.cli.doctor")
     declared = {key for entry in registry.entries() for key in entry.doctor_checks}
     assert declared, "no verb declares a precondition; the walk is broken, not the tree"
-    # The fixture is set up, not healthy: it records no rekordbox pin, since a pin
-    # is never adopted for a user (S2). The healthy run adds one here only.
+    # The fixture records no pin, since one is never adopted for a user (S2); added here only.
     document = dict(configured.to_toml_dict())
     pin = {"pinned_app_version": machines.INSTALLED_APP_VERSION, "validated_on": "2026-08-01"}
     cfg = config.from_dict({**document, "rekordbox": pin})
@@ -2316,8 +2097,7 @@ def test_every_feature_row_maps_to_a_verb_at_its_stated_disposition():
 
 
 def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
-    """Every source entry point is mapped or written down as cut, wider than the
-    inventory, since some live console scripts have no inventory row."""
+    """Wider than the inventory, since some live console scripts have no inventory row."""
     fixture = Path(__file__).resolve().parent / "fixtures" / "dj_tools_scripts.txt"
     lines = fixture.read_text().splitlines()
     scripts = [line.strip() for line in lines if line.strip() and not line.startswith("#")]
@@ -2332,14 +2112,10 @@ def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
 
 
 def test_every_declared_module_toggle_is_used_by_at_least_one_verb():
-    """Every declared toggle gates some verb, since a toggle nobody reads is a
-    config switch that does nothing."""
+    """A toggle nobody reads is a config switch that does nothing."""
     used = {entry.module_id for entry in registry.entries()} - {None}
     unused = sorted(set(profiles.MODULES) - used - registry.DEFERRED_MODULES)
-    assert not unused, (
-        f"declared modules no verb is gated by: {unused}. Either a verb is "
-        f"missing its module_id or the toggle should not exist."
-    )
+    assert not unused, f"declared modules no verb is gated by: {unused}"
 
 
 def _verb_paths(
@@ -2355,8 +2131,7 @@ def _verb_paths(
     return found
 
 
-#: Every toggle that gates at least one LANDED verb, derived from the registry so
-#: a toggle whose first verb lands joins the parametrisation on its own.
+#: Every toggle gating a LANDED verb, derived so one whose first verb lands joins on its own.
 _TOGGLES_WITH_LANDED_VERBS = sorted(
     {entry.module_id for entry in registry.landed_entries()} - {None} - profiles.ALWAYS_AVAILABLE
 )
@@ -2368,8 +2143,7 @@ def slim_verb_paths():
 
 
 def test_every_live_toggle_is_driven_by_the_toggle_test_below():
-    """Every live toggle gates a landed verb, which stops the derived
-    parametrisation below silently shrinking."""
+    """Which stops the derived parametrisation below silently shrinking."""
     waiting = {entry.module_id for entry in registry.entries() if not entry.landed}
     live = set(profiles.MODULES) - registry.DEFERRED_MODULES - waiting
     assert live <= set(_TOGGLES_WITH_LANDED_VERBS), sorted(live - set(_TOGGLES_WITH_LANDED_VERBS))
@@ -2377,10 +2151,7 @@ def test_every_live_toggle_is_driven_by_the_toggle_test_below():
 
 @pytest.mark.parametrize("module", _TOGGLES_WITH_LANDED_VERBS)
 def test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off(module, slim_verb_paths):
-    """R-4: a module toggle alone switches its landed verbs on and off.
-
-    Driven through the real resolver and parser; a gated verb reachable with its module off is a
-    Module row shipping as core (R5)."""
+    """R-4, through the real parser: a verb reachable with its module off ships as core (R5)."""
     verbs = [entry.path for entry in registry.landed_entries() if entry.module_id == module]
     added = _verb_paths(cli.build_parser(membership=profiles.resolve("slim", {module: True})))
     removed = _verb_paths(cli.build_parser(membership=profiles.resolve("full", {module: False})))
@@ -2391,26 +2162,14 @@ def test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off(module, slim
 
 
 def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
-    """A verb carrying a resume argv builder declares ``long_running``.
-
-    ``tests/test_queued_resume_contract.py`` derives its population from both flags. The floor
-    sits on the measured count (U61)."""
+    """``tests/test_queued_resume_contract.py`` reads both flags; the floor is U61's count."""
     carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
-    assert len(carriers) >= 19, (
-        f"only {len(carriers)} entries declare a resume argv builder, which is "
-        f"below the 19 measured when U61 last moved this floor; either the "
-        f"registry shrank or this guard has stopped deriving anything"
-    )
+    assert len(carriers) >= 19, f"only {len(carriers)} resume argv builders, below U61's 19"
     mislabelled = sorted(entry.name for entry in carriers if not entry.long_running)
-    assert not mislabelled, (
-        f"these verbs declare a resume argv builder and do not declare long_running: "
-        f"{mislabelled}. Either the builder is dead code, or the verb queues and has just dropped "
-        f"out of every derived guard in tests/test_queued_resume_contract.py"
-    )
+    assert not mislabelled, f"a resume argv builder and no long_running: {mislabelled}"
 
 
-#: Long running entries whose shell legitimately files no job under its own key,
-#: with the reason: queueing is not what they do, rather than not done yet.
+#: Long running entries whose shell files no job of its own, since queueing is not their job.
 QUEUES_BY_ROLE_NOT_BY_ENQUEUE: Mapping[str, str] = MappingProxyType(
     {
         "job.resume": (
@@ -2435,9 +2194,7 @@ def _enqueue_calls(tree: ast.AST) -> int:
 
 
 def test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues():
-    """R-149, U60: a verb declaring the queueing contract has a shell that queues.
-
-    Parsed rather than searched, since prose naming ``enqueue`` is no call."""
+    """R-149, U60: parsed rather than searched, since prose naming ``enqueue`` is no call."""
     queued = [e for e in registry.ENTRIES if e.landed and e.long_running]
     assert queued, "no landed verb queues, so this guard derives nothing"
     stale = sorted(set(QUEUES_BY_ROLE_NOT_BY_ENQUEUE) - {e.name for e in queued})
@@ -2449,11 +2206,7 @@ def test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues():
         path = SRC_ROOT / Path(*entry.module.split(".")).with_suffix(".py")
         if not _enqueue_calls(ast.parse(path.read_text())):
             inline.append(entry.name)
-    assert not inline, (
-        f"these verbs declare long_running and an argv builder and their shell "
-        f"never calls enqueue: {inline}. Either the verb does its work inline and "
-        f"the entry should stop claiming a queue, or the shell should queue"
-    )
+    assert not inline, f"declared long_running and their shell never calls enqueue: {inline}"
 
 
 def test_no_verb_claims_a_module_the_profile_layer_does_not_declare():
@@ -2473,8 +2226,7 @@ def test_library_adoption_is_available_in_every_profile():
 def test_a_scripted_run_with_no_terminal_reaches_a_gate_and_exits_with_its_code(
     configured, tmp_path
 ):
-    """A scripted run with no standard input reaches a gate, exits with a documented
-    code and leaves a resumable run, rather than aborting at end of file."""
+    """With no standard input it leaves a resumable run, rather than aborting at end of file."""
     result = subprocess.run(
         [sys.executable, "-m", "cratekit.cli", *_TO_SLIM], capture_output=True, text=True,
         stdin=subprocess.DEVNULL, env=dict(os.environ, PYTHONPATH=str(SRC_ROOT)), cwd=tmp_path,
@@ -2501,8 +2253,7 @@ def test_an_unconfigured_machine_refuses_with_a_precondition_and_a_remedy():
     ids=["something-unexpected", "exits-the-process-directly"],
 )
 def test_a_verb_that_raises_or_exits_becomes_an_internal_cause(configured, monkeypatch, raised):
-    """Nothing escapes the boundary as a traceback the user has to interpret, and a direct
-    ``SystemExit``, a ``BaseException``, is converted rather than obeyed."""
+    """No traceback escapes the boundary, and a direct ``SystemExit`` is converted, not obeyed."""
 
     def explode(ctx):
         raise raised
@@ -2543,8 +2294,7 @@ def test_a_gate_refusal_carries_what_the_verb_consulted(configured):
 
 
 def test_a_gate_refusal_with_no_context_carries_no_shown_key_at_all(configured):
-    """A gate refusal with no context carries no ``shown`` key at all, so "shows
-    nothing" stays distinct from "looked and found nothing"."""
+    """So "shows nothing" stays distinct from "looked and found nothing"."""
     with pytest.raises(gates.DecisionRequired) as raised:
         gates.Gates(state=_probe_state()).require(_context_spec(explicit=False))
     detail = raised.value.cause.detail
@@ -2553,8 +2303,7 @@ def test_a_gate_refusal_with_no_context_carries_no_shown_key_at_all(configured):
 
 
 def test_the_explicit_inline_refusal_carries_the_context_too(configured):
-    """The explicit inline refusal carries the context too, since it is the one a
-    person meets when trying to shortcut the acknowledgment (R34)."""
+    """It is the one a person meets when trying to shortcut the acknowledgment (R34)."""
     spec = _context_spec(explicit=True)
     resolver = gates.Gates(state=_probe_state(), supplied={spec.name: "proceed"})
     with pytest.raises(gates.DecisionRequired) as raised:
@@ -2563,8 +2312,7 @@ def test_the_explicit_inline_refusal_carries_the_context_too(configured):
 
 
 def test_human_mode_renders_what_the_verb_showed_and_is_unchanged_without_it(configured):
-    """Human mode renders what the verb showed, so a terminal user is not left with
-    a bare question; a refusal carrying nothing prints as it did before."""
+    """So a terminal user is not left with a bare question."""
     spec = _context_spec(explicit=False)
     ages = {"ages": [{"portion": "database", "state": "never-recorded"}]}
     carried = render.render_gate(gates.DecisionRequired(spec, "r", ages).cause)
@@ -2603,8 +2351,7 @@ _APPLY_PROFILE = "cratekit.cli.verbs.profile.apply_profile"
 def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
     configured, monkeypatch, handler
 ):
-    """Assertion 3 fails a verb that declares a gate and never asks it, in both
-    shapes, since nothing else holds a handler to its declared gates."""
+    """Nothing else holds a handler to its declared gates."""
     base = registry.entry("profile.set")
     promoted = replace(base, gates=(base.gates[0], _SECOND_GATE))
     _swap_in(monkeypatch, promoted)
@@ -2616,15 +2363,11 @@ def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
 def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
     configured, monkeypatch
 ):
-    """The exemption covers one named gate with a reason, and expires on its own."""
     base = registry.entry("profile.set")
     with_exempt = replace(base, gates=(base.gates[0], registry.CLOUD_SYNC_UNREADABLE_GATE))
     _swap_in(monkeypatch, with_exempt)
     monkeypatch.setattr(_APPLY_PROFILE, _reaches_only_the_first_gate)
-    assert _conformance_3(with_exempt, ["slim"]) == ["profile.set.apply"], (
-        "the cloud-sync gate cannot be provoked in this environment, so a verb "
-        "that declares it and reaches its own gate is correct"
-    )
+    assert _conformance_3(with_exempt, ["slim"]) == ["profile.set.apply"]
     # The stale half: reaching an exempt gate must say the exemption is over.
     monkeypatch.setattr(_APPLY_PROFILE, _require_every_gate)
     with pytest.raises(AssertionError, match="exemption is stale"):
@@ -2643,28 +2386,19 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """The exempt gates are exactly the intended set; another is a decision, and
-    each is driven in its own suite."""
-    assert set(UNREACHABLE_GATES) == EXPECTED_UNREACHABLE_GATES, (
-        f"the exemption set is {sorted(UNREACHABLE_GATES)} and this file declares "
-        f"{sorted(EXPECTED_UNREACHABLE_GATES)}. Every entry here is a gate no verb has to reach, "
-        f"which is the assertion switched off for that gate across every entry that declares it."
-    )
+    """Another is a decision, and each is driven in its own suite."""
+    assert set(UNREACHABLE_GATES) == EXPECTED_UNREACHABLE_GATES, sorted(UNREACHABLE_GATES)
 
 
 def test_every_unreachable_gate_is_real_and_carries_a_reason():
     """An exemption naming a gate nobody declares is an exemption nobody can audit."""
     for name, reason in UNREACHABLE_GATES.items():
         registry.gate(name)  # raises KeyError if no entry declares it
-        assert len(reason) > 80, (
-            f"{name} is exempted from assertion 3 with a reason too thin to "
-            f"judge; say what makes it unprovokable and what would change that"
-        )
+        assert len(reason) > 80, f"{name} is exempted with a reason too thin to judge"
 
 
 def test_the_reports_shell_reads_each_engine_from_its_own_module_on_first_use():
-    """The reports module is toggleable, so the shell imports no engine at load
-    (U303) and resolves each one, under its old attribute name, on first read."""
+    """The module is toggleable, so the shell imports no engine at load (U303)."""
     import importlib
 
     from cratekit.cli import reports as reports_cli

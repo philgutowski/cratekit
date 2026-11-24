@@ -67,31 +67,18 @@ def results(*numbers: int, kind: str = "release") -> str:
 
 
 def release(
-    number: int,
-    *,
-    artist: str = ARTIST,
-    title: str = "An EP",
-    tracks: list[dict] | None = None,
-    styles: tuple[str, ...] = ("Nu-Disco",),
-    genres: tuple[str, ...] = ("Electronic",),
+    number: int, *, artist: str = ARTIST, title: str = "An EP", tracks: list[dict] | None = None,
+    styles: tuple[str, ...] = ("Nu-Disco",), genres: tuple[str, ...] = ("Electronic",),
 ) -> str:
-    return json.dumps(
-        {
-            "id": number,
-            "title": title,
-            "artists": [{"name": artist}],
-            "tracklist": (
-                tracks
-                if tracks is not None
-                else [
-                    {"position": "A1", "type_": "track", "title": "Opener"},
-                    {"position": "A2", "type_": "track", "title": TITLE},
-                ]
-            ),
-            "styles": list(styles),
-            "genres": list(genres),
-        }
-    )
+    if tracks is None:
+        tracks = [
+            {"position": "A1", "type_": "track", "title": "Opener"},
+            {"position": "A2", "type_": "track", "title": TITLE},
+        ]
+    return json.dumps({
+        "id": number, "title": title, "artists": [{"name": artist}], "tracklist": tracks,
+        "styles": list(styles), "genres": list(genres),
+    })
 
 
 EMPTY_BEATPORT = searchers.Fetched(text=_beatport_page([]), status=200)
@@ -134,9 +121,7 @@ def asker(fetch, *, token: str | None = SENT, naps: list[float] | None = None):
 def searcher(fetch, *, token: str | None = SENT, naps: list[float] | None = None, discogs=None):
     sleep = naps.append if naps is not None else (lambda _s: None)
     return searchers.catalogue_searcher(
-        TAXONOMY,
-        fetch=fetch,
-        sleep=sleep,
+        TAXONOMY, fetch=fetch, sleep=sleep,
         discogs=discogs if discogs is not None else asker(fetch, token=token, naps=naps),
     )
 
@@ -264,8 +249,7 @@ BRACKETED = "(Not Just) Knee Deep (Part 1)"
             TITLE,
             [
                 release(
-                    1,
-                    artist="Various",
+                    1, artist="Various",
                     tracks=[_track("Not This", artist="Nobody"), _track(TITLE, artist=ARTIST)],
                 )
             ],
@@ -395,8 +379,7 @@ def test_the_general_catalogue_is_still_asked_beside_an_unasked_discogs(tmp_path
         return published.Published(published.SOURCE, "miss")
 
     result = tag.tag_one(
-        path,
-        searcher=searcher(routed(search=results()), token=None),
+        path, searcher=searcher(routed(search=results()), token=None),
         published=published.second_opinion(TAXONOMY, lookup=lookup),
     )
     assert asked, "the general catalogue was asked"
@@ -501,6 +484,12 @@ class Reply:
         self.headers = headers or {}
 
 
+def first_release(search: Reply, read: Reply | None = None) -> dict:
+    """Replies by URL: the search, then release 1 read as ``read`` (its page by default)."""
+    read = read or Reply(200, release(1))
+    return {searchers.DISCOGS_SEARCH: search, f"{searchers.DISCOGS_RELEASE}1": read}
+
+
 def over_the_wire(replies: dict, *, sent: list | None = None, naps: list[float] | None = None):
     """The shipped asker over the shipped fetch; ``replies`` by URL prefix, ``sent`` recorded."""
     queues = {key: list(value) if isinstance(value, list) else value for key, value in replies.items()}
@@ -521,13 +510,7 @@ def over_the_wire(replies: dict, *, sent: list | None = None, naps: list[float] 
 
 def test_a_429_then_an_answer_within_the_ladder_is_read():
     naps: list[float] = []
-    discogs = over_the_wire(
-        {
-            searchers.DISCOGS_SEARCH: [Reply(429), Reply(200, results(1))],
-            f"{searchers.DISCOGS_RELEASE}1": Reply(200, release(1)),
-        },
-        naps=naps,
-    )
+    discogs = over_the_wire(first_release([Reply(429), Reply(200, results(1))]), naps=naps)
     said_ = discogs.ask(ARTIST, TITLE)
     assert said_.answer is searchers.Answer.MATCHED
     assert searchers.RATE_LIMIT_BASE_WAIT_S in naps
@@ -554,13 +537,8 @@ def test_a_429_on_every_attempt_is_blocked_and_remembered_for_the_run():
 def test_a_low_remaining_count_slows_the_next_request_and_a_high_one_does_not():
     naps: list[float] = []
     low = {searchers.DISCOGS_REMAINING_HEADER.upper(): str(searchers.DISCOGS_REMAINING_FLOOR)}
-    discogs = over_the_wire(
-        {
-            searchers.DISCOGS_SEARCH: Reply(200, results(1), low),
-            f"{searchers.DISCOGS_RELEASE}1": Reply(200, release(1), {"X-Discogs-Ratelimit-Remaining": "50"}),
-        },
-        naps=naps,
-    )
+    high = Reply(200, release(1), {"X-Discogs-Ratelimit-Remaining": "50"})
+    discogs = over_the_wire(first_release(Reply(200, results(1), low), high), naps=naps)
     discogs.ask(ARTIST, TITLE)
     assert naps.count(searchers.DISCOGS_SLOWDOWN_S) == 1, naps
     discogs.ask(ARTIST, TITLE)
@@ -570,13 +548,8 @@ def test_a_low_remaining_count_slows_the_next_request_and_a_high_one_does_not():
 def test_one_floor_above_does_not_slow_down():
     naps: list[float] = []
     count = {"X-Discogs-Ratelimit-Remaining": str(searchers.DISCOGS_REMAINING_FLOOR + 1)}
-    discogs = over_the_wire(
-        {
-            searchers.DISCOGS_SEARCH: Reply(200, results(1), count),
-            f"{searchers.DISCOGS_RELEASE}1": Reply(200, release(1), count),
-        },
-        naps=naps,
-    )
+    replies = first_release(Reply(200, results(1), count), Reply(200, release(1), count))
+    discogs = over_the_wire(replies, naps=naps)
     discogs.ask(ARTIST, TITLE)
     discogs.ask(ARTIST, TITLE)
     assert searchers.DISCOGS_SLOWDOWN_S not in naps
@@ -611,13 +584,7 @@ def test_the_shipped_fetch_carries_the_answer_headers_lowercased():
 
 def test_the_token_is_sent_in_the_authorization_header_and_the_agent_names_cratekit():
     sent: list = []
-    discogs = over_the_wire(
-        {
-            searchers.DISCOGS_SEARCH: Reply(200, results(1)),
-            f"{searchers.DISCOGS_RELEASE}1": Reply(200, release(1)),
-        },
-        sent=sent,
-    )
+    discogs = over_the_wire(first_release(Reply(200, results(1))), sent=sent)
     discogs.ask(ARTIST, TITLE)
     assert sent
     for url, headers in sent:
@@ -643,7 +610,7 @@ def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, s
     )
     hits = [searcher(routed(search=results()), discogs=leaking)(ARTIST, TITLE)]
     for replies in (
-        {searchers.DISCOGS_SEARCH: Reply(200, results(1)), f"{searchers.DISCOGS_RELEASE}1": Reply(200, release(1))},
+        first_release(Reply(200, results(1))),
         {searchers.DISCOGS_SEARCH: Reply(429)},
         {searchers.DISCOGS_SEARCH: Reply(200, "not json")},
         {searchers.DISCOGS_SEARCH: Reply(200, json.dumps({"x": 1}))},

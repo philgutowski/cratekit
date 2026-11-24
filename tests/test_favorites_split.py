@@ -60,8 +60,7 @@ def _quarter(cfg, folder_id: str, name: str, *titles: str) -> str:
         made = handle.create_playlist(name, parent=parent)
         for title in titles:
             handle.add_to_playlist(made, rows[title])
-        made_id = str(made.ID)
-    return made_id
+        return str(made.ID)
 
 
 def _approved(verb: list[str] = VERB) -> tuple[dict, dict]:
@@ -93,9 +92,7 @@ def _rewritten(monkeypatch, cfg, change) -> CratekitError:
     """The planned split written with ``rb_writer.add_memberships`` handed ``change(ids)``."""
     approved = split_cli.planned(cfg, source=SOURCE)
     real = rb_writer.add_memberships
-    monkeypatch.setattr(
-        rb_writer, "add_memberships", lambda db, playlist, ids: real(db, playlist, change(ids))
-    )
+    monkeypatch.setattr(rb_writer, "add_memberships", lambda db, at, ids: real(db, at, change(ids)))
     return _written_refused(cfg, approved)
 
 
@@ -169,10 +166,9 @@ def test_a_library_with_no_quarter_never_walks_the_library_or_asks_the_account(s
 
 
 def test_a_member_two_quarters_hold_is_one_member_and_both_quarters_retire(staged):
-    cfg, folder_id, (q3, q4), _fake = staged(
-        {"Twice": NOV, "Once": OCT.format(day=2)},
-        ("2026-Q3", "Twice"), ("2026-Q4", "Twice", "Once"),
-    )
+    hearts = {"Twice": NOV, "Once": OCT.format(day=2)}
+    quarters = ("2026-Q3", "Twice"), ("2026-Q4", "Twice", "Once")
+    cfg, folder_id, (q3, q4), _fake = staged(hearts, *quarters)
     acted, shown = _approved()
     assert shown["quarters to retire"] == ["2026-Q3 (1)", "2026-Q4 (2)"]
     found = _favorites(cfg, folder_id)
@@ -181,10 +177,9 @@ def test_a_member_two_quarters_hold_is_one_member_and_both_quarters_retire(stage
 
 
 def test_a_month_already_there_is_added_to_and_a_member_it_holds_is_not_added_twice(staged):
-    cfg, _folder_id, (october, _q4), _fake = staged(
-        {"Held": OCT.format(day=5), "New": OCT.format(day=6)},
-        ("2026-10", "Held"), ("2026-Q4", "Held", "New"),
-    )
+    hearts = {"Held": OCT.format(day=5), "New": OCT.format(day=6)}
+    playlists = ("2026-10", "Held"), ("2026-Q4", "Held", "New")
+    cfg, _folder_id, (october, _q4), _fake = staged(hearts, *playlists)
     acted, shown = _approved()
     assert shown["month playlists"] == ["2026-10 (2)"]
     assert shown["memberships to add"] == 1
@@ -192,15 +187,13 @@ def test_a_month_already_there_is_added_to_and_a_member_it_holds_is_not_added_tw
 
 
 def test_the_record_carries_both_commits_under_the_favourites_key(staged):
-    cfg, _folder_id, _quarters, _fake = staged(
-        {"One": OCT.format(day=1), "Two": NOV}, ("2026-Q4", "One", "Two")
-    )
+    hearts = {"One": OCT.format(day=1), "Two": NOV}
+    cfg, _folder_id, _quarters, _fake = staged(hearts, ("2026-Q4", "One", "Two"))
     acted, _shown = _approved()
     (record,) = [r for r in session.records(cfg) if r.workflow == split.WORKFLOW]
     assert record.state is session.SessionState.CLOSED
-    assert [(c.tree, c.created, c.updated) for c in record.change.trees] == [
-        (placement.RECORD_KEY, 2, 1)
-    ]
+    changed = [(c.tree, c.created, c.updated) for c in record.change.trees]
+    assert changed == [(placement.RECORD_KEY, 2, 1)]
     assert record.session_id in _note(acted, split_cli.SPLIT)
 
 
@@ -235,9 +228,8 @@ def test_a_quarter_that_changed_after_the_approval_is_refused_and_nothing_is_wri
 def test_a_run_stopped_after_its_additions_replans_to_the_same_digest_and_finishes(
     staged, monkeypatch
 ):
-    cfg, folder_id, (q4,), _fake = staged(
-        {"One": OCT.format(day=1), "Two": NOV}, ("2026-Q4", "One", "Two")
-    )
+    hearts = {"One": OCT.format(day=1), "Two": NOV}
+    cfg, folder_id, (q4,), _fake = staged(hearts, ("2026-Q4", "One", "Two"))
     approved = split_cli.planned(cfg, source=SOURCE)
     def stopped(_db, _row):
         raise RuntimeError("the machine went to sleep")
@@ -269,9 +261,8 @@ def test_the_writer_refuses_a_membership_the_plan_did_not_name(staged, monkeypat
 
 
 def test_a_quarter_whose_member_its_month_lacks_is_not_retired(staged, monkeypatch):
-    cfg, _folder_id, (q4,), _fake = staged(
-        {"One": NOV, "Two": OCT.format(day=8)}, ("2026-Q4", "One", "Two")
-    )
+    hearts = {"One": NOV, "Two": OCT.format(day=8)}
+    cfg, _folder_id, (q4,), _fake = staged(hearts, ("2026-Q4", "One", "Two"))
     two = _rows(cfg)["Two"]
     refused = _rewritten(monkeypatch, cfg, lambda ids: [one for one in ids if one != two])
     assert refused.cause.reason == "session-committed-unverified"
@@ -295,9 +286,8 @@ def test_the_retirement_is_confined_to_the_quarters(given, monkeypatch):
 
 def test_no_content_row_tempo_or_grid_is_written(staged):
     """The standing constraint, read from SQL across the whole split."""
-    cfg, _folder_id, _quarters, _fake = staged(
-        {"One": NOV, "Two": OCT.format(day=4)}, ("2026-Q4", "One", "Two")
-    )
+    hearts = {"One": NOV, "Two": OCT.format(day=4)}
+    cfg, _folder_id, _quarters, _fake = staged(hearts, ("2026-Q4", "One", "Two"))
     before = _query(cfg, "SELECT * FROM djmdContent ORDER BY ID")
     acted, _shown = _approved()
     assert _query(cfg, "SELECT * FROM djmdContent ORDER BY ID") == before
@@ -308,8 +298,7 @@ def _tables(playlists: dict, memberships: dict, content: dict | None = None) -> 
     return rb_writer.NodeTables(
         content=content or {"1": "a", "2": "b"}, playlists=playlists, memberships=memberships,
         playlist_columns=("ID", "Name", "ParentID", "Attribute", "Seq", "rb_local_deleted", "updated_at"),
-        membership_columns=("ID", "PlaylistID", "ContentID", "TrackNo", "rb_local_deleted"),
-    )
+        membership_columns=("ID", "PlaylistID", "ContentID", "TrackNo", "rb_local_deleted"))
 
 
 FOLDER = ("f", "Favorites", "root", 1, 1, 0, "t0")
@@ -324,9 +313,8 @@ def _before() -> rb_writer.NodeTables:
 
 def test_a_planned_addition_into_a_made_month_is_confined():
     after = _tables({"f": FOLDER, "q": QUARTER, "m": MONTH}, {"s1": IN_QUARTER, "s2": ("s2", "m", "1", 1, 0)})
-    assert split.addition_violations(
-        _before(), after, planned={"m": ["1"]}, created={"m": ("2026-10", "f")}
-    ) == []
+    created = {"m": ("2026-10", "f")}
+    assert split.addition_violations(_before(), after, planned={"m": ["1"]}, created=created) == []
 
 
 _SHAPES = {
@@ -365,15 +353,12 @@ def test_an_addition_the_plan_did_not_name_is_a_violation(shape, expected):
     }
     _SHAPES[shape](world)
     after = _tables(world["playlists"], world["memberships"], world["content"])
-    violations = split.addition_violations(
-        _before(), after, planned={"m": ["1"]}, created=world["created"]
-    )
+    created = world["created"]
+    violations = split.addition_violations(_before(), after, planned={"m": ["1"]}, created=created)
     assert any(expected in one for one in violations), violations
 
 
-def test_a_member_taken_out_of_all_favorites_goes_to_no_month_and_its_quarter_still_retires(
-    given,
-):
+def test_a_member_taken_out_of_all_favorites_goes_to_no_month_and_its_quarter_still_retires(given):
     """The backfill's rule: a heart the author took back is never put back."""
     cfg, folder_id, source_id, _fake = given({"Kept": NOV, "Dropped": NOV}, {})
     rows = _rows(cfg)
@@ -397,9 +382,8 @@ def test_a_heart_every_sync_froze_again_is_resolved_once_with_its_first_dated_me
     # The oldest job froze no date, the next dated it in October, the last in November.
     hearts_swept(given.cfg, {"Often": UNKNOWN}, run_id="")
     hearts_swept(given.cfg, {"Often": OCT.format(day=7)}, run_id="")
-    cfg, folder_id, _source_id, _fake = given(
-        {"Often": NOV}, {}, hearted={"batch": "2026-11-04-favorites"}
-    )
+    later = {"batch": "2026-11-04-favorites"}
+    cfg, folder_id, _source_id, _fake = given({"Often": NOV}, {}, hearted=later)
     _quarter(cfg, folder_id, "2026-Q4", "Often")
     asked: list[str] = []
     real = split.match.resolve_one
@@ -452,9 +436,8 @@ def test_a_heart_taken_back_and_hearted_again_is_not_taken_back(given):
 
 def test_a_track_taken_out_of_a_quarter_by_hand_goes_to_no_month(staged):
     """R-758: a membership rekordbox marked removed is not a member."""
-    cfg, folder_id, (q4,), _fake = staged(
-        {"Stays": NOV, "Went": OCT.format(day=12)}, ("2026-Q4", "Stays", "Went")
-    )
+    hearts = {"Stays": NOV, "Went": OCT.format(day=12)}
+    cfg, folder_id, (q4,), _fake = staged(hearts, ("2026-Q4", "Stays", "Went"))
     _take_out(cfg, q4, _rows(cfg)["Went"])
     acted, shown = _approved()
     assert shown["quarters to retire"] == ["2026-Q4 (1)"]

@@ -204,8 +204,7 @@ def test_the_configuration_is_not_allowed_the_system_temporary_folder(library):
 
 
 def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path, outside):
-    """The guard is inert for the shipped tool, which never imports pytest: the
-    child saves with no root registered, so a check that ran anyway fails it."""
+    """Inert for the shipped tool, which never imports pytest: a check that ran fails the child."""
     target = tmp_path / "shipped" / "config.toml"
     probe = (
         "import sys\nfrom pathlib import Path\nfrom cratekit.core import config\nassert 'pytest' "

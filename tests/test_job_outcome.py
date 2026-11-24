@@ -109,10 +109,8 @@ def _job_in(machine, state: jobs.JobState, *, cause=None) -> jobs.Job:
 
 def test_a_blocked_job_raises_the_blocked_type_carrying_the_jobs_own_cause(machine):
     job = _job_in(machine, jobs.JobState.BLOCKED, cause=_block().cause)
-
     with pytest.raises(JobBlocked) as caught:
         jobs.raise_for_state(job)
-
     assert caught.value.cause == job.cause
 
 
@@ -120,10 +118,8 @@ def test_a_blocked_job_recording_no_reason_is_still_not_a_success(machine):
     """A blocked row with no cause, which only another writer makes, is no success."""
     blocked = _job_in(machine, jobs.JobState.BLOCKED, cause=_block().cause)
     job = dataclasses.replace(blocked, cause=None)
-
     with pytest.raises(JobBlocked) as caught:
         jobs.raise_for_state(job)
-
     # The type too, since a plain refusal would read ``failed`` over a blocked row.
     assert caught.value.cause.reason == "internal-error"
     assert job.job_id in caught.value.cause.message
@@ -133,10 +129,8 @@ def test_a_failed_job_raises_its_own_cause_as_neither_carried_type(machine):
     """A failed job is not reported as blocked, which would send a person to their account."""
     cause = refuse("source-missing", "it is gone", origin=("test",)).cause
     job = _job_in(machine, jobs.JobState.FAILED, cause=cause)
-
     with pytest.raises(CratekitError) as caught:
         jobs.raise_for_state(job)
-
     assert type(caught.value) is CratekitError
     assert caught.value.cause == job.cause
 
@@ -145,10 +139,8 @@ def test_a_cancelled_job_raises_the_cancelled_type_carrying_its_own_cause(machin
     """A person who stopped a run is told it was cancelled, not that it broke."""
     with jobs.open_store() as store:
         job = jobs.cancel(store, queued(machine, "master", ("one",)).job_id)
-
     with pytest.raises(JobCancelled) as caught:
         jobs.raise_for_state(job)
-
     assert caught.value.cause == job.cause
 
 
@@ -162,9 +154,7 @@ def test_the_dispatcher_reads_the_blocked_type_as_the_blocked_outcome(machine, m
     """``resumable`` stays false: a parked job continues through its verb, not ``crate run``."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
     job = queued(machine, "master", ("one",))
-
     code, envelope = resumed(job)
-
     assert envelope["outcome"] == str(Outcome.BLOCKED), envelope
     assert code == int(_block().cause.code), envelope
     assert envelope["resumable"] is False, envelope
@@ -178,13 +168,10 @@ def _gate_coded_park(job, item, cfg):
 def test_a_park_on_a_gate_coded_cause_is_still_not_resumable_through_the_run(machine, monkeypatch):
     """``resumable`` stays false even when the park's cause carries a gate code."""
     from cratekit.cli import gates
-
     monkeypatch.setattr(handlers, "resolve", lambda _key: _gate_coded_park)
     job = queued(machine, "master", ("one",))
-
     # Not ``resumed``, which would answer this code as a gate; ``master`` has none.
     code, envelope = drive(cli_jobs.argv_for(job))
-
     assert job_of(job.job_id).state is jobs.JobState.BLOCKED, envelope
     assert ExitCode(code) in gates.GATE_CODES, envelope
     assert envelope["outcome"] == str(Outcome.BLOCKED), envelope
@@ -196,9 +183,7 @@ def test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero(machine
     """A cancelled job is closed, so no worker runs and none is swapped in."""
     with jobs.open_store() as store:
         job = jobs.cancel(store, queued(machine, key, ("one",)).job_id)
-
     code, envelope = resumed(job)
-
     assert job_of(job.job_id).state is jobs.JobState.CANCELLED, envelope
     assert envelope["outcome"] == str(Outcome.CANCELLED), envelope
     assert code == int(ExitCode.INTERRUPTED), envelope
@@ -223,9 +208,7 @@ def test_a_parked_or_half_failed_job_leaves_every_queued_verb_non_zero(
     worker, items, state, outcome, reason = ENDINGS[ending]
     monkeypatch.setattr(handlers, "resolve", lambda _key: worker)
     job = queued(machine, key, items)
-
     code, envelope = resumed(job)
-
     assert job_of(job.job_id).state is state, envelope
     assert envelope["outcome"] == str(outcome), envelope
     assert code != int(ExitCode.OK), envelope
@@ -243,9 +226,7 @@ def test_a_parked_or_half_failed_job_answers_the_same_way_the_second_time_it_is_
     monkeypatch.setattr(handlers, "resolve", lambda _key: worker)
     job = queued(machine, key, items)
     resumed(job)
-
     code, envelope = resumed(job_of(job.job_id))
-
     assert envelope["outcome"] == str(outcome), envelope
     assert code != int(ExitCode.OK), envelope
 
@@ -504,9 +485,7 @@ def test_the_exemption_from_the_rebuild_rule_still_names_a_real_function():
 @pytest.mark.parametrize("kind", [JobBlocked, JobCancelled, CratekitError])
 def test_a_rebuilt_refusal_keeps_a_carried_type_and_takes_the_new_cause(kind):
     before, after = _block().cause, refuse("source-missing", "gone", origin=("test",)).cause
-
     again = rebuilt(kind(before), after)
-
     assert type(again) is kind
     assert again.cause == after
 

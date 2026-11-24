@@ -31,9 +31,6 @@ REVERT_GATE = "tree.revert.approve"
 TODAY = date(2026, 9, 27)
 
 
-# ═══ Fixtures ═══════════════════════════════════════════════════════════════
-
-
 @pytest.fixture(autouse=True)
 def _reader_cache():
     collection.reset_cache()

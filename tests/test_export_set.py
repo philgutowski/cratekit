@@ -567,7 +567,7 @@ class _Unreadable:
     [
         ("Artist Seven - Title Seven", [Hit("tid-7a", *SEVEN), Hit("tid-7b", *SEVEN)], None),
         ("Artist Seven - Sun Path - Live",
-         [Hit("tid-7", "Artist Seven", "Sun Path", version="Live")], lambda answer: answer.ambiguous),
+         [Hit("tid-7", "Artist Seven", "Sun Path", version="Live")], lambda read: read.ambiguous),
         ("Artist Seven - Title Seven", [Hit("tid-7", *SEVEN), _Unreadable()],
          lambda answer: answer.unreadable == 1),
         ("Artist Seven - Title Seven", [Hit("", *SEVEN)], None),

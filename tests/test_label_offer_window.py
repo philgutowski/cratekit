@@ -51,7 +51,6 @@ def register(*argv: str, name: str = LABEL) -> None:
 
 
 def swept(monkeypatch, *argv: str, releases=None, **kwargs) -> list[FakeRelease]:
-    """The label registered with ``argv``, its releases (fifty by default) bound, swept once."""
     register(*argv)
     releases = catalogue_of(50) if releases is None else releases
     bind(monkeypatch, releases, **kwargs)

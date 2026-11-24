@@ -146,15 +146,13 @@ def test_rows_writes_the_live_rows_and_counts_what_it_left_out(tree, capsys):
     assert "1 live rows in 1 files written" in said
     assert "left out: 1 stale, 1 ambiguous, 0 gone, 0 duplicates of a live row" in said
     assert "  stale     src/pkg/alpha.py  u1.json  STALE" in said
-
     name, pass_kind, rows, _ = mutate.load_spec(out)
     assert (name, pass_kind) == ("rows", killset.REPLAY) == ("rows", mutate.REPLAY)
     assert [row.id for row in rows] == ["u1.LIVE"]
     assert rows[0].source == ("u1.json", "LIVE")
     assert rows[0].tests == ("tests/test_alpha.py",)
     assert rows[0].surface == "user"
-    # It applies cleanly: the text it names occurs once, and the driver's own
-    # substitution takes it.
+    # It applies cleanly: its text occurs once, and the driver's own substitution takes it.
     applied = mutate.apply_mutation(ALPHA_TEXT, rows[0].old, rows[0].new)
     assert applied == ALPHA_TEXT.replace("    return 1", "    return 0")
 
@@ -471,10 +469,16 @@ def _replayed(row_id: str, old: str, **extra) -> dict:
     return {**_recorded(f"u1.{row_id}", old), "source": {"table": "u1.json", "id": row_id}, **extra}
 
 
+def _rows_after(tree: Path, before: Path, name: str = "after.toml") -> Path:
+    """``rows --after`` over ``before``, which must succeed. The row file it wrote."""
+    out = tree / name
+    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    return out
+
+
 def test_rows_after_writes_text_still_in_its_file_as_it_was(tree, capsys):
     before = _before(tree, _replayed("A", "    return 1"))
-    out = tree / "after.toml"
-    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    out = _rows_after(tree, before)
     assert "1 rows in place and 0 moved" in capsys.readouterr().out
     _, _, rows, dropped = mutate.load_spec(out)
     assert [(row.id, row.file, row.source, row.moved) for row in rows] == [
@@ -489,8 +493,7 @@ def test_rows_after_follows_text_that_moved_to_one_other_file(committed, capsys)
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "moved.py").write_text("def once():\n    return 1\n", encoding="utf-8")
     before = _before(tree, _replayed("A", "    return 1"), head=head)
-    out = tree / "after.toml"
-    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    out = _rows_after(tree, before)
     assert "0 rows in place and 1 moved" in capsys.readouterr().out
     _, _, rows, _ = mutate.load_spec(out)
     assert rows[0].file == "src/pkg/moved.py"
@@ -520,10 +523,8 @@ def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
     head = _commit(tree)
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     refactor(tree)
-
     before = _before(tree, _replayed("A", "    return 1"), head=head)
-    out = tree / "after.toml"
-    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    out = _rows_after(tree, before)
     assert "0 rows in place and 0 moved" in capsys.readouterr().out
     data = tomllib.loads(out.read_text(encoding="utf-8"))
     assert "rows" not in data
@@ -541,8 +542,7 @@ def test_a_line_written_new_elsewhere_reads_as_a_move_and_check_is_what_catches_
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "delta.py").write_text("def new():\n    return 1\n", encoding="utf-8")
     before = _before(tree, _replayed("A", "    return 1"), head=head)
-    out = tree / "after.toml"
-    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    out = _rows_after(tree, before)
     _, _, rows, _ = mutate.load_spec(out)
     assert rows[0].file == "src/pkg/delta.py"
     assert rows[0].moved.startswith(killset.AUTOMATIC_MOVE)
@@ -563,8 +563,7 @@ def test_a_move_git_cannot_vouch_for_is_not_a_move(committed, capsys, head):
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "moved.py").write_text("def once():\n    return 1\n", encoding="utf-8")
     before = _before(tree, _replayed("A", "    return 1"), head=head)
-    out = tree / "after.toml"
-    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    out = _rows_after(tree, before)
     assert "0 rows in place and 0 moved" in capsys.readouterr().out
     [dropped] = tomllib.loads(out.read_text(encoding="utf-8"))["dropped"]
     assert "git cannot read the tree at the commit the table was measured on" in dropped["reason"]
@@ -593,8 +592,7 @@ def test_outside_a_repository_nothing_is_read_as_moved(tree):
 def test_rows_after_names_its_batch_as_rows_does(committed):
     tree, head = committed
     before = _before(tree, _replayed("A", "    return 1"), head=head)
-    out = tree / "u1-replay-after-rows.toml"
-    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    out = _rows_after(tree, before, "u1-replay-after-rows.toml")
     assert tomllib.loads(out.read_text(encoding="utf-8"))["name"] == "u1-replay-after"
 
 
@@ -608,8 +606,7 @@ def test_rows_after_leaves_text_it_cannot_place_for_the_author(tree, capsys):
         _replayed("KEPT", "    return 2"),
         _replayed("ZERO", "def twice():", deaths=0, status="zero"),
     )
-    out = tree / "after.toml"
-    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    out = _rows_after(tree, before)
     assert "1 rows in place and 0 moved" in capsys.readouterr().out
     _, _, rows, dropped = mutate.load_spec(out)
     assert [row.id for row in rows] == ["u1.KEPT"]
@@ -657,11 +654,9 @@ def test_a_replay_at_another_guards_line_does_not_bring_a_dead_row_back(tree):
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    return 1\n", encoding="utf-8")
     _table(tree, "u1.json", [_recorded("A", "    return 1")])
-
     def replay(**extra) -> None:
         replayed = _replayed("A", "    return 1", file="src/pkg/twin.py", **extra)
         _table(tree, "u2-replay.json", [replayed], pass_kind="replay")
-
     replay(moved=AUTOMATIC, killed=["tests/test_twin.py::test_other"])
     assert _states(tree) == {"A": "stale"}
     replay(moved="")
@@ -713,7 +708,6 @@ def test_recorded_kills_replay_through_the_driver_and_check_clean(repo, capsys):
     ])
     spec = repo / "replay-rows.toml"
     assert _run(repo, "rows", GUARDS_FILE, "--out", str(spec), "--name", "u1-replay") == 0
-
     name, pass_kind, rows, dropped = mutate.load_spec(spec)
     batch = mutate.measure_batch(
         repo, name, rows, dropped, pass_kind=pass_kind,
@@ -725,11 +719,9 @@ def test_recorded_kills_replay_through_the_driver_and_check_clean(repo, capsys):
     ]
     assert (repo / GUARDS_FILE).read_text(encoding="utf-8") == GUARDS
     _, sidecar = mutate.write_outputs(batch, repo / "measured")
-
     capsys.readouterr()
     assert killset.main(["killset.py", "check", str(sidecar), str(sidecar)]) == 0
     assert "2 rows killed before: 2 killed after as written" in capsys.readouterr().out
-
     lost = json.loads(sidecar.read_text(encoding="utf-8"))
     lost["rows"][1].update(status="zero", deaths=0, killed=[])
     after = repo / "measured" / "after.json"

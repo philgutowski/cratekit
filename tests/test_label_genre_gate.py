@@ -87,7 +87,6 @@ def bind_lookup(monkeypatch, lookup) -> None:
 
 
 def serve(monkeypatch, fake, lookup=None):
-    """``fake`` as the provider, and ``lookup`` as the general catalogue when one is given."""
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     if lookup is not None:
         bind_lookup(monkeypatch, lookup)
@@ -178,7 +177,6 @@ def held_verb(*argv: str) -> tuple[int, dict]:
 
 
 def returns(**said: list[str]) -> dict:
-    """The summary of ``label held return``, each list empty but those given."""
     return {"returned": [], "marked": [], "already_returned": [], **said}
 
 
@@ -189,7 +187,6 @@ def check(envelope: dict, key: str) -> dict:
 
 
 def tracks(*numbers: int) -> list[Track]:
-    """One track per number, each with that number's ISRC."""
     return [Track(str(n), "A", f"T{n}", isrc(n)) for n in numbers]
 
 
@@ -280,7 +277,6 @@ def default_raw() -> dict:
 
 
 def built_from(raw: dict, change):
-    """The taxonomy built from a copy of ``raw`` with ``change`` made to its label gate."""
     data = copy.deepcopy(raw)
     change(data["label_gate"])
     return build_taxonomy(data)
@@ -616,7 +612,6 @@ def test_a_failed_read_is_remembered_and_raised_again_as_it_was():
 
 
 def hold_one(store, release_id: str, *, run_id: str = "run-1", reason: str = "held", **kwargs):
-    """A hold on ``release_id``, a Christian release of a dance label unless ``kwargs`` say."""
     fields = {"payload": {"identity": release_id, "title": f"Release {release_id}"}, "group": SLUG,
               "name": LABEL, "detail": {"genres": ["Christian"], "kind": "dance"}, **kwargs}
     return review.hold(store, queue=Queue.LABEL_RELEASE, kind=sweep.KIND,

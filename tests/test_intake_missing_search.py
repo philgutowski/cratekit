@@ -206,29 +206,32 @@ def test_two_exact_candidates_are_offered_and_neither_is_picked(
     assert not list(lists_dir(library).glob("*"))
 
 
-def test_an_exact_candidate_beside_a_row_that_cannot_be_read_is_offered(cfg, tmp_path, monkeypatch):
-    """The unreadable row could be the second exact candidate, so nothing is picked."""
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    nameless = Hit("7004", "", "Sun Path")
-    searching(monkeypatch, {SUN: [Hit("7001", "Aurora Bloom", "Sun Path"), nameless]})
-    envelope = ok(path)[0]
-    assert envelope["data"]["summary"]["written"] == 0
-    item = the_item(cfg)
-    assert [o.option_id for o in item.options] == ["7001"]
-    assert item.payload["unreadable"] == 1
-    assert "could not be read" in item.payload["why"]
+def _filler(count: int) -> list[Hit]:
+    """``count`` hits resembling nothing, to fill a search page beside an exact one."""
+    return [Hit(str(8000 + n), "Quite Another Act", f"Wholly Different {n}") for n in range(count)]
 
 
-def test_an_exact_candidate_beside_an_exact_one_with_no_identifier_is_offered(
-    cfg, tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("beside", "why", "unreadable"),
+    [([Hit("7004", "", "Sun Path")], "could not be read", 1),
+     ([Hit("", *SUN)], "carries no identifier", None),
+     (_filler(catalogue.TRACK_SEARCH_PAGE - 1), "filled its page", None)],
+    ids=["a-row-that-cannot-be-read", "an-exact-one-with-no-identifier", "a-full-page"],
+)
+def test_an_exact_candidate_beside_what_may_hide_another_is_offered(
+    cfg, tmp_path, monkeypatch, beside, why, unreadable
 ):
+    """An unreadable row, an exact hit with no id, or a full page, which is never the whole
+    answer, could be or hide a second exact candidate, so nothing is picked."""
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    searching(monkeypatch, {SUN: [Hit("7001", *SUN), Hit("", *SUN)]})
+    searching(monkeypatch, {SUN: [Hit("7001", *SUN), *beside]})
     envelope = ok(path)[0]
     assert envelope["data"]["summary"]["written"] == 0
     item = the_item(cfg)
     assert [o.option_id for o in item.options] == ["7001"], "a track with no id was an option"
-    assert "carries no identifier" in item.payload["why"]
+    assert why in item.payload["why"]
+    if unreadable is not None:
+        assert item.payload["unreadable"] == unreadable
 
 
 def test_a_title_with_two_readings_is_offered_when_each_reading_has_a_candidate(
@@ -548,29 +551,9 @@ def test_a_missing_row_of_another_services_list_is_searched_for_and_not_dropped(
     assert ids(envelope["data"]["summary"]) == ["7001"], "another service's id was listed"
 
 
-def test_a_full_page_is_never_the_whole_answer_so_its_one_exact_hit_is_offered(
-    cfg, tmp_path, monkeypatch
-):
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    filler = [
-        Hit(str(8000 + n), "Quite Another Act", f"Wholly Different {n}")
-        for n in range(catalogue.TRACK_SEARCH_PAGE - 1)
-    ]
-    bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN), *filler]}))
-    envelope = ok(path)[0]
-    assert envelope["data"]["summary"]["written"] == 0
-    item = the_item(cfg)
-    assert [o.option_id for o in item.options] == ["7001"]
-    assert "filled its page" in item.payload["why"]
-
-
 def test_one_hit_short_of_a_full_page_is_a_whole_answer(tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    filler = [
-        Hit(str(8000 + n), "Quite Another Act", f"Wholly Different {n}")
-        for n in range(catalogue.TRACK_SEARCH_PAGE - 2)
-    ]
-    bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN), *filler]}))
+    searching(monkeypatch, {SUN: [Hit("7001", *SUN), *_filler(catalogue.TRACK_SEARCH_PAGE - 2)]})
     envelope = ok(path)[0]
     assert envelope["data"]["summary"]["by_search"] == 1
 

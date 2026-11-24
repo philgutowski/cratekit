@@ -17,8 +17,7 @@ from cratekit.acquire import provider_session
 from cratekit.core import config, preflight
 from cratekit.intake import acrcloud, fetch
 
-# Read at import, before any fixture ran: what the PROCESS started with, which
-# an ``undo()`` used to restore.
+# Read at import, before any fixture: what the PROCESS started with, which ``undo()`` restored.
 _STARTING_ROOTS = (
     Path(platformdirs.user_config_dir("cratekit")),
     Path(platformdirs.user_state_dir("cratekit")),
@@ -30,8 +29,7 @@ _REAL_CLIENT_FACTORY = provider_session.CLIENT_FACTORY
 _REAL_TRANSPORT = acrcloud.http_transport
 _REAL_FETCHER = fetch.fetcher
 _REAL_MOUNT_CHECK = preflight.assert_library_mounted
-# The spelling of a ``monkeypatch.undo`` attribute in source: only blanks,
-# closing brackets, continuations and comments can sit between the parts.
+# ``monkeypatch.undo`` in source, only blanks, brackets, continuations and comments between.
 _CALL = re.compile(r"\bmonkeypatch(?:[\s)\\]|#[^\n]*)*\.(?:[\s\\]|#[^\n]*)*undo\b")
 
 

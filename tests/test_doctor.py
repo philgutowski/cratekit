@@ -540,8 +540,7 @@ def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
         return held.pop(0) if held else _eof()
 
     scripted = prompt.Prompter(
-        read_line=lambda: (answers.pop(0) + "\n") if answers else _eof(),
-        read_secret=read_secret,
+        read_line=lambda: (answers.pop(0) + "\n") if answers else _eof(), read_secret=read_secret,
         write=lambda _text: None,
     )
     wizard = setup_verb._Wizard({}, scripted)
@@ -771,16 +770,14 @@ def test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages(conf
 
 def test_doctor_names_when_an_acknowledgment_lapsed(configured):
     minted = _acknowledged(configured, ACK_NOW - timedelta(hours=13))
-    finding = finding_on(configured, "backup.acknowledgment", now=ACK_NOW)
-    assert finding.status is INFO
+    finding = checked(finding_on(configured, "backup.acknowledgment", now=ACK_NOW), INFO)
     expires = minted.expires_at.replace(microsecond=0).isoformat()
     assert finding.detail.startswith(f"expired at {expires};"), finding.detail
     assert "crate session ack" in finding.detail
 
 
 def test_doctor_says_when_no_acknowledgment_is_on_record(configured):
-    finding = finding_on(configured, "backup.acknowledgment")
-    assert finding.status is INFO
+    finding = checked(finding_on(configured, "backup.acknowledgment"), INFO)
     assert finding.detail.startswith("none on record"), finding.detail
 
 
@@ -797,8 +794,7 @@ def test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read(configured
     """The record lives on the library volume, so a missing volume is not "none"."""
     _acknowledged(configured, ACK_NOW)
     configured.library.root.rename(tmp_path / "detached")
-    finding = finding_on(configured, "backup.acknowledgment", now=ACK_NOW)
-    assert finding.status is INFO
+    finding = checked(finding_on(configured, "backup.acknowledgment", now=ACK_NOW), INFO)
     assert "not asserted" in finding.detail
     assert "none on record" not in finding.detail
 
@@ -1119,8 +1115,7 @@ def test_the_install_line_names_a_configuration_that_is_not_the_default(library,
     (checkout / "tools").mkdir(parents=True)
     (checkout / "tools" / "hooks.yaml").write_text(TWO_STAGE_CONFIG)
     hooked_checkout(
-        checkout,
-        INSTALLED_HOOK.replace(".pre-commit-config.yaml", "tools/hooks.yaml"),
+        checkout, INSTALLED_HOOK.replace(".pre-commit-config.yaml", "tools/hooks.yaml"),
         config_file=False,
     )
     finding = checked(hook_finding(library, checkout), FAIL)
@@ -1140,8 +1135,7 @@ class Scripted(prompt.Prompter):
         held = list(secrets_)
         return prompt.Prompter(
             read_line=lambda: (queued.pop(0) + "\n") if queued else _eof(),
-            read_secret=lambda _q: held.pop(0) if held else _eof(),
-            write=lambda _text: None,
+            read_secret=lambda _q: held.pop(0) if held else _eof(), write=lambda _text: None,
         )
 
 
@@ -1513,7 +1507,6 @@ def test_no_disagreement_is_read_where_there_is_nothing_to_compare(configured):
 
 
 def test_the_backup_remote_flag_replaces_a_spelled_remote_rclone_knows(configured):
-    """The flag replaces a recorded remote whatever rclone says."""
     document = _spelled_remote_document(configured)
     wizard = setup_verb._Wizard(document, silent())
     machine = probes(rclone_remotes=lambda _r: {"remote": {}, "gdrive": {}})
@@ -1603,10 +1596,7 @@ def test_a_closed_question_refuses_a_default_outside_its_own_option_set():
     wizard = setup_verb._Wizard({}, silent())
     with pytest.raises(ValueError, match="not one of them"):
         wizard.resolve(
-            "profile.name",
-            flag=None,
-            question="Which preset",
-            default="enormous",
+            "profile.name", flag=None, question="Which preset", default="enormous",
             choices=profiles.PROFILE_NAMES,
         )
 
@@ -1717,11 +1707,8 @@ def test_a_question_reaches_a_real_pipe_before_its_answer_is_read():
         "sys.stdout.write(prompt.Prompter().ask('Which crate'))\n"
     )
     child = subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=environment,
+        [sys.executable, "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, env=environment,
     )
     try:
         shown = b""
@@ -1786,7 +1773,6 @@ def test_login_refuses_a_file_holding_nothing(configured, tmp_path):
 def test_login_reads_the_environment_fallback_through_the_store_that_owns_it(
     configured, monkeypatch
 ):
-    """The environment fallback is read through the store that owns it, one rule."""
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     monkeypatch.setenv(secrets.ENV_CREDENTIAL_PREFIX + "IDENTIFY_KEY", "from-the-environment")
     code, _, err = drive(["login", "identify-key"])
@@ -1849,7 +1835,6 @@ def test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest(
 
 
 def test_status_reads_one_damaged_record_as_a_record_not_as_an_unlisted_log(configured):
-    """One damaged record beside a readable one is skipped, not an unlisted log."""
     write_session(configured, sources={"labels": str(session.SourceState.REFUSED)})
     (Path(session.log_dir(configured)) / "s-0-dead.json").write_text("{not json")
     code, out, err = drive(["--output", "json", "status"])
@@ -1860,7 +1845,6 @@ def test_status_reads_one_damaged_record_as_a_record_not_as_an_unlisted_log(conf
 
 
 def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(configured, monkeypatch):
-    """The human output shows the checks, not only "failed"."""
     green_probes(monkeypatch, keychain_available=lambda: False)
     _code, _out, err = drive(["doctor"])
     assert "keychain.reachable" in err
@@ -1886,14 +1870,9 @@ def test_the_cause_steps_are_not_printed_twice_beside_the_check_table():
     ffmpeg = {"key": "binary.ffmpeg", "title": "external binary ffmpeg", "detail": "not found"}
     report = doctor.Report((a_finding(**ffmpeg, remedy=Remedy.INSTALL_BINARY),))
     envelope = output.build(
-        verb="doctor",
-        run_id="r",
-        schema=output.current_schema("diagnostic"),
-        started="2026-08-02T00:00:00+00:00",
-        outcome=Outcome.FAILED,
-        code=ExitCode.PRECONDITION,
-        data=report.payload(),
-        cause=doctor.failure_cause(report),
+        verb="doctor", run_id="r", schema=output.current_schema("diagnostic"),
+        started="2026-08-02T00:00:00+00:00", outcome=Outcome.FAILED, code=ExitCode.PRECONDITION,
+        data=report.payload(), cause=doctor.failure_cause(report),
     )
     text = render.render(envelope)
     assert text.count("binary.ffmpeg") == 1
@@ -1903,9 +1882,7 @@ def test_the_cause_steps_are_not_printed_twice_beside_the_check_table():
 def test_a_check_table_is_rendered_only_for_the_diagnostic_surface():
     """Gated on the schema, not a ``checks`` key another surface may carry."""
     plan = output.build(
-        verb="profile.set",
-        run_id="r",
-        schema=output.current_schema("plan"),
+        verb="profile.set", run_id="r", schema=output.current_schema("plan"),
         started="2026-08-02T00:00:00+00:00",
         data={"digest": "d", "items": [], "totals": {}, "chunk": None},
     )
@@ -2020,7 +1997,6 @@ def test_the_interactive_allowlist_still_holds_exactly_one_file():
 
 
 # ═══ 8. A positive claim reached by falling through ═════════════════════════
-#
 # Each defect here reported OK by reaching the end of a function; each is driven
 # on the machine that gave the false green and on the one where the answer is yes.
 
@@ -2145,13 +2121,7 @@ def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
     configured, tmp_path
 ):
     """An empty scan of a missing log is not "none open"; ``scan_log`` cannot tell them apart."""
-    record = session.SessionRecord(
-        session_id="s-9",
-        workflow="route.inbox",
-        started="2026-08-02T00:00:00+00:00",
-        state=session.SessionState.COMMITTED_UNVERIFIED,
-    )
-    session.write_record(record, configured)
+    write_session(configured, "s-9", workflow="route.inbox", state=UNVERIFIED)
     checked(finding_on(configured, "session.unresolved"), FAIL, Remedy.RESTORE_FROM_SNAPSHOT)
     # The volume goes with the log: no files, over a library nobody can vouch for.
     configured.library.root.rename(tmp_path / "detached")
@@ -2185,8 +2155,7 @@ def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(confi
     log.mkdir(parents=True, exist_ok=True)
     (log / "s-1.json").write_text("{}")
     _refuse_listing(monkeypatch, log)
-    finding = finding_on(configured, "session.unresolved")
-    assert finding.status is FAIL
+    finding = checked(finding_on(configured, "session.unresolved"), FAIL)
     assert (
         f"the session log directory {log} exists and cannot be listed by this account"
         in finding.detail
@@ -2321,7 +2290,6 @@ def test_an_active_template_on_the_recorded_volume_reports_what_it_verified(conf
 
 
 # ── taxonomy.active: a stale copy told from an edited one (R-689) ────────────
-#
 # Doctor compares recorded, copy and shipped digests; a copy matching its record
 # while the shipped text moved on is INFO.
 
@@ -2440,7 +2408,6 @@ def test_a_shipped_change_inside_a_section_both_declare_is_said_as_such(configur
 
 
 def test_a_record_naming_a_template_other_than_the_configured_one_is_info(configured):
-    """A record naming another template than the configured one is INFO."""
     origin = _seed_with_origin(configured)
     record = origin.read_text(encoding="utf-8").replace('template = "default"', 'template = "club"')
     origin.write_text(record, encoding="utf-8")
@@ -2499,10 +2466,7 @@ def test_a_taxonomy_typo_is_repaired_by_the_verb_whose_remedy_names_it(configure
     document["taxonomy"] = {"template": "defualt"}
     wizard = setup_verb._Wizard(document, silent())
     answer = wizard.resolve(
-        "taxonomy.template",
-        flag=None,
-        question="Which taxonomy template",
-        default="default",
+        "taxonomy.template", flag=None, question="Which taxonomy template", default="default",
         choices=setup_verb.template_names(),
     )
     assert answer == "default"
@@ -2554,39 +2518,33 @@ def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
     settings = {"type": "onedrive", "hard_delete": hard_delete}
     if drive_type is not None:
         settings["drive_type"] = drive_type
-    finding = _remote_finding(configured, settings)
-    assert finding.status is INFO, finding.detail
+    finding = checked(_remote_finding(configured, settings), INFO)
     assert f"drive_type is {drive_type or 'unset'}" in finding.detail
 
 
 @pytest.mark.parametrize("extra", [{}, {"permanent_delete": "true"}])
 def test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have(configured, extra):
     """rclone's Dropbox backend has no per-remote delete option, so none is named."""
-    finding = _remote_finding(configured, {"type": "dropbox", **extra})
-    assert finding.status is INFO, finding.detail
+    finding = checked(_remote_finding(configured, {"type": "dropbox", **extra}), INFO)
     assert "permanent_delete" not in finding.detail
     assert "no per-remote option" in finding.detail
 
 
 def test_a_remote_type_with_no_row_says_so_rather_than_passing(configured):
-    finding = _remote_finding(configured, {"type": "s3"})
-    assert finding.status is INFO
+    finding = checked(_remote_finding(configured, {"type": "s3"}), INFO)
     assert "no row" in finding.detail
 
 
 def test_a_remote_where_a_delete_is_a_delete_is_the_one_that_reports_green(configured):
-    finding = _remote_finding(configured, {"type": "local"})
-    assert finding.status is OK
+    checked(_remote_finding(configured, {"type": "local"}), OK)
 
 
 def test_the_remote_path_form_resolves_to_the_remote_it_names(configured):
-    """``remote:path`` resolves to the remote it names."""
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:library/archive"}
     cfg = config.from_dict(document)
     finding = finding_on(
-        cfg,
-        "backup.remote",
+        cfg, "backup.remote",
         rclone_remotes=lambda _r: {"archive": {"type": "drive", "use_trash": "false"}},
     )
     assert finding.status is OK
@@ -2627,7 +2585,6 @@ def test_a_binary_that_is_simply_absent_still_says_install_it(configured):
 def test_a_headless_machine_that_opted_into_the_environment_fallback_is_not_red(
     configured, monkeypatch
 ):
-    """A headless machine using the documented environment fallback is not red."""
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     for credential in secrets.Credential:
         monkeypatch.setenv(
@@ -2648,7 +2605,6 @@ def test_a_machine_with_no_keychain_and_no_fallback_is_still_red(configured):
 
 
 def test_a_fallback_supplying_only_some_of_what_is_needed_is_still_red(configured, monkeypatch):
-    """A fallback supplying only some credentials is still red."""
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     monkeypatch.setenv("CRATEKIT_CREDENTIAL_PROVIDER_SESSION", "value")
     machine = probes(
@@ -2668,8 +2624,7 @@ def test_a_database_outside_the_library_root_is_reported_on_every_run(
     document = document_for(library)
     document["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
     document["library"]["db_outside_root_acknowledged_on"] = "2026-08-01"
-    finding = finding_on(document, "library.db_containment")
-    assert finding.status is INFO
+    finding = checked(finding_on(document, "library.db_containment"), INFO)
     assert str(tmp_path / "elsewhere" / "master.db") in finding.detail
     assert str(library) in finding.detail
     assert "2026-08-01" in finding.detail
@@ -2778,7 +2733,6 @@ def test_the_trash_check_is_unchecked_when_there_is_no_configuration(tmp_path, m
 
 
 # ═══ 9. A truth teller that could refuse to run ═════════════════════════════
-#
 # A doctor that cannot start on a broken machine fails the machine it exists for.
 
 
@@ -2925,7 +2879,6 @@ def test_an_ejected_volume_leaves_a_mount_POINT_behind_and_the_derive_refuses_it
 def test_the_identity_source_refuses_an_empty_mount_slot_and_nothing_else(
     tmp_path, volumes_directory
 ):
-    """The identity source refuses an empty mount slot and nothing else."""
     existing = tmp_path / "library"
     existing.mkdir()
     # No mount slot on the way down: the identity is its own volume's, asserted as a
@@ -2971,7 +2924,6 @@ def test_more_than_one_declared_depth_may_answer_and_only_one_is_the_mount(tmp_p
 
 
 def test_no_ok_detail_claims_a_volume_the_run_never_identified(configured):
-    """No OK detail claims a volume when the identity could not be asked."""
     seed_taxonomy(configured)
     report = report_on(configured, identity_provider=preflight.null_volume_identity)
     assert find(report, "library.identity").status is FAIL
@@ -3015,7 +2967,6 @@ def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_record(monkeypa
 
 
 def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_delete(monkeypatch):
-    """On a delete a refused lock leaves the keychain entry too."""
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
     _refuse_the_index_lock(monkeypatch)
     with pytest.raises(secrets.CredentialIndexUnusable):
@@ -3064,11 +3015,9 @@ def test_a_hook_whose_configuration_name_needed_quoting_still_passes(library, tm
 
 
 def test_the_hook_ok_names_the_configuration_it_actually_resolved(library, tmp_path):
-    """The OK names the configuration the hook names, not the default."""
     checkout = hooked_checkout(
         tmp_path / "checkout",
-        "ARGS=(hook-impl --config=tools/hooks.yaml --hook-type=pre-commit)\n",
-        config_file=False,
+        "ARGS=(hook-impl --config=tools/hooks.yaml --hook-type=pre-commit)\n", config_file=False,
     )
     (checkout / "tools").mkdir()
     (checkout / "tools" / "hooks.yaml").write_text("repos: []\n")
@@ -3161,7 +3110,6 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
 
     with _sealed(sealed):
         report = report_on(configured, process_lister=blind)
-
     # Every check still answered, in order.
     assert [f.key for f in report.findings] == list(doctor.CHECK_KEYS)
     broken = find(report, "rekordbox.closed")
@@ -3174,7 +3122,6 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     # The answers either side of it are the real ones.
     assert find(report, "interpreter.version").status is OK
     assert find(report, "library.identity").status is OK
-
     # A probe that simply fell over is still report-defect.
     def fell_over():
         raise RuntimeError("psutil returned a shape this reader has never seen")
@@ -3277,7 +3224,6 @@ def test_an_active_template_that_exists_and_cannot_be_read_is_not_a_missing_one(
 def test_an_unlistable_packaged_directory_is_not_a_shipped_set_of_none(
     configured, unreadable_install
 ):
-    """An unlistable packaged directory is a damaged install, not an empty shipped set."""
     names, problem = taxonomy.shipped_templates()
     assert names == ()
     assert problem is not None and "could not be listed" in problem
@@ -3340,7 +3286,6 @@ def test_where_each_platform_mounts_a_volume_is_declared_row_by_row():
 
 
 # ═══ 10. A guard that answers about something it did not observe ════════════
-#
 # Everything below drives both directions, since earlier corrections each also
 # refused a correct install.
 
@@ -3395,7 +3340,6 @@ def test_two_spellings_of_one_directory_are_one_directory_however_they_differ(tm
 def test_a_symlinked_mount_point_pointing_out_of_the_mount_directory_still_refuses(
     volumes_directory, tmp_path
 ):
-    """A symlink in the mount directory aimed elsewhere still refuses."""
     elsewhere = tmp_path / "elsewhere"
     (elsewhere / "library").mkdir(parents=True)
     (volumes_directory.path / "SYMVOL").symlink_to(elsewhere, target_is_directory=True)
@@ -3504,7 +3448,6 @@ def test_a_linux_library_on_an_ordinary_directory_is_not_refused_forever(tmp_pat
     )
     assert preflight.library_state_may_be_written(status) is True
     assert preflight.library_state_is_readable(status) is True
-
     # A drive the automounter would place is refused while nothing is mounted there.
     detached = media / "phil" / "EP_LIBRARY" / "Music"
     assert preflight.mount_location_ancestors(detached) != ()
@@ -3515,7 +3458,6 @@ def test_a_linux_library_on_an_ordinary_directory_is_not_refused_forever(tmp_pat
 def test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directory(
     tmp_path, monkeypatch
 ):
-    """End to end, the template is written on a Linux style ordinary directory."""
     root = (tmp_path / "mnt" / "data" / "music").resolve()
     (root / "Music").mkdir(parents=True)
     rebased = tuple(
@@ -3573,12 +3515,10 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(con
     assert "unknown rather than no" in finding.detail
     assert "names no git directory" not in finding.detail
     assert report.ok is False, "doctor exited 0 over an unanswered commit scan"
-
     # A marker that was read and named nothing is still INFO with no remedy.
     marker.write_text("this is not a gitdir pointer\n")
     named_nothing = finding_on(configured, "repo.commit_hook", checkout_root=lambda: root)
     assert doctor_model._git_dir(root) == (None, None, None)
-
     # Not text: ``UnicodeDecodeError`` is a ``ValueError``, not an ``OSError``.
     marker.write_bytes(b"gitdir: \xff\xfe/somewhere\n")
     pointed, not_text, not_text_remedy = doctor_model._git_dir(root)
@@ -3591,7 +3531,6 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(con
 
 
 def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(configured, tmp_path):
-    """An unreadable ``commondir`` is reported, not read as no git directory."""
     worktree, common = _worktree(tmp_path, b"../..\n")
     with _sealed(common / "worktrees" / "w1" / "commondir"):
         pointed, unreadable, remedy = doctor_model._git_dir(worktree)
@@ -3603,7 +3542,6 @@ def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(confi
 
 
 def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(configured, tmp_path):
-    """A ``commondir`` that does not decode is reported too."""
     worktree, _common = _worktree(tmp_path, b"..\xff\xfe/..\n")
     pointed, unreadable, remedy = doctor_model._git_dir(worktree)
     finding = finding_on(configured, "repo.commit_hook", checkout_root=lambda: worktree)
@@ -3645,7 +3583,6 @@ def test_the_wizard_still_names_a_template_that_simply_does_not_ship(configured)
 
 
 def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(configured, monkeypatch):
-    """A listed template whose bytes will not open is a damaged install."""
     def refuse(_name):
         raise PermissionError(13, "Permission denied")
 
@@ -3698,7 +3635,6 @@ def _refusing_check(key: str = "library.mounted") -> doctor.Check:
 
 
 def test_a_structured_refusal_keeps_its_reason_remedy_steps_and_reserved_code():
-    """A structured refusal keeps its reason, remedy, steps and reserved code through the rescue."""
     inputs = doctor._Inputs(None, None, probes())
     finding = doctor.answer(_refusing_check(), inputs)
     checked(finding, FAIL, Remedy.MOUNT_LIBRARY_VOLUME)
@@ -3727,7 +3663,6 @@ def test_an_unstructured_break_is_still_rescued_as_a_check_that_did_not_complete
 
 
 def test_a_report_with_no_structured_refusal_still_exits_precondition(configured):
-    """An ordinary failing report still exits PRECONDITION."""
     report = report_on(configured, find_binary=lambda _n: None)
     assert report.ok is False
     cause = doctor.failure_cause(report)
@@ -3773,7 +3708,6 @@ def sealed_ancestor(tmp_path):
 
 
 def test_the_wizard_refuses_an_unreachable_ancestor_rather_than_filing_a_defect(sealed_ancestor):
-    """An unreachable ancestor is refused with the path, not filed as a defect."""
     cause = refused_derive(sealed_ancestor, "X")
     assert cause.reason == "library-root-unreachable"
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
@@ -3860,7 +3794,6 @@ def test_the_grant_path_access_advice_claims_neither_act_over_the_other(library)
 
 
 def test_doctor_still_answers_every_check_over_an_unreachable_root(sealed_ancestor, monkeypatch):
-    """Doctor answers every check over an unreachable root."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(sealed_ancestor))
     report = report_on(sealed_ancestor)
     assert tuple(f.key for f in report.findings) == doctor.CHECK_KEYS
@@ -3869,7 +3802,6 @@ def test_doctor_still_answers_every_check_over_an_unreachable_root(sealed_ancest
 
 
 # ── one classification, made once, for a permission the user can grant ───────
-#
 # ``cause.permission_denied`` answers, ``cause.access_remedy`` chooses the act;
 # driven on real 0o000 directories.
 
@@ -4003,8 +3935,7 @@ def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(tmp_path, mo
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     config.reset_cache()
     monkeypatch.setattr(
-        setup_verb.rb_writer,
-        "read_rekordbox_settings",
+        setup_verb.rb_writer, "read_rekordbox_settings",
         lambda: {"db_path": str(locked / "master.db")},
     )
     green_probes(monkeypatch)
@@ -4020,7 +3951,6 @@ def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(tmp_path, mo
 
 
 def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configured):
-    """An unreadable backup fact file is a permission, not a corruption."""
     path = backup_facts.path_for(configured)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('{"schema_version": 1, "portions": {}}')
@@ -4036,7 +3966,6 @@ def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configu
 
 
 def test_an_active_template_that_is_present_and_is_not_text_is_reported(configured):
-    """A template that does not decode is reported at ``taxonomy.active``."""
     path = config.state_path("taxonomy_active", configured)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"trees:\n  - name: \xff\xfe\n")
@@ -4060,7 +3989,6 @@ def test_a_commit_hook_that_is_present_and_is_not_text_is_reported(configured, t
 
 
 def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_path):
-    """The classification reads ``__cause__``, not the implicit context."""
     denied = PermissionError(13, "refused")
     assert cause_module.permission_denied(denied) is denied
     assert cause_module.permission_denied(RuntimeError("fell over")) is None
@@ -4084,24 +4012,19 @@ def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_pat
     except ValueError as exc:
         assert exc.__context__ is denied
         assert cause_module.permission_denied(exc) is None
-
     # ``access_remedy`` requires a path; ``permission_denied`` only decides to re-raise.
     named = PermissionError(13, "refused", str(tmp_path / "sealed" / "inside"))
-    assert (
-        cause_module.access_remedy(named, otherwise=Remedy.REPORT_DEFECT)
-        is Remedy.GRANT_PATH_ACCESS
-    )
-    assert (
-        cause_module.access_remedy(RuntimeError("x"), otherwise=Remedy.REPORT_DEFECT)
-        is Remedy.REPORT_DEFECT
-    )
-    assert (
-        cause_module.access_remedy(denied, otherwise=Remedy.REPORT_DEFECT) is Remedy.REPORT_DEFECT
-    ), "a refusal naming no path has no path to grant access to"
+
+    def remedy(error):
+        return cause_module.access_remedy(error, otherwise=Remedy.REPORT_DEFECT)
+
+    assert remedy(named) is Remedy.GRANT_PATH_ACCESS
+    assert remedy(RuntimeError("x")) is Remedy.REPORT_DEFECT
+    no_path = "a refusal naming no path has no path to grant access to"
+    assert remedy(denied) is Remedy.REPORT_DEFECT, no_path
 
 
 # ═══ The classification lives where a refusal is constructed ════════════════
-#
 # Every structured refusal passes through ``cause.classified``; driven with real
 # permissions, a read only volume, a locked file and the state store's driver error.
 
@@ -4128,7 +4051,6 @@ def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monk
 
 
 def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
-    """A refusal with no path is not classified as one."""
     isolated_library(tmp_path, monkeypatch, save=True)
 
     def refused(_ctx):
@@ -4168,15 +4090,13 @@ def test_a_read_only_volume_is_not_sent_to_full_disk_access(tmp_path):
     note = render.access_note(refused)
     assert "/cratekit-u27-read-only-probe" in note
     assert "Full Disk Access" not in note
-
     # An EROFS anywhere is answered with the read only act.
     try:
         try:
             os.mkdir("/cratekit-u27-read-only-probe")
         except OSError as inner:
             raise refuse(
-                "library-root-unreachable",
-                "the library root could not be created",
+                "library-root-unreachable", "the library root could not be created",
                 remedy=Remedy.GRANT_PATH_ACCESS,
             ) from inner
     except CratekitError as err:
@@ -4205,7 +4125,6 @@ def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path,
     assert "chflags nouchg" in err
     assert "Full Disk Access" not in err
     assert code == int(ExitCode.PRECONDITION)
-
     # A rename into an unwritable directory, driven separately from the lock.
     source = tmp_path / "source"
     source.mkdir()
@@ -4246,7 +4165,6 @@ def test_the_session_reader_does_not_read_absence_out_of_a_refusal(tmp_path, mon
 
 
 def test_the_acknowledgment_reader_does_not_claim_the_file_exists(tmp_path, monkeypatch):
-    """The acknowledgment reader does not claim an unreadable file exists."""
     cfg = isolated_library(tmp_path, monkeypatch)
     ack = session.ack_path(cfg)
     ack.parent.mkdir(parents=True, exist_ok=True)
@@ -4261,7 +4179,6 @@ def test_the_acknowledgment_reader_does_not_claim_the_file_exists(tmp_path, monk
 
 
 def test_an_unreadable_capture_manifest_is_not_a_defect_report(tmp_path):
-    """An unreadable capture manifest takes its act from the refusal, not report-defect."""
     capture = tmp_path / "capture"
     capture.mkdir()
     manifest = capture / snapshot.MANIFEST_NAME
@@ -4277,7 +4194,6 @@ def test_an_unreadable_capture_manifest_is_not_a_defect_report(tmp_path):
 
 
 def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monkeypatch):
-    """The wizard does not call an unreadable but intact configuration corrupt."""
     _isolated_config(tmp_path, monkeypatch)
     document = config.config_path()
     document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
@@ -4328,7 +4244,6 @@ def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
 
 
 def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_path, monkeypatch):
-    """``config.present`` does not call a sealed but intact file corrupt."""
     _isolated_config(tmp_path, monkeypatch)
     document = config.config_path()
     document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
@@ -4393,7 +4308,6 @@ def test_the_cause_walk_terminates_on_a_chain_that_names_itself(tmp_path):
 
 
 def test_is_mount_point_answers_an_unrepresentable_path(tmp_path):
-    """``is_mount_point`` answers False for a path with an embedded null."""
     assert os.path.ismount("a\x00b") is False
     assert preflight.is_mount_point(Path("a\x00b")) is False
     assert preflight.slot_holds_a_volume(Path("a\x00b")) is False
@@ -4413,14 +4327,11 @@ def test_the_declared_interpreter_bound_is_none_when_it_cannot_be_read(monkeypat
 
 
 def test_the_binding_pin_problem_is_whatever_the_writers_own_assertion_says(monkeypatch):
-    """The pin problem is the guarded writer's own assertion."""
     def refuse(_cfg):
         raise CratekitError(
             Cause(
-                reason="pyrekordbox-pin-drift",
-                message="pyrekordbox 0.4.0 is not the pinned 0.3.0",
-                remediation=Remediation(remedy=Remedy.REVALIDATE_PINS),
-                scope=Scope.RUN,
+                reason="pyrekordbox-pin-drift", message="pyrekordbox 0.4.0 is not the pinned 0.3.0",
+                remediation=Remediation(remedy=Remedy.REVALIDATE_PINS), scope=Scope.RUN,
                 origin=("tests",),
             )
         )
@@ -4439,43 +4350,26 @@ def test_the_binding_pin_problem_is_whatever_the_writers_own_assertion_says(monk
 
 
 def test_the_rclone_dump_answers_none_for_every_way_it_can_fail(monkeypatch, tmp_path):
-    """Every rclone failure answers None, not an empty set of remotes."""
     # The binary is not there at all.
     assert doctor_model._rclone_remotes(str(tmp_path / "no-such-rclone")) is None
 
     def timed_out(*_a, **_k):
         raise subprocess.TimeoutExpired(cmd="rclone", timeout=10)
 
-    monkeypatch.setattr(subprocess, "run", timed_out)
-    assert doctor_model._rclone_remotes("rclone") is None
-    monkeypatch.setattr(
-        subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="")
-    )
-    assert doctor_model._rclone_remotes("rclone") is None
-    monkeypatch.setattr(
-        subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="not json at all")
-    )
-    assert doctor_model._rclone_remotes("rclone") is None
-    monkeypatch.setattr(
-        subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="[1, 2]")
-    )
-    assert doctor_model._rclone_remotes("rclone") is None
+    def ran(returncode, stdout):
+        return lambda *_a, **_k: SimpleNamespace(returncode=returncode, stdout=stdout)
 
+    for broken in (timed_out, ran(1, ""), ran(0, "not json at all"), ran(0, "[1, 2]")):
+        monkeypatch.setattr(subprocess, "run", broken)
+        assert doctor_model._rclone_remotes("rclone") is None
     # The working answer, so none of the above passes by accident.
-    monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *_a, **_k: SimpleNamespace(
-            returncode=0, stdout='{"gdrive": {"type": "drive", "use_trash": "false"}}'
-        ),
-    )
-    assert doctor_model._rclone_remotes("rclone") == {
-        "gdrive": {"type": "drive", "use_trash": "false"}
-    }
+    working = '{"gdrive": {"type": "drive", "use_trash": "false"}}'
+    monkeypatch.setattr(subprocess, "run", ran(0, working))
+    remotes = {"gdrive": {"type": "drive", "use_trash": "false"}}
+    assert doctor_model._rclone_remotes("rclone") == remotes
 
 
 def test_an_active_template_that_does_not_validate_is_its_own_answer(configured):
-    """A template that does not validate is its own answer."""
     path = config.state_path("taxonomy_active", configured)
     config.atomic_write_bytes(b"schema_version = 99\n", path)
     finding = finding_on(configured, "taxonomy.active")
@@ -4498,8 +4392,7 @@ def test_unreadable_backup_facts_are_reported_per_portion(configured, monkeypatc
     """Unreadable fact files are reported per portion, never as "no backup recorded"."""
     def refuse(_cfg, *, now):
         raise backup_facts.BackupFactsUnreadable(
-            "the backup facts file is not readable JSON",
-            path=Path("/nowhere/backup.json"),
+            "the backup facts file is not readable JSON", path=Path("/nowhere/backup.json"),
             remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
 
@@ -4511,7 +4404,6 @@ def test_unreadable_backup_facts_are_reported_per_portion(configured, monkeypatc
 
 
 def test_a_hook_line_with_an_unbalanced_quote_falls_back_to_the_default_config():
-    """An unbalanced quote falls back to pre-commit's default config."""
     assert (
         doctor_state._hook_config_name('exec pre-commit hook-impl --config="unbalanced')
         == doctor_state._HOOK_CONFIG_DEFAULT
@@ -4533,7 +4425,6 @@ def test_a_run_record_that_will_not_load_is_reported_rather_than_skipped(configu
 
 
 def test_a_tree_registry_that_will_not_load_is_never_read_as_no_record(configured):
-    """An unreadable tree registry is its own answer, never "no record"."""
     path = tree_registry.path_for(configured)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"{ not json")
@@ -4561,7 +4452,6 @@ def test_setup_refuses_a_config_that_stopped_being_readable_between_the_two_read
 
 
 def test_setup_refuses_when_the_migration_ladder_refuses(monkeypatch, tmp_path):
-    """A migration ladder refusal stops setup."""
     path = tmp_path / "config.toml"
     path.write_text("schema_version = 1\n")
 
@@ -4589,8 +4479,7 @@ def test_the_database_probe_is_a_proposal_and_never_a_failure(monkeypatch, tmp_p
     assert setup_verb._probe_db_path() is None
     # A recorded path not on this machine is not proposed either.
     monkeypatch.setattr(
-        setup_verb.rb_writer,
-        "read_rekordbox_settings",
+        setup_verb.rb_writer, "read_rekordbox_settings",
         lambda: {"db_path": str(tmp_path / "absent" / "master.db")},
     )
     assert setup_verb._probe_db_path() is None
@@ -4648,7 +4537,6 @@ def test_a_hook_config_path_that_cannot_be_resolved_is_a_refusal_not_a_crash(tmp
 
 
 def test_a_slot_holds_a_volume_when_a_symlink_in_it_names_a_real_mount(tmp_path):
-    """A slot holds a volume when a symlink in it names a real mount, both ways."""
     mount = Path(tmp_path.anchor)
     to_a_mount = tmp_path / "alias-to-a-real-mount"
     to_a_mount.symlink_to(mount, target_is_directory=True)
@@ -4667,7 +4555,6 @@ def test_a_slot_holds_a_volume_when_a_symlink_in_it_names_a_real_mount(tmp_path)
 
 
 def test_setup_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, tmp_path):
-    """The wizard inherits a refusing check's reserved exit code."""
     root = fresh_root(tmp_path, monkeypatch, "fresh")
     green_probes(monkeypatch)
     monkeypatch.setattr(doctor, "CHECKS", (_refusing_check(),))
@@ -4677,7 +4564,6 @@ def test_setup_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, tmp_
 
 
 # ═══ The channel a refusal travels when nothing is raised ═══════════════════
-#
 # A ``doctor.Finding`` built from an exception never reached ``cause.classified``.
 
 
@@ -4692,7 +4578,6 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
             refused = exc
         else:
             raise AssertionError("a 0o000 file opened, so the arrangement is void")
-
         # The site's own reading, deliberately a different act's token.
         read = "the template could not be read"
         finding = a_finding(detail=read, remedy=Remedy.REMOUNT_WRITABLE, error=refused)
@@ -4702,7 +4587,6 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
     assert finding.cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
     assert finding.cause.detail["path"] == str(sealed)
     assert finding.cause.detail["check"] == "setup.taxonomy"
-
     # A real read only volume, this machine's system volume.
     read_only = root_volume_refusal("cratekit-u27-finding-probe")
     assert read_only.errno == errno.EROFS
@@ -4711,13 +4595,11 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
     on_a_read_only_volume = a_finding(detail=written, remedy=remedy, error=read_only)
     assert on_a_read_only_volume.remedy is Remedy.REMOUNT_WRITABLE
     assert on_a_read_only_volume.cause.reason == "path-read-only"
-
     # A finding about something not refused by the system is left as built.
     not_toml = {"key": "taxonomy.active", "detail": "the file is not valid TOML"}
     ordinary = a_finding(**not_toml, remedy=Remedy.REPORT_DEFECT, error=ValueError("not a refusal"))
     assert ordinary.remedy is Remedy.REPORT_DEFECT
     assert ordinary.cause is None
-
     # A finding carrying no exception is inert.
     assert (
         doctor.Finding(key="k", title="t", status=FAIL, detail="d", remedy=Remedy.RUN_DOCTOR).remedy
@@ -4745,10 +4627,8 @@ def test_the_seed_on_a_read_only_library_volume_is_not_sent_to_full_disk_access(
     assert "Full Disk Access" not in note.detail
     assert "mounted read only" in note.detail
     assert "/.cratekit" in note.detail
-
     # The one-line fix is the act for this kind.
     assert "Full Disk Access" not in render.remedy_text(note.remedy)
-
     # The envelope carries it, rather than a null remedy.
     cause = doctor.failure_cause(doctor.Report(tuple(wizard.notes)), origin="cli.setup")
     assert cause.reason == "path-read-only"
@@ -4786,7 +4666,6 @@ def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
     refused = cause_module._probe_writable(str(mode))
     assert refused is not None and refused.kind is cause_module.AccessKind.PERMISSION
     assert refused.path == str(mode)
-
     # 2. The immutable flag (Finder's Locked), EPERM rather than EACCES.
     locked = tmp_path / "locked.db"
     locked.write_bytes(b"x")
@@ -4797,7 +4676,6 @@ def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
             assert found is not None and found.kind is cause_module.AccessKind.LOCKED
         finally:
             subprocess.run(["chflags", "nouchg", str(locked)], check=False)
-
     # 3. An ACL denying write while the mode allows it, where chmod can set one.
     acl = tmp_path / "acl.db"
     acl.write_bytes(b"x")
@@ -4809,7 +4687,6 @@ def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
         assert cause_module._probe_readable(str(acl)) is None
         found = cause_module._probe_writable(str(acl))
         assert found is not None and found.kind is cause_module.AccessKind.PERMISSION
-
     # The negative row, so the probe does not refuse everything.
     ordinary = tmp_path / "ordinary.db"
     ordinary.write_bytes(b"x")
@@ -4876,7 +4753,6 @@ def test_a_two_path_refusal_names_the_side_the_operating_system_refused(tmp_path
         assert refusal is not None
         assert refusal.path == str(source), "the refusal named the path the account can write"
         assert refusal.kind is cause_module.AccessKind.PERMISSION
-
     # The rename case: an unwritable destination is named first.
     unwritable = tmp_path / "unwritable"
     unwritable.mkdir()
@@ -4909,7 +4785,6 @@ def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
             gave_up = exc
         else:
             raise AssertionError("a 0o000 member copied, so the arrangement is void")
-
         # The shape the classification works from, stated.
         assert isinstance(gave_up, OSError)
         assert gave_up.errno is None
@@ -4920,7 +4795,6 @@ def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
         assert refusal.path == str(member)
         assert refusal.kind is cause_module.AccessKind.PERMISSION
         assert refusal.remedy is Remedy.GRANT_PATH_ACCESS
-
         # It travels to the dispatcher's blanket, which an unguarded copy reaches.
         blanket = cli._unhandled_cause(gave_up)
         assert blanket.reason == "path-permission-denied"
@@ -4929,7 +4803,6 @@ def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
 
 
 # ═══ Two answers a double cannot give ═══════════════════════════════════════
-#
 # Real identity, mount table, detach and EROFS, failing rather than skipping
 # without hdiutil, since a skipped proof reads as a pass.
 
@@ -4972,25 +4845,21 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
         on_it = resolve(volume / "library")
         moved_within = resolve(volume / "not-that-folder")
         elsewhere = resolve(gone_root, **local)
-
     # Detached for real, an unplugged drive.
     unmounted = resolve(gone_root, **local)
     assert on_it.state is preflight.MountState.OK, on_it
     assert moved_within.state is preflight.MountState.LIBRARY_PATH_MISSING, moved_within
     assert elsewhere.state is preflight.MountState.MOUNTED_ELSEWHERE, elsewhere
     assert unmounted.state is preflight.MountState.NOT_MOUNTED, unmounted
-
     # The moved answer says where; the unmounted one has no place to name.
     assert elsewhere.found_at is not None
     assert unmounted.found_at is None
-
     # The two sentences carry different acts.
     moved_detail = doctor_library._MOUNT_DETAIL[elsewhere.state]
     absent_detail = doctor_library._MOUNT_DETAIL[unmounted.state]
     assert moved_detail != absent_detail
     assert "Nothing needs plugging in" in moved_detail
     assert "Attach it" in absent_detail
-
     # Both refuse a library state read.
     assert not preflight.library_state_is_readable(elsewhere)
     assert not preflight.library_state_is_readable(unmounted)
@@ -5007,10 +4876,8 @@ def test_a_real_read_only_volume_reaches_the_user_as_remount_not_as_a_permission
         failures = [note for note in wizard.notes if note.status is FAIL]
         assert len(failures) == 1, [note.detail for note in wizard.notes]
         note = failures[0]
-
         # 1. The token: the kind the system made decides, not the hard coded one.
         assert note.remedy is Remedy.REMOUNT_WRITABLE, note.remedy
-
         # 2. The structured cause, rather than a null remedy.
         assert note.cause is not None, note.detail
         assert note.cause.reason == "path-read-only"
@@ -5018,13 +4885,11 @@ def test_a_real_read_only_volume_reaches_the_user_as_remount_not_as_a_permission
         assert note.cause.detail["access"] == str(cause_module.AccessKind.READ_ONLY)
         # The path named is on the volume that refused.
         assert str(volume) in note.cause.detail["path"]
-
         # 3. The sentence, free to disagree with the token.
         assert "mounted read only" in note.detail
         assert "no permission grant can change that" in note.detail
         assert "Full Disk Access" not in note.detail
         assert "Grant this interpreter" not in note.detail
-
         # Nothing was written on the volume it cannot write.
         assert not config.state_path("taxonomy_active", cfg).exists()
 
@@ -5082,7 +4947,6 @@ def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume
             f"the driver answered {getattr(refused, 'sqlite_errorname', None)}, "
             f"which routes to the READ probe and not to the one under test"
         )
-
         # The connection site attaches the path and the classifier reads it.
         cause_module.name_the_database(refused, database)
         refusal = cause_module.access_refusal(refused)
@@ -5203,7 +5067,6 @@ def test_the_cyanite_key_is_reported_never_failed_and_names_the_trial(configured
 
 
 def test_setup_offers_the_discogs_token_where_a_tagging_verb_is_switched_on():
-    """The Discogs token is offered wherever a tagging verb is on."""
     full = profiles.resolve("full")
     assert doctor.offered("credential.discogs", full)
     assert not doctor.requires_check("credential.discogs", full)
@@ -5679,8 +5542,7 @@ def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monk
     (home / "Library" / "Application Support" / doctor_model.DEADCA7_STATE).mkdir(parents=True)
     monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: home))
     machine = dataclasses.replace(
-        doctor_machines.green(),
-        deadca7_home=lambda: home / "nowhere",
+        doctor_machines.green(), deadca7_home=lambda: home / "nowhere",
         deadca7_installed=RealProbes().deadca7_installed,
     )
     finding = find(doctor.run(configured, probes=machine), "deadca7.push")
@@ -5751,15 +5613,13 @@ _NO_EXTRA = ("extra", "the 'vocals' extra is not installed here; reinstall it")
 def _extras_finding(missing, origin=None, **overrides):
     origin = origin or _vcs("0.3.0", ("analysis",))
     inputs = doctor._Inputs(
-        None,
-        None,
+        None, None,
         probes(vocal_requirement=lambda: missing, install_origin=lambda: origin, **overrides),
     )
     return doctor._check_install_extras(inputs)
 
 
 def test_a_copy_without_the_vocals_extra_says_so_and_prints_the_reinstall_command():
-    """A copy installed with analysis and not vocals says so with the command."""
     finding = _extras_finding(_NO_EXTRA)
     assert finding.key == "install.extras"
     assert finding.status is INFO, "it runs inside setup and must not refuse"
@@ -5820,8 +5680,7 @@ def test_an_upgrade_keeps_the_extras_and_adds_vocals_only_for_a_scored_library(s
         None,
         probes(
             install_origin=lambda: _vcs("0.2.0", ("analysis",)),
-            release_tags=lambda _url: ("v0.3.0",),
-            vocals_scored=lambda _cfg: scored,
+            release_tags=lambda _url: ("v0.3.0",), vocals_scored=lambda _cfg: scored,
         ),
     )
     finding = doctor._check_release(inputs)

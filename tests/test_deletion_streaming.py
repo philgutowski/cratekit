@@ -128,9 +128,7 @@ def test_an_unmapped_local_path_still_refuses_and_names_its_prefix_and_rule(cfg)
     references = _references(
         cfg,
         _active(
-            "/Users/someone/Music/a.flac",
-            "/Users/someone/Music/b.flac",
-            "/Old Drive/Music/c.flac",
+            "/Users/someone/Music/a.flac", "/Users/someone/Music/b.flac", "/Old Drive/Music/c.flac",
             STREAMED[0],
         ),
         stat=_absent,
@@ -183,10 +181,8 @@ def _insert_active(db_path: Path, rows: list[tuple[str, str]]) -> None:
         conn.close()
 
 
-def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
-    review_cli, tmp_path, monkeypatch
-):
-    """The card's scenario end to end: the verb that refused now finishes."""
+def _removed_beside_streaming(review_cli, tmp_path, monkeypatch, active):
+    """A baselined library: ONE removed, a deleted streaming row, then ``active`` rows."""
     trash = _fake_trash(tmp_path, monkeypatch)
     music = _music(review_cli, ONE)
     db_path = Path(review_cli.library.db_path)
@@ -197,14 +193,19 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
         )
     finally:
         rb_writer.close_db(handle)
-    _write_rows(
-        db_path,
-        [
-            ("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem),
-            ("2", "/v4/catalog/tracks/11111111/", False, 20, 0, "Streamed 2"),
-        ],
-    )
-    _insert_active(db_path, [("3", "/v4/catalog/tracks/22222222/"), ("4", "soundcloud:tracks:33")])
+    removed = ("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem)
+    streamed = ("2", "/v4/catalog/tracks/11111111/", False, 20, 0, "Streamed 2")
+    _write_rows(db_path, [removed, streamed])
+    _insert_active(db_path, active)
+    return trash, music
+
+
+def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
+    review_cli, tmp_path, monkeypatch
+):
+    """The card's scenario end to end: the verb that refused now finishes."""
+    active = [("3", "/v4/catalog/tracks/22222222/"), ("4", "soundcloud:tracks:33")]
+    trash, music = _removed_beside_streaming(review_cli, tmp_path, monkeypatch, active)
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code == int(ExitCode.DECISION_REQUIRED), err or out
     refused = json.loads(out)
@@ -227,24 +228,8 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
 def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows(
     review_cli, tmp_path, monkeypatch
 ):
-    trash = _fake_trash(tmp_path, monkeypatch)
-    music = _music(review_cli, ONE)
-    db_path = Path(review_cli.library.db_path)
-    handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
-    try:
-        watermark.WatermarkStore(review_cli).baseline(
-            database_identity=library.database_identity(handle), sequence=40, actor="cli"
-        )
-    finally:
-        rb_writer.close_db(handle)
-    _write_rows(
-        db_path,
-        [
-            ("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem),
-            ("2", "/v4/catalog/tracks/11111111/", False, 20, 0, "Streamed 2"),
-        ],
-    )
-    _insert_active(db_path, [("3", "/A Retired Drive/Music/x.flac")])
+    active = [("3", "/A Retired Drive/Music/x.flac")]
+    trash, music = _removed_beside_streaming(review_cli, tmp_path, monkeypatch, active)
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code != int(ExitCode.OK)
     refused = json.loads(out)

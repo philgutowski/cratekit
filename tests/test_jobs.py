@@ -151,7 +151,6 @@ def _refused(call) -> Cause:
 
 def _drive_cli(argv: list[str]) -> tuple[int, dict]:
     from cratekit import cli  # noqa: PLC0415
-
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
     return code, json.loads(out.getvalue())
@@ -347,10 +346,8 @@ def test_the_artifact_is_flushed_and_renamed_before_the_row_flips_to_done(
     """The ordering is the guarantee: "done" is what a resume trusts."""
     job = _job(store, cfg, "one")
     events: list[str] = []
-
     def recorded(event, real):
         return lambda *a, **k: (events.append(event), real(*a, **k))[1]
-
     monkeypatch.setattr(os, "fsync", recorded("fsync", os.fsync))
     monkeypatch.setattr(os, "replace", recorded("replace", os.replace))
     monkeypatch.setattr(jobs, "complete_item", recorded("done", jobs.complete_item))
@@ -374,7 +371,6 @@ def test_an_item_that_produces_nothing_still_completes(store, root, cfg):
 def test_a_job_whose_every_item_fails_raises_rather_than_reporting_success(store, root, cfg):
     """Empty means verified empty only when the lookups succeeded."""
     job = _job(store, cfg, "a", "b", "c")
-
     broken = _failing(broken=("a", "b", "c"))
     cause = _refused(lambda: jobs.drive(store, job.job_id, broken, root=root))
     assert cause.reason == "no-evidence"
@@ -398,7 +394,6 @@ def test_attempting_nothing_is_a_no_op_and_not_a_failure(store, root, cfg):
 
 def test_a_partial_failure_fails_the_job_and_keeps_the_successes(store, root, cfg):
     job = _job(store, cfg, "good", "bad")
-
     result = jobs.drive(store, job.job_id, _failing(broken=("bad",)), root=root)
     assert (result.processed, result.failed) == (1, 1)
     assert result.job.state is jobs.JobState.FAILED
@@ -429,7 +424,6 @@ def _failing(permanent=(), transient=(), broken=()):
         if item.item_id in broken:
             raise RuntimeError("this one is broken")
         return None
-
     return handle
 
 
@@ -597,12 +591,10 @@ def test_an_interrupt_between_the_work_and_the_commit_leaves_no_artifact(
     job = _job(store, cfg, "a", "b")
     staged = tmp_path / "staged-a.txt"
     final = tmp_path / "out" / "a.txt"
-
     def handle(_job, item):
         staged.write_text("half a session")
         os.kill(os.getpid(), signal.SIGINT)
         return jobs.Produced(staged=staged, final=final)
-
     result = jobs.drive(store, job.job_id, handle, root=root, stage="downloading")
     assert result.interrupted is True
     assert result.processed == 0
@@ -732,7 +724,6 @@ def test_a_spawned_job_runs_detached_and_its_output_lands_in_the_jobs_log(store,
 def test_the_engine_module_names_no_verb():
     """KTD23: the engine resolves a subcommand through the CLI layer by handler key."""
     from cratekit.cli import registry  # noqa: PLC0415 - a test may look upward
-
     source = (SRC_ROOT / "cratekit" / "core" / "jobs.py").read_text()
     for name in registry.VERB_NAMES:
         assert f'"{name}"' not in source, f"the engine spells the verb {name!r}"
@@ -743,7 +734,6 @@ def test_every_landed_long_running_verb_actually_exposes_the_builder_it_declares
     import importlib  # noqa: PLC0415
 
     from cratekit.cli import registry  # noqa: PLC0415
-
     missing: list[str] = []
     for entry in registry.entries():
         if not entry.long_running or not entry.landed:
@@ -754,13 +744,11 @@ def test_every_landed_long_running_verb_actually_exposes_the_builder_it_declares
     assert not missing, f"declared argv builders that do not exist: {missing}"
 
 
-# The handler key import property is in tests/test_cli_contract.py (U42); here an
-# unknown handler and an unlanded verb both refuse before anything is imported.
+# Handler key imports are tests/test_cli_contract.py's (U42); here both refuse unimported.
 
 
 def test_a_job_queued_for_a_handler_this_build_does_not_register_refuses(store, cfg):
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
-
     job = _job(store, cfg, handler_key="not-a-handler")
     cause = _refused(lambda: jobs_cli.argv_for(job))
     assert cause.reason == "internal-error"
@@ -772,7 +760,6 @@ def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importi
     """On a synthetic planned entry, since U25 left the registry with none."""
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
     from cratekit.cli import registry  # noqa: PLC0415
-
     unlanded = [e for e in registry.entries() if not e.landed and e.argv_builder]
     assert not unlanded, f"these queued verbs still carry planned_in: {[e.name for e in unlanded]}"
     missing = "cratekit.vocals.missing_shell"
@@ -791,7 +778,6 @@ def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importi
 
 def test_the_resume_builder_turns_a_frozen_job_back_into_a_command_line(store, cfg):
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
-
     job = _job(store, cfg)
     assert jobs_cli.argv_for(job) == ["job", "resume", job.job_id]
 
@@ -883,7 +869,6 @@ def _parking(park: set[str], seen: list[str] | None = None):
         if item.item_id in park:
             raise jobs.Parked(_blocked())
         return None
-
     return handle
 
 
@@ -926,14 +911,12 @@ def test_a_blocked_job_is_re_driven_from_the_parked_item_on_the_next_drive(store
 def test_parked_is_not_the_item_boundary(store, root, cfg):
     """A plain refusal fails the item and moves on; only a park stops the run."""
     job = _job(store, cfg, "a", "b", "c")
-
     def handle(_job, item):
         if item.item_id == "a":
             raise CratekitError(_throttled())
         if item.item_id == "c":
             raise jobs.Parked(_blocked())
         return None
-
     result = jobs.drive(store, job.job_id, handle, root=root)
     assert _states(store, job.job_id) == {"a": FAILED, "b": DONE, "c": PENDING}
     assert result.job.state is jobs.JobState.BLOCKED
@@ -956,7 +939,6 @@ def _declining(*declined: str, failing: tuple[str, ...] = ()):
         if item.item_id in failing:
             raise CratekitError(_throttled())
         return None
-
     return handle
 
 
@@ -1021,10 +1003,8 @@ def test_a_handler_that_declines_a_retryable_cause_fails_the_item_rather_than_sk
 ):
     """The guard bites inside a drive: the item boundary turns it into a failure."""
     job = _job(store, cfg, "a")
-
     def handle(_job, item):
         raise jobs.Declined(_throttled())
-
     with pytest.raises(CratekitError):
         jobs.drive(store, job.job_id, handle, root=root)
     (item,) = jobs.items(store, job.job_id)
@@ -1193,7 +1173,6 @@ def test_a_bad_stale_cancel_is_the_parsers_usage_error_and_cancels_nothing(
 ):
     _intake_job(default_queue, cfg, "old", tracks=("1",), days=60)
     from cratekit import cli  # noqa: PLC0415
-
     code = cli.run(["--output", "json", *argv], stdout=io.StringIO(), stderr=io.StringIO())
     assert code == int(ExitCode.USAGE), argv
     assert _state(default_queue, "old") is jobs.JobState.QUEUED
@@ -1278,7 +1257,6 @@ def test_the_job_verbs_read_a_playlist_as_the_sweep_records_it(cfg, default_queu
     """``playlist_identity`` must agree with ``recorded_as``; the hearts are the one difference."""
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
     from cratekit.sync import playlists  # noqa: PLC0415
-
     assert jobs_cli.INTAKE_SWEEP_ID == playlists.SOURCE_ID
     references = (
         (UUID, True), (UUID.upper(), True), ("pl-a", True), (UUID, False), (UUID.upper(), False),

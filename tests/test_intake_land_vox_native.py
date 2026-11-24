@@ -16,6 +16,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import land_cli, native
 from cratekit.write import metadata_cli
 from tests.cli_drive import drive
+from tests.test_intake_land_hearts_native import cfg as cfg  # noqa: PLC0414 - the fixture
 from tests.test_intake_land_native import (
     _answered,
     _execute,
@@ -121,9 +122,8 @@ def _refused_at_the_commit(cfg: config.Config, monkeypatch) -> None:
 
 
 @pytest.fixture
-def calibrated(native_library):
+def calibrated(cfg):
     """The cut over library, calibrated, holding the Vocals category and nothing tagged."""
-    cfg, _root = native_library
     _calibrate(cfg)
     _seed_vocals(cfg)
     return cfg
@@ -180,9 +180,8 @@ def test_the_tag_is_written_under_the_vocals_category_and_a_file_with_no_score_i
     assert "Unscored.flac" in message and "One.flac" not in message
 
 
-def test_a_library_with_another_category_only_gains_the_vocals_category(native_library, silence):
+def test_a_library_with_another_category_only_gains_the_vocals_category(cfg, silence):
     """No Vocals category but one to copy a shape from: made as the vocals verb would make it."""
-    cfg, _root = native_library
     _calibrate(cfg)
     _add_rows(cfg, _my_tag("8000", "Mood", "root", "mood"))
     _scored(cfg, silence, "One.flac", 60)
@@ -234,9 +233,8 @@ def _unreadable(cfg: config.Config) -> str:
 
 @pytest.mark.parametrize("blocked", [_uncalibrated, _no_category, _unreadable])
 def test_a_tag_that_cannot_be_written_tags_nothing_says_why_and_lands_the_batch(
-    native_library, silence, blocked
+    cfg, silence, blocked
 ):
-    cfg, _root = native_library
     said = blocked(cfg)
     categories = _query(cfg, "SELECT COUNT(*) FROM djmdMyTag")
     _scored(cfg, silence, "One.flac", 60)

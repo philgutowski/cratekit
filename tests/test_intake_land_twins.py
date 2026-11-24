@@ -1,8 +1,7 @@
 """U149 at the landing: each account playlist a native landing writes gets its custom playlist twin.
 
-In the landing's one commit, into ``Custom Playlists <landing year>``, with the
-INBOX playlist's rows, marked as a pair. Nothing here is real (D1).
-"""
+In the landing's one commit, into ``Custom Playlists <landing year>``, with the INBOX
+playlist's rows, marked as a pair. Nothing here is real (D1)."""
 
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ from cratekit.sync import twins
 from tests.cli_drive import drive
 from tests.test_intake_land_account_playlists_native import _inbox, _land, _stage, swept
 from tests.test_intake_land_account_playlists_native import pinned_day as pinned_day
-from tests.test_intake_land_native import GATE, _members, _query, _two_acts
+from tests.test_intake_land_native import _answered, _lands, _members, _query
 from tests.test_intake_land_native import _platform_seams as _platform_seams
 from tests.test_intake_land_native import _release_process_locks as _release_process_locks
 from tests.test_intake_land_native import acknowledged as acknowledged
@@ -30,37 +29,24 @@ FOLDER = twins.folder_name(2026)
 
 def _twins(cfg: config.Config) -> dict[str, list[str]]:
     """Every live playlist in the one live ``Custom Playlists 2026`` and the titles it holds."""
-    folders = _query(
-        cfg,
-        "SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 1 "
-        "AND COALESCE(rb_local_deleted, 0) = 0",
-        FOLDER,
-    )
+    folders = _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 1 "
+                     "AND COALESCE(rb_local_deleted, 0) = 0", FOLDER)
     if not folders:
         return {}
     ((folder,),) = folders
-    rows = _query(
-        cfg,
-        "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0 "
-        "ORDER BY Seq",
-        str(folder),
-    )
+    rows = _query(cfg, "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND "
+                  "rb_local_deleted = 0 ORDER BY Seq", str(folder))
     titles = {str(one): str(title) for one, title in _query(cfg, "SELECT ID, Title FROM djmdContent")}
-    return {
-        str(name): [titles[member] for member in _members(cfg, str(playlist_id))]
-        for playlist_id, name in rows
-    }
+    return {str(name): [titles[m] for m in _members(cfg, str(playlist_id))]
+            for playlist_id, name in rows}
 
 
 def _make(cfg: config.Config, name: str, *, parent: str = "", folder: bool = False) -> str:
     handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
     try:
         above = handle.get_playlist(ID=parent) if parent else None
-        made = (
-            handle.create_playlist_folder(name, parent=above)
-            if folder
-            else handle.create_playlist(name, parent=above)
-        )
+        make = handle.create_playlist_folder if folder else handle.create_playlist
+        made = make(name, parent=above)
         handle.session.commit()
         return str(made.ID)
     finally:
@@ -78,8 +64,7 @@ def test_a_landing_that_finishes_two_custom_playlists_writes_two_twins_and_marks
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Two")), "pl-b": ("Deep Cuts", ("Three",))})
     for title in ("One", "Two", "Three"):
         _stage(cfg, silence, title)
-    code, acted, refused = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _lands(verb=_land())
     assert _twins(cfg) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
     assert _inbox(cfg, root_id) == {
         "Sunset Warmup 2026-10-03": ["One", "Two"], "Deep Cuts 2026-10-03": ["Three"]
@@ -110,8 +95,7 @@ def test_an_account_playlist_already_paired_gets_no_second_twin(native_library, 
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",)), "pl-b": ("Deep Cuts", ("Two",))})
     for title in ("One", "Two"):
         _stage(cfg, silence, title)
-    code, acted, _refused = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
+    _lands(verb=_land())
     assert _twins(cfg) == {"Deep Cuts": ["Two"]}
     assert pairs.PairStore(cfg).get("pl-a").rekordbox_id == mine
     assert not pairs.PairStore(cfg).get("pl-a").twin
@@ -125,8 +109,7 @@ def test_a_twin_name_the_folder_holds_is_left_and_named_and_the_landing_still_la
     _make(cfg, "Sunset Warmup", parent=folder)
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
-    code, acted, refused = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
+    acted, refused = _lands(verb=_land())
     assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["One"]}
     assert _twins(cfg) == {"Sunset Warmup": []}, "a second twin was made beside the first"
     assert pairs.PairStore(cfg).all() == {}
@@ -138,10 +121,7 @@ def test_a_folder_made_after_the_gate_refuses_and_moves_nothing(native_library, 
     cfg, root_id = native_library
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     staged = _stage(cfg, silence, "One")
-    code, refused = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    run_id = _answered(_land())[1]
     _make(cfg, FOLDER, folder=True)
     code, acted = drive(["--run", run_id, *_land()])
     assert code != int(ExitCode.OK), acted

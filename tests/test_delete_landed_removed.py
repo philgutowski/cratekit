@@ -654,7 +654,7 @@ def _edit_landing(cfg: config.Config, content_id: str, change) -> None:
 
 
 def _without_uuids(landed: dict) -> None:
-    """A record as R-1037 wrote it, before rows named their UUID."""
+    """A record as written before rows named their UUID."""
     for entry in landed["rows"]:
         entry.pop(native.LANDED_UUID_KEY)
 

@@ -1,7 +1,6 @@
 """U212: ``intake missing`` never lists a track already staged in the downloads folder.
 
-A staged file is a real container, since the identity is read from its tags.
-"""
+A staged file is a real container, since the identity is read from its tags."""
 
 # ruff: noqa: F811, the fixtures below are imported from the missing list suite by name
 from __future__ import annotations
@@ -38,11 +37,16 @@ def staging(library: Path) -> Path:
 
 
 def rows() -> list[Track]:
-    salt = Track("204", "Lumen Drift", "Salt Road")
-    salt.isrc = SALT
-    signal = Track("205", "Kite Harbor", "Low Tide Signal")
-    signal.isrc = SIGNAL
-    return [salt, signal]
+    return [_salt(), _carrying(Track("205", "Kite Harbor", "Low Tide Signal"), SIGNAL)]
+
+
+def _carrying(track: Track, isrc: str) -> Track:
+    track.isrc = isrc
+    return track
+
+
+def _salt() -> Track:
+    return _carrying(Track("204", "Lumen Drift", "Salt Road"), SALT)
 
 
 def staged(tmp_path: Path, library: Path, name: str, **fields: str) -> Path:
@@ -81,9 +85,8 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
     envelope, summary = ok(job_id, "--out", str(tmp_path / "other"))
     assert listed_ids(summary) == ["204", "205"]
     assert (summary["staged"], summary["staged_tracks"]) == (0, [])
-    assert check(envelope, "staged")["detail"] == (
-        f"no missing track is staged already in {staging(library)}"
-    )
+    said = f"no missing track is staged already in {staging(library)}"
+    assert check(envelope, "staged")["detail"] == said
     # ABSENCE OF A READ IS NOT A MATCH: the same artist and title with no ISRC tag, and a
     # container no reader opens under the provider id's name, are both not the track.
     staged(tmp_path, library, "Lumen Drift - Salt Road (1).flac", artist="Lumen Drift",
@@ -139,8 +142,7 @@ def test_a_track_with_no_isrc_is_never_matched_to_a_staged_file_with_none(
 ):
     staged(tmp_path, library, "Kite Harbor - Low Tide Signal.flac", artist="Kite Harbor")
     job_id = finished(monkeypatch, [Track("205", "Kite Harbor", "Low Tide Signal")])
-    code, envelope = missing(job_id)
-    assert code == int(ExitCode.OK), envelope
+    envelope = ok(job_id)[0]
     assert listed_ids(envelope["data"]["summary"]) == ["205"]
     assert envelope["data"]["summary"]["staged"] == 0
     # REVIEW ROUND ONE, F2: the folder was not compared, and the row says so.
@@ -161,11 +163,8 @@ def test_a_staged_file_counts_under_its_provider_name_or_its_given_name(
 
 def _wanted(ref: str, isrc: str):
     from cratekit.acquire import match
-    return match.read_row(
-        {"id": ref, "artist": "Lumen Drift", "title": "Salt Road", "isrc": isrc},
-        origin=match.TIDAL,
-        position=1,
-    )
+    row = {"id": ref, "artist": "Lumen Drift", "title": "Salt Road", "isrc": isrc}
+    return match.read_row(row, origin=match.TIDAL, position=1)
 
 
 def _earlier(out: Path, name: str, track: dict) -> None:
@@ -197,25 +196,18 @@ def test_a_track_held_since_the_job_is_never_said_to_carry_no_isrc(
     cfg, library, tmp_path, monkeypatch
 ):
     """Nothing missing asks the staging folder nothing, and the row says so (review round two)."""
-    salt = Track("204", "Lumen Drift", "Salt Road")
-    salt.isrc = SALT
-    job_id = finished(monkeypatch, [salt])
+    job_id = finished(monkeypatch, [_salt()])
     (library / "Music" / "Lumen Drift - Salt Road.flac").write_bytes(b"")
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
-    code, envelope = missing(job_id)
-    assert code == int(ExitCode.OK), envelope
-    summary = envelope["data"]["summary"]
+    envelope, summary = ok(job_id)
     assert (summary["missing"], summary["owned_since"], summary["staged"]) == (0, 1, 0)
-    assert check(envelope, "staged")["detail"] == (
-        "no track is missing, so none was asked whether it is staged"
-    )
+    said = "no track is missing, so none was asked whether it is staged"
+    assert check(envelope, "staged")["detail"] == said
 
 
 def test_a_run_with_a_failed_job_and_every_finished_row_staged_answers_ok(cfg, library, tmp_path):
     """The left out refusal stands aside when the finished rows are staged; the skip still fails."""
-    salt = Track("204", "Lumen Drift", "Salt Road")
-    salt.isrc = SALT
-    kept = finished_in_run(cfg, "pl-a", [salt])
+    kept = finished_in_run(cfg, "pl-a", [_salt()])
     broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
     fail(broken)
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)

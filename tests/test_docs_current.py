@@ -1,17 +1,10 @@
 """The guide and the code agree on every verb, every flag and every config key (U233).
 
-METHOD's Docs always current rule, in its mechanical part (Phillip,
-2026-11-07):
-
-1. Every verb the parser builds has a place in ``docs/GUIDE.md``.
-2. Every verb the guide names exists, and every flag after a verb is one that
-   verb, or the top level parser, takes.
-3. The settings table names every schema key with the schema's default and
-   no other; every other ``section.key`` in the guide or the README exists.
-
-Prose that describes a behaviour wrongly is beyond it. The readers are pure
-functions on text, proved to fail on doctored text below, since the real
-guide already passed on the day this landed.
+METHOD's Docs always current rule, in its mechanical part (Phillip, 2026-11-07): every
+verb the parser builds has a place in ``docs/GUIDE.md``; every verb the guide names exists,
+with only flags it or the top level parser takes; the settings table names every schema
+key with its default and no other, and every other ``section.key`` exists. Wrong prose is
+beyond it. The readers are pure functions, proved to fail on doctored text below.
 """
 
 from __future__ import annotations
@@ -32,8 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GUIDE = REPO_ROOT / "docs" / "GUIDE.md"
 README = REPO_ROOT / "README.md"
 
-#: The heading the settings table sits under, and its first column; found by
-#: heading, not line number.
+#: The heading the settings table sits under, found by heading, not line number.
 SETTINGS_HEADING = "## Where things live"
 
 _WORD = r"[a-z][a-z0-9-]*"
@@ -50,11 +42,8 @@ TOP_OPTIONS = TOP_VALUED | {"-h", "--help", "--version"}
 
 
 def _parser_flags() -> dict[str, frozenset[str] | None]:
-    """Every verb the full preset builds, with its flags, and the top level flags.
-
-    The full preset, so a profile cannot hide verbs. A verb whose extra is
-    missing is a stub recorded with ``None``. EAGER, since U248 builds a verb's
-    arguments only when that verb is chosen.
+    """Every verb the full preset builds (no profile hides one) with its flags, a stub's
+    ``None``; EAGER, since U248 builds a verb's arguments only when it is chosen.
     """
     parser = build_parser(membership=profiles.resolve("full"), eager=True)
     verbs: dict[str, frozenset[str] | None] = {}
@@ -76,11 +65,8 @@ def _parser_flags() -> dict[str, frozenset[str] | None]:
 
 
 def _schema_defaults() -> dict[str, str]:
-    """Every key the config file can carry, with its default as the guide writes it.
-
-    Walked off the ``Config`` dataclass; ``[modules]`` reads as
-    ``modules.<module>``, since ``ModulesConfig`` flattens.
-    """
+    """Every config key off ``Config``, its default as the guide writes it; ``[modules]``
+    flattens to ``modules.<module>``."""
     out: dict[str, str] = {}
 
     def walk(cls: type, prefix: str) -> None:
@@ -126,11 +112,7 @@ def format_default(value: object) -> str:
 
 
 def code_snippets(text: str) -> list[tuple[int, str]]:
-    """Every piece of code in a markdown text, with the line it starts on.
-
-    A fenced or indented block gives one snippet per line; an inline span gives
-    one, and may wrap a line break.
-    """
+    """Every piece of code in a markdown text with its line: one per block line or span."""
     out: list[tuple[int, str]] = []
     fenced = False
     prose: list[tuple[int, str]] = []
@@ -156,10 +138,9 @@ def verb_mentions(
 ) -> tuple[set[str], list[str], list[str]]:
     """Which verbs the snippets name, which names are not verbs, which flags are not flags.
 
-    A verb is named after ``crate`` (past top level flags, judged against
-    :data:`TOP_OPTIONS`) or when a snippet opens with it. A group word followed
-    by a word that is not its verb is unknown, as is any non-verb after
-    ``crate``. A flag is judged up to the next ``crate`` or a comment.
+    A verb follows ``crate`` (past :data:`TOP_OPTIONS`) or opens a snippet; a group word
+    not followed by its verb, or a non-verb after ``crate``, is unknown. A flag is judged
+    up to the next ``crate`` or a comment.
     """
     valued = "|".join(re.escape(option) for option in sorted(TOP_VALUED, key=len, reverse=True))
     singles = {verb for verb in verbs if " " not in verb}
@@ -207,11 +188,7 @@ def verb_mentions(
 
 
 def settings_table(text: str) -> dict[str, str]:
-    """The guide's settings table, key to the default its second column states.
-
-    The first Key and Default table after the heading; the default is the cell's
-    first word or bracketed list, code marks off.
-    """
+    """The first Key and Default table after the heading: key to its cell's first word."""
     section = text.split(SETTINGS_HEADING, 1)[1]
     rows: dict[str, str] = {}
     in_table = False
@@ -251,9 +228,8 @@ def parser_flags() -> dict[str, frozenset[str] | None]:
 
 def test_the_parser_builds_every_landed_verb(parser_flags) -> None:
     """The verbs the check reads are the registry's, so none is judged by absence."""
-    verbs = parser_flags
     landed = {entry.name.replace(".", " ") for entry in registry.landed_entries()}
-    assert set(verbs) == landed
+    assert set(parser_flags) == landed
 
 
 def test_the_top_level_options_that_take_a_value_are_the_parsers() -> None:
@@ -271,16 +247,14 @@ def test_the_top_level_options_that_take_a_value_are_the_parsers() -> None:
 
 
 def test_the_guide_names_every_verb(parser_flags) -> None:
-    verbs = parser_flags
-    named, _, _ = verb_mentions(code_snippets(GUIDE.read_text()), verbs)
-    missing = sorted(set(verbs) - named)
+    named, _, _ = verb_mentions(code_snippets(GUIDE.read_text()), parser_flags)
+    missing = sorted(set(parser_flags) - named)
     assert not missing, f"verbs help lists that docs/GUIDE.md never names: {missing}"
 
 
 @pytest.mark.parametrize("doc", [GUIDE, README], ids=lambda p: p.name)
 def test_every_verb_a_doc_names_exists_with_its_flags(doc: Path, parser_flags) -> None:
-    verbs = parser_flags
-    _, unknown, bad_flags = verb_mentions(code_snippets(doc.read_text()), verbs)
+    _, unknown, bad_flags = verb_mentions(code_snippets(doc.read_text()), parser_flags)
     assert not unknown, f"{doc.name} names verbs help does not list: {unknown}"
     assert not bad_flags, f"{doc.name} puts flags after a verb that takes none of them: {bad_flags}"
 

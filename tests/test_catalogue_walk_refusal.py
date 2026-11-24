@@ -79,7 +79,6 @@ def test_a_discogs_miss_beside_a_refusing_beatport_does_not_stop_the_walk(machin
     """The card's defect, red on main: the walk stopped at the third row."""
     search, _opinion, seen = _walk()
     kept, answers = _asked(machine, search, None)
-
     assert not kept.stopped
     assert kept.asked == 8
     assert _discogs_searches(seen) == 8
@@ -91,7 +90,6 @@ def test_a_discogs_miss_beside_a_refusing_beatport_does_not_stop_the_walk(machin
 def test_a_row_read_beside_a_refusal_stays_unread_and_askable(machine):
     search, _opinion, _seen = _walk()
     _kept, answers = _asked(machine, search, None, rows=4)
-
     for answer in answers:
         assert answer.said == suggest.UNREAD
         assert answer.partly_read
@@ -106,7 +104,6 @@ def test_deezer_is_asked_on_every_row_with_an_isrc_while_beatport_refuses(machin
     general = _General()
     search, opinion, seen = _walk(general=general)
     kept, answers = _asked(machine, search, opinion)
-
     assert not kept.stopped
     assert general.asked == list(ISRCS)
     assert _beatport_requests(seen) == searchers.REFUSALS_BEFORE_STOP
@@ -119,7 +116,6 @@ def test_a_deezer_genre_past_a_refusing_beatport_is_the_rows_match(machine):
     general = _General("matched", (word,))
     search, opinion, _seen = _walk(general=general)
     _kept, answers = _asked(machine, search, opinion, rows=2)
-
     for answer in answers:
         assert (answer.said, answer.genre) == (suggest.MATCHED, genre)
         assert answer.source == published.SOURCE
@@ -130,7 +126,6 @@ def test_every_catalogue_refusing_three_rows_in_a_row_still_stops_the_walk(machi
     general = _General()
     search, opinion, seen = _walk(discogs=_Response(403, "", {}), general=general)
     kept, answers = _asked(machine, search, opinion, rows=6)
-
     assert kept.stopped and kept.asked == suggest.STOP_AFTER_UNREAD
     assert all(answer.said == suggest.UNREAD for answer in answers)
     assert not any(answer.partly_read for answer in answers)
@@ -392,7 +387,6 @@ def test_a_rejected_discogs_token_beside_a_beatport_that_answers_does_not_stop_t
     from tests.test_beatport_refusal import MISSED
     search, _opinion, seen = _walk(MISSED, discogs=_Response(401, "{}", {}))
     kept, answers = _asked(machine, search, None)
-
     assert not kept.stopped and kept.asked == 8
     assert _beatport_requests(seen) == 8
     for answer in answers:

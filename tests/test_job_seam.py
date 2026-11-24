@@ -51,7 +51,6 @@ def queued(cfg, tmp_path):
         path = sets / f"{name}.wav"
         path.write_bytes(b"not really audio, and nothing here ever reads it")
         sources.append(path)
-
     root = tmp_path / "jobs"
     root.mkdir()
     db = root / jobs.QUEUE_FILENAME
@@ -83,27 +82,22 @@ def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_it
     first = root / "first.log"
     first.write_text("")
     stall = "three"
-
     _kill_at(stall, db, job, root, first)
-
     before = _attempts(first)
     assert before[-1] == stall, before
     assert before.count(stall) == 1
     finished = [name for name in before if name != stall]
     assert finished, "nothing completed before the kill, so 'and no other' ranges over nothing"
-
     states = _states(db, job.job_id)
     assert states[stall] == jobs.ItemState.CLAIMED, states
     for name in finished:
         assert states[name] == jobs.ItemState.DONE, states
-
     # The second pass runs here, in this process, through the same seam.
     second = root / "second.log"
     second.write_text("")
     monkeypatch.setattr(mastering, "subprocess_runner", job_worker.seam_encoder(second))
     with jobs.open_store(db) as store:
         result = handlers.run_job(store, jobs.get(store, job.job_id), root=root)
-
     redone = _attempts(second)
     assert stall in redone, redone
     again = sorted(set(redone) & set(finished))
@@ -119,9 +113,7 @@ def test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destin
     stalled_source = next(p for p in sources if p.stem == stall)
     ledger = root / "kill.log"
     ledger.write_text("")
-
     _kill_at(stall, db, job, root, ledger)
-
     final = mastering.output_path(stalled_source)
     assert not final.exists(), "a killed encode left a partial file at the destination"
     staging = final.parent / master_cli.MASTER_STAGING_DIRNAME / job.job_id

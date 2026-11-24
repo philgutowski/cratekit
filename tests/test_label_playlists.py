@@ -77,7 +77,6 @@ def _catalogue(releases=None, listed=None, **kwargs) -> FakeCatalogue:
 
 
 def _faked(monkeypatch, cfg, fake=None):
-    """The catalogue faked and an account that records calls, bound for the verbs."""
     fake = _catalogue() if fake is None else fake
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     account = outbound_fakes.StrictAccount()

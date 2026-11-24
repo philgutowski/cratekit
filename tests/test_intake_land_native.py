@@ -368,7 +368,8 @@ def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
 
 @pytest.mark.parametrize("passed", ["RUN_synced", None])
 def test_a_landing_names_the_pass_it_was_given_on_the_record_sync_mark_reads(one_staged, passed):
-    """R-777: ``sync mark --pass`` reads ``landings_of_pass`` as its proof the pass landed."""
+    """R-777: ``sync mark --pass`` reads ``landings_of_pass`` as its proof the pass landed.
+    And an answer continued over its database lands (U161)."""
     cfg = one_staged
     _landed_ok(_land(*(("--pass", passed) if passed else ())))
     assert len(_landed_rows(cfg)) == 1

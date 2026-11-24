@@ -99,9 +99,11 @@ def test_a_genre_the_taxonomy_routes_is_stored_as_typed_and_the_screen_says_wher
 @pytest.mark.parametrize(
     ("genre", "match", "said"),
     [
-        pytest.param("Minimal Techno", ("fuzzy", "minimal"), "genre Minimal Techno routes to Minimal "
-                     "/ Deep Tech by the taxonomy's keyword rule 'minimal'", id="by-a-keyword-rule"),
-        pytest.param(SPECIFIC, ("exact", None), "by an alias the taxonomy declares", id="by-an-alias"),
+        pytest.param("Minimal Techno", ("fuzzy", "minimal"),
+                     "genre Minimal Techno routes to Minimal / Deep Tech by the taxonomy's "
+                     "keyword rule 'minimal'", id="by-a-keyword-rule"),
+        pytest.param(SPECIFIC, ("exact", None), "by an alias the taxonomy declares",
+                     id="by-an-alias"),
     ],
 )
 def test_a_genre_routed_by_the_taxonomy_says_by_what(cfg, genre, match, said):

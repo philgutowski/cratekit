@@ -84,7 +84,6 @@ def pending(cfg, monkeypatch, releases: dict[str, str], lookup=None, *argv: str,
 
 
 def five_pending(cfg, monkeypatch, lookup) -> FakeCatalogue:
-    """Releases r-1 to r-5 pending, each with its own ISRC."""
     return pending(cfg, monkeypatch, {f"r-{n}": isrc(n) for n in range(1, 6)}, lookup)
 
 
@@ -113,7 +112,6 @@ def queued_job(*argv: str) -> str:
 
 
 def judge_once(*argv: str) -> tuple[str, dict]:
-    """Queue a judging job and drive it to its end. The job and the last envelope."""
     job_id = queued_job(*argv)
     return job_id, resumed(job_id)
 

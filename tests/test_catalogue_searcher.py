@@ -46,8 +46,7 @@ def _source_genre_for(*, sub: bool) -> str:
 
 
 def _source_genre_aliasing_to_the_fallback() -> str:
-    """A vendor string aliased onto the fallback bucket's display, read out of the
-    alias table so it cannot outlive the template (AE5)."""
+    """A vendor string aliased onto the fallback bucket, read off the alias table (AE5)."""
     fallback = TAXONOMY.fallback.bucket
     for key, (bucket_id, _sub_id) in TAXONOMY._tagging_alias.items():  # noqa: SLF001
         if bucket_id != fallback:
@@ -179,8 +178,7 @@ def _all_three(
 
 
 def _no_hit(hit) -> bool:
-    """True for the decline every source asked earned by answering MISS, a hit
-    with no genre, not None, since R-791."""
+    """The decline every source earned by answering MISS: a hit with no genre (R-791)."""
     return (
         hit is not None and hit.genre is None and hit.source == "" and hit.unread == ()
         and len(hit.answers) == len(searchers.SCRAPED_WALK)
@@ -291,8 +289,7 @@ _MOVED_ROW = '<html><div data-trid="1" class="trk-row"><span>moved</span></div><
     ids=["beatport payload missing", "traxsource rows unread"],
 )
 def test_a_page_that_parsed_to_nothing_recognizable_raises_its_own_refusal(pages, source):
-    """AE6. A markup change is a permanent defect, not the network's transient remedy;
-    a shop row parser claims it only when rows are present and none read."""
+    """AE6. A markup change is a permanent defect; a row parser claims it only for rows unread."""
     with pytest.raises(CratekitError) as raised:
         _hit(**{"traxsource": UNREACHABLE, "bandcamp": UNREACHABLE, **pages})
     cause = raised.value.cause
@@ -323,8 +320,7 @@ def test_a_source_genre_that_aliases_to_a_sub_resolves_to_the_subs_display():
 
 @pytest.mark.parametrize("word", [*REFUSED, FALLBACK_GENRE])
 def test_a_genre_refused_outright_or_aliased_to_the_fallback_declines_naming_it(word: str):
-    """A catch-all accepted as a final tag is the blanket genre bug (AE5); the decline
-    names the source and the raw string (AE1)."""
+    """A catch-all as a final tag is the blanket genre bug (AE5); the decline names both (AE1)."""
     hit = _hit(beatport=_row(word))
     assert hit is not None
     assert hit.genre is None
@@ -357,8 +353,7 @@ def test_a_genre_resolves_to_what_is_written_and_flags_only_the_unknown(word, wr
 
 
 def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline():
-    """One file gets one disposition, and a decline outranks the flag, under a
-    taxonomy a person can make."""
+    """One file, one disposition: a decline outranks the flag, under a taxonomy a person makes."""
     template = (Path(__file__).parent / "taxonomies" / "second.toml").read_text(encoding="utf-8")
     coarse = 'too_coarse_as_source = ["", "Misc"'
     edited = template.replace(f"{coarse}]", f'{coarse}, "Bootleg"]')
@@ -470,8 +465,7 @@ def test_an_artist_and_title_that_need_escaping_reach_the_seam_as_a_quoted_url()
 
 
 def test_the_injected_seam_and_the_binders_never_reach_the_http_getter(monkeypatch):
-    """R18 and KTD11: an injected fetch displaces the real getter rather than sitting
-    beside it, and a worker's binders build without touching the network."""
+    """R18 and KTD11: an injected fetch displaces the real getter; binders touch no network."""
 
     def detonate(*args, **kwargs):
         raise AssertionError("the suite reached the network")
@@ -517,8 +511,7 @@ def test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge()
 
 
 def test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another():
-    """A cover from a different row is the wrong cover: the third row loses and is
-    scanned last, so a picture read off the final row shows."""
+    """Another row's cover is the wrong one; the losing third row is scanned last, so it shows."""
     genreless = _with_art(_beatport_track(ARTIST, TITLE, ""), OTHER_ART)
     winner = _with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)
     loser = _with_art(_beatport_track(ARTIST, f"{TITLE} Reprise Dub", SUB_GENRE), OTHER_ART)
@@ -669,8 +662,7 @@ def test_a_bandcamp_client_challenge_page_is_blocked_rather_than_a_miss():
     ids=["403 interstitial", "title on a 200", "spent 429", "challenge script", "503 outage"],
 )
 def test_a_fallbacks_refusal_is_blocked_and_its_outage_unreachable(reply, word):
-    """A refusal of this client, by status, challenge title or Cloudflare's script,
-    is BLOCKED; a server that fell over is an outage, a different place to go."""
+    """Refused by status, challenge title or Cloudflare's script is BLOCKED; a fall, an outage."""
     hit = _wire(traxsource=reply)
     assert _said(hit)[1] == (searchers.TRAXSOURCE, word)
     assert hit.unread == (searchers.TRAXSOURCE,)

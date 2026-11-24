@@ -49,7 +49,6 @@ def _made(cfg, fake, account, answers) -> str:
 
 
 def _on_dated(kompakt, *releases: str) -> tuple:
-    """``kompakt`` with ``releases`` answered on DAY and made into its dated playlist."""
     cfg, fake, account = kompakt
     return cfg, fake, account, _made(cfg, fake, account, [_answer(list(releases), DAY)])
 

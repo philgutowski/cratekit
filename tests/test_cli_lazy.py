@@ -256,8 +256,7 @@ def test_a_listing_asks_only_the_verbs_whose_line_could_differ():
 
 
 def test_a_broken_module_fails_its_own_verb_and_leaves_every_other_one_working():
-    """U248's deliberate change: an import error escapes only for its own verb, as itself, and a
-    listing that would have asked it shows its plain summary."""
+    """U248's deliberate change: an import error escapes as itself, for its own verb alone."""
     entries = [_with_extra("analyze.broken", "broken_module"), _fake("status", "plain")]
     assert _full(entries).parse_args(["status"])._entry.name == "status"
     assert "usage: crate status" in _help(_full(entries), ["status", "--help"])

@@ -34,14 +34,12 @@ def _transient(message: str = "the provider dropped the connection") -> Cratekit
 
 def _all_done(seen: list[tuple[str, ...]], *, raise_on=(), error=None):
     """A handler recording each batch, raising ``error()`` over an item in ``raise_on``."""
-
     def handle(_job, items, _stop):
         ids = tuple(item.item_id for item in items)
         seen.append(ids)
         if set(raise_on) & set(ids):
             raise error()
         return dict.fromkeys(ids)
-
     return handle
 
 
@@ -69,11 +67,9 @@ def test_every_item_of_a_batch_is_held_claimed_while_its_handler_runs(queue, sto
     """So a cancel or a second driver sees every item a write may be made for as claimed."""
     job = _job(store, cfg, "a", "b", "c")
     during: list[dict[str, jobs.ItemState]] = []
-
     def handle(_job, items, _stop):
         during.append(_states(store, job.job_id))
         return {item.item_id: None for item in items}
-
     _drive(queue, job, handle, 2)
     assert during[0] == {"a": CLAIMED, "b": CLAIMED, "c": PENDING}
     assert during[1]["c"] is jobs.ItemState.CLAIMED
@@ -103,11 +99,9 @@ def test_claim_batch_refuses_a_batch_of_no_items(queue, store, cfg, limit):
 # Each item settled by its own outcome
 def test_each_outcome_settles_its_own_item(queue, store, cfg):
     job = _job(store, cfg, "done", "failed", "defect", "declined")
-
     def handle(_job, items, _stop):
         defect, declined = RuntimeError("a worker defect"), jobs.Declined(_blocked())
         return {"done": None, "failed": _transient(), "defect": defect, "declined": declined}
-
     result = _drive(queue, job, handle, 4)
     held = _held(store, job.job_id)
     assert {key: item.state for key, item in held.items()} == {
@@ -123,7 +117,6 @@ def test_each_outcome_settles_its_own_item(queue, store, cfg):
 
 def test_a_produced_artifact_is_committed_before_its_item_is_done(queue, store, cfg, tmp_path):
     job = _job(store, cfg, "a", "b")
-
     def handle(_job, items, _stop):
         made = {}
         for item in items:
@@ -131,7 +124,6 @@ def test_a_produced_artifact_is_committed_before_its_item_is_done(queue, store, 
             staged.write_text(item.item_id)
             made[item.item_id] = jobs.Produced(staged=staged, final=tmp_path / "out" / item.item_id)
         return made
-
     _drive(queue, job, handle, 2)
     held = _held(store, job.job_id)
     for key in ("a", "b"):
@@ -154,10 +146,8 @@ def test_a_raise_out_of_the_batch_handler_is_every_items_outcome(queue, store, c
 def test_a_batch_that_fails_every_item_records_the_job_failed_then_raises(queue, store, cfg):
     """No evidence is still no evidence when the items came in a batch."""
     job = _job(store, cfg, "a", "b")
-
     def handle(_job, items, _stop):
         raise _transient()
-
     with pytest.raises(CratekitError):
         _drive(queue, job, handle, 5)
     assert jobs.get(store, job.job_id).state is jobs.JobState.FAILED
@@ -208,10 +198,8 @@ def test_a_park_raised_by_the_batch_releases_it_whole_and_blocks_the_job(queue, 
 def test_a_park_answered_for_one_item_releases_the_whole_batch(queue, store, cfg):
     """Nothing of a parked batch is committed, the item answered done included."""
     job = _job(store, cfg, "a", "b")
-
     def handle(_job, items, _stop):
         return {"a": None, "b": jobs.Parked(_blocked())}
-
     result = _drive(queue, job, handle, 2)
     assert _states(store, job.job_id) == {"a": jobs.ItemState.PENDING, "b": jobs.ItemState.PENDING}
     assert result.processed == 0
@@ -235,14 +223,12 @@ def test_a_batch_answered_under_a_signal_is_released_whole_and_the_job_cancelled
     job = _job(store, cfg, "a", "b", "c", "d")
     asked: list[bool] = []
     calls: list[tuple[str, ...]] = []
-
     def handle(_job, items, stop):
         calls.append(tuple(item.item_id for item in items))
         asked.append(stop())
         os.kill(os.getpid(), signal.SIGINT)
         asked.append(stop())
         return {item.item_id: None for item in items}
-
     result = _drive(queue, job, handle, 2)
     assert calls == [("a", "b")]
     assert asked == [False, True]
@@ -256,12 +242,10 @@ def test_a_signal_after_one_batch_keeps_it_done_and_claims_no_other(queue, store
     job = _job(store, cfg, "a", "b", "c")
     calls: list[tuple[str, ...]] = []
     real = jobs.complete_item
-
     def complete_then_signal(store_, job_id, item_id, **kwargs):
         real(store_, job_id, item_id, **kwargs)
         if item_id == "b":
             os.kill(os.getpid(), signal.SIGINT)
-
     monkeypatch.setattr(jobs, "complete_item", complete_then_signal)
     result = _drive(queue, job, _all_done(calls), 2)
     assert calls == [("a", "b")]
