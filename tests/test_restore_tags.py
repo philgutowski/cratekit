@@ -334,9 +334,7 @@ def test_the_first_record_to_name_a_file_wins_and_each_path_is_rebased():
         detail={restore_tags.RECORD_KEY: [entry("/old/a.flac", "A1", "07B"),
                                           entry("/old/c.flac", "C1", "")]},
     )
-    found = restore_tags.befores(
-        (earlier, later), rebased=lambda path: Path("/new") / path.name
-    )
+    found = restore_tags.befores((earlier, later), rebased=lambda path: Path("/new") / path.name)
     assert [(str(f.path), f.title, f.initialkey, f.session_id) for f in found] == [
         ("/new/a.flac", "A0", "", "s-1"),
         ("/new/b.flac", "B0", "02A", "s-1"),
