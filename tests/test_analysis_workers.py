@@ -354,8 +354,7 @@ def test_a_failed_tag_write_fails_the_item_and_leaves_the_name_alone(
 def test_a_file_beside_its_headed_twin_is_measured_where_it_is_and_named_nothing(
     cfg, folder, silence, monkeypatch
 ):
-    """Before U343 the head this file would be renamed to was taken, and the item
-    failed. The run renames nothing now, so there is no name to take."""
+    """The run renames nothing since U343, so a head name already taken fails nothing."""
     path = place(folder, silence, "twin", title="twin")
     headed = place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
@@ -417,8 +416,7 @@ def kill_after_the_write(monkeypatch):
 def test_an_item_written_before_its_row_moved_resumes_by_its_mark_and_is_measured_once(
     cfg, folder, silence, monkeypatch
 ):
-    """The kill between the tag write and the row flipping to done (U343): the
-    file carries its mark, so the resume skips it unread and renames nothing."""
+    """A kill between the tag write and the row moving (U343): the mark skips it unread."""
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     seen = detector()
     bind_scoring(monkeypatch, detect_=seen)
@@ -455,7 +453,6 @@ def renamed_by_an_older_build(cfg, job, item_id: str, target_name: str) -> Path:
 def test_an_item_an_older_build_renamed_before_its_row_moved_resumes_as_finished(
     cfg, folder, silence, monkeypatch
 ):
-    """The twin recovery is kept for a job a build before U343 left half done."""
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     seen = detector()
     bind_scoring(monkeypatch, detect_=seen)
@@ -477,8 +474,7 @@ def test_an_item_an_older_build_renamed_before_its_row_moved_resumes_as_finished
 def test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analysed(
     cfg, folder, silence, monkeypatch
 ):
-    """A headed file of the same stem from an earlier pass, then the source deleted:
-    nothing this job did produced it, so it is not this item, done."""
+    """Nothing this job did produced an earlier pass's headed file, so it is not this item."""
     place(folder, silence, "twin")
     job = run_queued(monkeypatch, folder, silence, "08A - 124 - twin")
     (folder / "twin.flac").unlink()
@@ -598,8 +594,7 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
 def test_a_job_an_older_build_left_with_no_intent_resumes_from_its_staged_report(
     cfg, folder, silence, monkeypatch
 ):
-    """No intent: the staged report naming the file is the item's proof of the rename,
-    for a job a build before U343 renamed and left half done."""
+    """With no intent, the staged report naming the file proves a pre U343 build's rename."""
     job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     twin = renamed_by_an_older_build(cfg, job, "a.flac", "08A - 124 - a.flac")
@@ -690,7 +685,6 @@ def test_a_staged_report_that_is_not_json_or_not_a_mapping_is_no_twin(cfg, folde
 
 
 def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, folder):
-    """A second attempt starts from a clean staging directory, keeping only the intent."""
     first = _stage(cfg, {"item": "a.flac", "status": "analyzed"})
     (first.parent / "scratch.tmp").write_text("x", encoding="utf-8")
     (first.parent / "nested").mkdir()
@@ -708,8 +702,7 @@ def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, fold
 def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
     cfg, folder, silence, monkeypatch
 ):
-    """An intent whose source is still a file names a rename that never landed, so it
-    is dropped before it can name a later file as this item's twin."""
+    """An intent whose source is still a file names a rename that never landed."""
     job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     unrelated = folder / "unrelated.flac"
@@ -724,8 +717,7 @@ def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
 def test_a_kill_after_an_attempt_starts_leaves_no_stale_report_to_read_as_a_twin(
     cfg, folder, silence, monkeypatch
 ):
-    """An attempt whose source is a file drops the staged report with the intent,
-    before any work a kill can interrupt, so it cannot name a later twin."""
+    """The staged report goes with the intent, before any work a kill can interrupt."""
     job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     headed = folder / "08A - 124 - a.flac"
@@ -763,7 +755,6 @@ def test_a_linked_intent_is_cleared_rather_than_kept_and_followed(cfg, folder, t
 
 
 def test_a_linked_intent_or_report_is_never_read_as_the_twin(cfg, folder, tmp_path):
-    """The read path never follows a planted link to name its far end as the twin."""
     job = _job_over(folder)
     other = folder / "other.flac"
     other.write_bytes(b"x")
@@ -802,7 +793,6 @@ def test_the_discard_never_reaches_through_a_linked_staging_directory(cfg, folde
 def test_a_directory_at_the_report_name_is_cleared_and_the_attempt_finishes(
     cfg, folder, silence, monkeypatch
 ):
-    """A directory at the report name does not fail the item for good."""
     job = run_queued(monkeypatch, folder, silence, "a")
     item = _item(job.job_id, "a.flac")
     staged = artifacts.staged_path(cfg, job.job_id, item.ordinal)
@@ -917,8 +907,7 @@ def test_a_partial_carrying_only_a_path_scores_nonzero_through_the_fixed_path(mo
 
 
 def test_the_vocal_pass_never_reads_a_wav_key_off_the_partial():
-    """The partial carries a path and never samples, under any key; reading
-    ``result.get("wav")`` scored every track zero."""
+    """Reading ``result.get("wav")`` off the partial, which carries a path, scored zero."""
     tree = ast.parse(VOCALS_SOURCE.read_text(encoding="utf-8"))
     literals = {
         node.value
@@ -1031,8 +1020,7 @@ def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
 
 
 def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch):
-    """``unscored_warning`` counts only the reason an install would mend, with
-    ``panns_inference`` kept unimported."""
+    """Only the reason an install would mend is counted, ``panns_inference`` unimported."""
     summary = {"by_vocal_reason": {vocals.REASON_AUDIO_TOO_LARGE: 4}}
     assert vocals.unscored_warning(summary, verb="analysed") is None
     monkeypatch.setattr(vocals, "missing_requirement", lambda: "the extra is not here")
@@ -1049,8 +1037,7 @@ def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch)
 def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
     cfg, folder, silence, monkeypatch
 ):
-    """Through the verb with the cap at a byte; the light pass is faked, so this
-    proves the vocal half only (R-583)."""
+    """The vocal half only, through the verb with the cap at a byte (R-583)."""
     place(folder, silence, "a", voxlevel=42, voxgender="F")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
@@ -1193,16 +1180,24 @@ def test_the_detector_names_why_energy_is_what_it_is(monkeypatch, tmp_path):
     assert asked == [track, track], "the restamp's own measure, asked of the file by path"
 
 
-def test_the_head_scores_energy_through_the_restamps_measure_not_its_own_samples():
-    """U344: the head hands the calibration the restamp's slice, so one file has one level."""
+@pytest.mark.parametrize(
+    ("needle", "held"),
+    [
+        pytest.param(
+            "energy_from_path(path, calibration=calibration)", True,
+            id="the-head-scores-energy-through-the-restamps-measure",
+        ),
+        pytest.param("features_from_samples", False, id="and-not-its-own-samples"),
+        pytest.param('"energy": None', False, id="energy-is-no-longer-a-literal-none"),
+        pytest.param("decode.load(path, MEASURE_RATE)", True, id="the-head-decodes-at-the-measure-rate"),
+        pytest.param("22050", False, id="a-second-literal-for-the-rate-is-how-the-two-drift"),
+    ],
+)
+def test_the_detector_source_measures_as_the_restamp_does(needle, held):
+    """U344: the head hands the calibration the restamp's slice, so one file has one level,
+    decoded through the one decoder since U263, at the same constant."""
     source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
-    assert "energy_from_path(path, calibration=calibration)" in source
-    assert "features_from_samples" not in source
-
-
-def test_the_detector_source_no_longer_returns_energy_as_a_literal_none():
-    source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
-    assert '"energy": None' not in source
+    assert (needle in source) is held, needle
 
 
 def test_a_calibration_spreads_a_library_across_the_scale():
@@ -1382,15 +1377,6 @@ def test_the_undo_log_keeps_the_first_previous_value_across_a_second_restamp(
         bind_measuring(monkeypatch, {"track": 0})
     assert tags.read_energy_from_file(track) == energy.LEVEL_MIN
     assert energy.read_undo_log(cfg) == {str(track): "4"}
-
-
-def test_a_restamp_with_no_calibration_refuses_at_the_queue(cfg, folder, silence):
-    place(folder, silence, "a")
-    code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
-    assert code == int(ExitCode.PRECONDITION), refused
-    assert refused["cause"]["reason"] == "energy-calibration-missing"
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
 
 
 def test_a_restamp_over_an_empty_folder_is_the_honest_zero_whatever_the_calibration(
@@ -1759,8 +1745,7 @@ def test_a_model_whose_inference_raises_is_a_named_absence_with_the_head_intact(
 
 
 def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, monkeypatch):
-    """The ``analysis`` extra without ``vocals`` finalizes with no vocal tags, and
-    the envelope says so as the item reports do."""
+    """The ``analysis`` extra without ``vocals`` says so on the envelope as items do."""
     place(folder, silence, "a")
 
     def no_model():
@@ -1807,13 +1792,6 @@ def test_a_decodable_file_the_analyser_raises_on_is_its_own_terminal_not_keyless
     assert light.analyse("stinger.flac")["terminal"] == "skipped-unanalysable"
 
 
-def test_the_head_decodes_at_the_energy_measure_rate():
-    source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
-    # Through the one decoder since U263, at the same constant.
-    assert "decode.load(path, MEASURE_RATE)" in source
-    assert "22050" not in source, "a second literal for the rate is how the two drift"
-
-
 def test_the_feature_vector_measures_its_own_tempo_on_every_path():
     """The head's integer tempo is not handed down, so run and restamp agree."""
     import inspect
@@ -1831,12 +1809,6 @@ def test_an_unreadable_calibration_refuses_a_run_at_the_queue(cfg, folder, silen
     assert queued["cause"]["reason"] == "energy-calibration-unreadable"
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
-
-
-def test_an_absent_calibration_still_queues_a_run(cfg, folder, silence, monkeypatch):
-    place(folder, silence, "a")
-    bind_scoring(monkeypatch)
-    driven_ok(["analyze", "run", "--queue-only", str(folder)])
 
 
 def test_calibrate_refuses_with_the_library_away_rather_than_writing_beside_the_mount(
@@ -2261,8 +2233,7 @@ def test_the_same_tree_gives_the_same_sample_twice(cfg, silence, monkeypatch):
     assert first == seen
     assert len(first) == 10 == len(set(first))
     assert {path.parent.name for path in first} == {"House", "Techno"}, (
-        "an even stride over the sorted walk takes from every folder, where the "
-        "first ten items would all be House"
+        "an even stride takes from every folder; the first ten would all be House"
     )
     loaded = energy.load_calibration(cfg)
     assert loaded is not None and loaded.n_tracks == 10
@@ -2508,8 +2479,7 @@ def test_the_stride_sample_is_even_ordered_and_reaches_the_tail():
     assert len(taken) == 100 == len(set(taken))
     assert taken == sorted(taken) and taken[0] == items[0]
     assert items.index(taken[-1]) >= len(items) - 11, (
-        "a fixed step of len // count stops 3 short per hundred and never "
-        "reaches the tail, which in a sorted walk is whole folders"
+        "a fixed step of len // count never reaches the tail, whole folders of a walk"
     )
     gaps = {items.index(b) - items.index(a) for a, b in zip(taken, taken[1:])}
     assert gaps <= {10, 11}
@@ -2528,6 +2498,8 @@ def test_the_restamp_refusal_names_the_library_wide_calibrate(cfg, folder, silen
     code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "energy-calibration-missing"
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
     steps = " ".join(refused["cause"]["remediation"]["steps"])
     assert "--recursive" in steps and "representative folder" not in steps
 
@@ -2633,8 +2605,7 @@ def test_queue_only_beside_job_is_refused_before_anything_is_queued(cfg, folder,
 def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_it(
     cfg, calibrated, folder, silence, monkeypatch
 ):
-    """A real SIGINT in the call that queued the job leaves it queued and resumable
-    without measuring a settled file again."""
+    """A real SIGINT leaves the job resumable, and no settled file is measured again."""
     import os
     import shlex
     import signal
@@ -2694,8 +2665,7 @@ def test_the_shared_tail_step_queues_only_and_drives_its_job_once(
 def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_back(
     cfg, calibrated, folder, silence, monkeypatch
 ):
-    """U327: the restamp writes the energy tag alone, so a title and key tag that took
-    rekordbox's answer keep it, and the file name keeps its older head."""
+    """U327: the restamp writes the energy tag alone, so nothing adopt corrected moves."""
     corrected = folder / "01A - 124 - Golf.flac"
     shutil.copy2(silence, corrected)
     assert tags.write_tags(
@@ -2726,8 +2696,7 @@ def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_ba
 def test_the_run_titles_only_a_file_with_no_title_and_never_with_a_head(
     cfg, folder, silence, monkeypatch, stem, fields, title
 ):
-    """U343 review rounds one and two: the naming engine's title with no head, R21's
-    marker set first for a lossy stem, so the landing's title and the tag are one."""
+    """U343 rounds one and two: the engine's title with no head, R21's marker first if lossy."""
     path = place(folder, silence, stem, **fields)
     bind_scoring(monkeypatch)
     resumed_ok(queued("run", folder))
