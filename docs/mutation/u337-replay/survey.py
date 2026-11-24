@@ -444,12 +444,14 @@ BATCHES = (
     "u337-analysis",
     "u337-librosa-1-0-0",
     "u337-moved",
+    "u337-c7",
 )
 
 #: A row measured again in a later batch, and the batch whose reading stands.
 SUPERSEDED = {
     ("u264.json", "M1_fast_path_never"): "u337-librosa-1-0-0",
     ("u264.json", "M8_finite_check"): "u337-librosa-1-0-0",
+    ("r658-a.json", "C7_state_roots_not_redirected"): "u337-c7",
 }
 
 
