@@ -1837,6 +1837,11 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
                     seen.add("attach_capture")
                 if isinstance(node.func, ast.Name) and node.func.id == "record_commit":
                     seen.add("a recorded commit")
+                # A ``_record_*_commit`` helper counts, each checked by
+                # ``test_each_commit_helper_records_the_commit``.
+                name = node.func.id if isinstance(node.func, ast.Name) else ""
+                if name.startswith("_record_") and name.endswith("_commit"):
+                    seen.add("a recorded commit")
                 if not isinstance(node.func, ast.Attribute):
                     continue
                 receiver = node.func.value
@@ -1854,16 +1859,6 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
                 if node.func.attr == "attach_capture":
                     seen.add("attach_capture")
                 if node.func.attr == "record_commit":
-                    seen.add("a recorded commit")
-            # A ``_record_*_commit`` helper counts, each checked by
-            # ``test_each_commit_helper_records_the_commit``.
-            for node in ast.walk(function):
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id.startswith("_record_")
-                    and node.func.id.endswith("_commit")
-                ):
                     seen.add("a recorded commit")
             if takes:
                 owed = {"keep=Keep.RECORD", "attach_capture", "a recorded commit"}
