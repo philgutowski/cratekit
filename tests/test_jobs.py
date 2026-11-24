@@ -338,6 +338,7 @@ def test_the_artifact_is_flushed_and_renamed_before_the_row_flips_to_done(
     """The ordering is the guarantee: "done" is what a resume trusts."""
     job = _job(store, cfg, "one")
     events: list[str] = []
+
     def recorded(event, real):
         return lambda *a, **k: (events.append(event), real(*a, **k))[1]
     monkeypatch.setattr(os, "fsync", recorded("fsync", os.fsync))
@@ -578,6 +579,7 @@ def test_an_interrupt_between_the_work_and_the_commit_leaves_no_artifact(
     job = _job(store, cfg, "a", "b")
     staged = tmp_path / "staged-a.txt"
     final = tmp_path / "out" / "a.txt"
+
     def handle(_job, item):
         staged.write_text("half a session")
         os.kill(os.getpid(), signal.SIGINT)
@@ -892,6 +894,7 @@ def test_a_blocked_job_is_re_driven_from_the_parked_item_on_the_next_drive(store
 def test_parked_is_not_the_item_boundary(store, root, cfg):
     """A plain refusal fails the item and moves on; only a park stops the run."""
     job = _job(store, cfg, "a", "b", "c")
+
     def handle(_job, item):
         if item.item_id == "a":
             raise CratekitError(_throttled())
@@ -982,6 +985,7 @@ def test_a_handler_that_declines_a_retryable_cause_fails_the_item_rather_than_sk
         store, root, cfg):
     """The guard bites inside a drive: the item boundary turns it into a failure."""
     job = _job(store, cfg, "a")
+
     def handle(_job, item):
         raise jobs.Declined(_throttled())
     with pytest.raises(CratekitError):

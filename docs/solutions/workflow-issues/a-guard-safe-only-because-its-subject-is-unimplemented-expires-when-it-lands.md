@@ -173,14 +173,14 @@ It was found in round one and restated in round one, alongside its twin, into th
 same in-process difference form. So the class reproduced, was noticed, and was
 then fixed with the fix that did not work, in both files at once. Round two
 removed it rather than restating it a second time, and put a comment block in its
-place, now the one line at `tests/test_jobs.py:733`, recording where the property
+place, now the one line at `tests/test_jobs.py:735`, recording where the property
 lives now and why this file does not hold a copy. The two tests immediately below
 it are what that file genuinely owes, and they were already there:
 `test_a_job_queued_for_a_handler_this_build_does_not_register_refuses`
-(`tests/test_jobs.py:736`) and
+(`tests/test_jobs.py:738`) and
 `test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importing`
-(`tests/test_jobs.py:743`). The second of those still asserts
-`missing not in sys.modules` (`tests/test_jobs.py:760`), `missing` being its synthetic unlanded entry's module, and that
+(`tests/test_jobs.py:745`). The second of those still asserts
+`missing not in sys.modules` (`tests/test_jobs.py:762`), `missing` being its synthetic unlanded entry's module, and that
 assertion is sound where it stands, because an unlanded module genuinely cannot be
 in `sys.modules` and the test is about the refusal reaching the caller, not about
 the interpreter's state.
@@ -429,7 +429,7 @@ The same three lines are a measurement in one process and a formality in the
 other, which is the whole point.
 
 **The duplicate, removed rather than restated.** What stood at
-`tests/test_jobs.py` in place of the second copy when U42 landed, now cut to the one line at `:733`:
+`tests/test_jobs.py` in place of the second copy when U42 landed, now cut to the one line at `:735`:
 
 ```python
 # THE HANDLER-KEY IMPORT PROPERTY LIVES IN tests/test_cli_contract.py NOW, and a

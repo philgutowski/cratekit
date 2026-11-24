@@ -476,6 +476,7 @@ def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_re
     """A binding failure says what it leaves, and the skew refusal keeps its own remedy."""
     cfg, root_id = native_library
     path = _single(cfg, silence)
+
     def broken(*args, **kwargs):
         raise ValueError("the binding said no")
     monkeypatch.setattr(native, "apply_rows", broken)
@@ -487,6 +488,7 @@ def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_re
     assert "no row was added and Single.flac is where it was" in cause["message"]
     assert path.is_file()
     assert _rows(cfg) == []
+
     def skewed(*args, **kwargs):
         said = "the adopted intake root could not be read back"
         raise tree_registry.RegistrySkew(said, tree_id=INTAKE, root_id=root_id)

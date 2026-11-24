@@ -3026,6 +3026,7 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(con
     # The answers either side of it are the real ones.
     assert find(report, "interpreter.version").status is OK
     assert find(report, "library.identity").status is OK
+
     def fell_over():
         raise RuntimeError("psutil returned a shape this reader has never seen")
     ordinary = finding_on(configured, "rekordbox.closed", process_lister=fell_over)
@@ -3465,6 +3466,7 @@ def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(config
     assert "ships and its packaged text could not be read" in note.detail
     assert "damaged or partial install" in note.detail
     # Packaged bytes that are not text arrive as a ``ValueError``.
+
     def mojibake(_name):
         raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
     monkeypatch.setattr(setup_verb, "template_text", mojibake)
@@ -3554,6 +3556,7 @@ def test_the_rescue_still_lets_the_three_control_exceptions_through():
         with pytest.raises(kind):
             doctor.answer(doctor.Check("library.mounted", raiser), inputs)
     # A MemoryError is caught, since the report is worth more than the check.
+
     def hungry(_inputs):
         raise MemoryError()
     assert doctor.answer(doctor.Check("k", hungry), inputs).status is FAIL

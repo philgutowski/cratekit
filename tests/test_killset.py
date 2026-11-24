@@ -644,6 +644,7 @@ def test_a_replay_at_another_guards_line_does_not_bring_a_dead_row_back(tree):
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    return 1\n", encoding="utf-8")
     _table(tree, "u1.json", [_recorded("A", "    return 1")])
+
     def replay(**extra) -> None:
         replayed = _replayed("A", "    return 1", file="src/pkg/twin.py", **extra)
         _table(tree, "u2-replay.json", [replayed], pass_kind="replay")

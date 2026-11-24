@@ -406,6 +406,7 @@ def row(n: int, *, isrc: str = "") -> mirror.Row:
 def test_the_mirror_screens_only_the_rows_it_would_ask_the_provider_about():
     account = outbound_fakes.FakeAccount({})
     identified: list[str] = []
+
     def identify(one: mirror.Row) -> mirror.Identity:
         identified.append(one.content_id)
         return mirror.Identity(isrc=one.isrc or (code(9) if one.content_id == "c5" else ""))
@@ -446,6 +447,7 @@ def test_the_mirrors_request_count_holds_what_the_screen_spent_and_no_more():
 def test_a_provider_track_under_another_emoji_title_does_not_agree():
     """Emoji-only titles fold alike, so the title is read by its identity."""
     from types import SimpleNamespace
+
     def provider(title: str) -> SimpleNamespace:
         artist = SimpleNamespace(name="Aurora Bloom")
         return SimpleNamespace(

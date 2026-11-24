@@ -251,6 +251,7 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     untouched()
     target.rmdir()
     # A COMMIT THAT FAILS AFTER THE RENAME puts the folder back.
+
     def refuse_commit(db, **kwargs):
         raise RuntimeError("the disk went away")
     monkeypatch.setattr(rb_writer, "commit_guarded", refuse_commit)
@@ -394,6 +395,7 @@ def test_a_row_under_the_target_refuses_the_commit_and_the_free_target_rule_pass
     _plant_ghost_row(cfg, ghost / "ghost.flac")
     assert not ghost.exists()
     real = shelve._free_target
+
     def unguarded(root, name, planned, *, stored_dirs, spell):
         return real(root, name, planned, stored_dirs=frozenset(), spell=spell)
     monkeypatch.setattr(shelve, "_free_target", unguarded)

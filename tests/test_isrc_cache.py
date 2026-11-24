@@ -132,6 +132,7 @@ def _cache_file(text: str) -> Path:
 def _refusing(path: Path):
     """``Path.read_text`` refusing ``path`` as an unreadable file, and reading the rest."""
     real = Path.read_text
+
     def read_text(self, *args, **kwargs):
         if self == path:
             raise PermissionError(13, "Permission denied", str(self))
@@ -449,6 +450,7 @@ def _client_track(**fields) -> tidalapi.media.Track:
         ],
         "album": {"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None}, **fields,
     }
+
     class Missing(dict):
         def __missing__(self, key):
             return None
@@ -461,6 +463,7 @@ def test_a_remembered_client_track_reads_as_the_client_track_does(clock, availab
     made = cache(clock)
     made.remember(ONE, "GB", [live])
     (kept,) = made.recall(ONE, "GB")
+
     def read(track):
         return match.read_row(track, origin=match.TIDAL, position=1)
     assert read(kept) == read(live)

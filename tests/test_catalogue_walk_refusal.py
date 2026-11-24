@@ -437,6 +437,7 @@ def test_a_declined_and_a_passed_over_row_carry_their_words():
 def test_a_row_passed_over_for_a_refused_token_is_kept_for_the_day(machine):
     """A kept row passed over for the recorded token is not asked again."""
     from tests.test_beatport_refusal import MISSED
+
     def run():
         search, _opinion, seen = _walk(MISSED, discogs=_Response(401, "{}", {}))
         lookup = suggest.catalogue_lookup(search)
@@ -460,6 +461,7 @@ def test_the_suggest_verb_says_a_token_that_could_not_be_used():
 
 def test_a_backlog_rows_digest_leaves_the_words_out_and_its_envelope_keeps_them():
     from cratekit.tagging import backlog
+
     def row(asked):
         return backlog.Row(
             content_id="1", path="p", artist="a", title="t", row_word="", file_word="",
