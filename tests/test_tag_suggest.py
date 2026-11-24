@@ -9,20 +9,21 @@ from __future__ import annotations
 
 import hashlib
 import shutil
-import sqlite3
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import pytest
 
 from cratekit.adopt import collection
-from cratekit.cli import gates
+from cratekit.cli import gates, registry
 from cratekit.core import active_taxonomy, config, locations, rb_writer, session, tags, taxonomy
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.tagging import suggest, suggest_cli
-from cratekit.tagging.tag import SearchHit
+from cratekit.tagging import published, rows, searchers, suggest, suggest_cli
+from cratekit.tagging.tag import SearchHit, SourceAnswer
 from tests import test_tag_rows as _rows_suite
 from tests.cli_drive import drive
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
@@ -37,6 +38,9 @@ _release_process_locks = _rows_suite._release_process_locks
 _field_policies = _rows_suite._field_policies
 _reader_cache = _rows_suite._reader_cache
 _platform_seams = _rows_suite._platform_seams
+_content = _rows_suite._content
+_genre_of = _rows_suite._genre_of
+acts, decided, opened = _rows_suite.acts, _rows_suite.decided, _rows_suite.opened
 
 DECLARED = taxonomy.default_taxonomy()
 VERB = ["tag", "suggest"]
@@ -76,12 +80,8 @@ def _genre_ids() -> dict[str, str]:
     return {name: str(ordinal) for ordinal, name in enumerate(LOOKUPS, start=100)}
 
 
-def _music(cfg: config.Config) -> Path:
-    return Path(cfg.library.root) / "Music"
-
-
 def _file(cfg: config.Config, track: Track) -> Path:
-    return _music(cfg) / track.folder / f"track-{track.content_id}.flac"
+    return Path(cfg.library.root) / "Music" / track.folder / f"track-{track.content_id}.flac"
 
 
 def build(cfg: config.Config, silence: Path, *tracks: Track) -> dict[str, Path]:
@@ -112,47 +112,17 @@ def build(cfg: config.Config, silence: Path, *tracks: Track) -> dict[str, Path]:
                 if track.file:
                     assert tags.write_tags(path, {"genre": str(track.file)})
             paths[track.content_id] = path
-            db_session.add(
-                _row(
-                    tables.DjmdContent,
-                    ID=track.content_id,
-                    Title=f"track {track.content_id}",
-                    ArtistID=artists.get(track.artist),
-                    GenreID=ids.get(track.row),
-                    BPM=12400,
-                    Rating=3,
-                    Commnt="a comment a person typed",
-                    rb_local_deleted=1 if track.deleted else 0,
-                    FolderPath=locations.location_url(path),
-                )
-            )
+            db_session.add(_row(
+                tables.DjmdContent, ID=track.content_id, Title=f"track {track.content_id}",
+                ArtistID=artists.get(track.artist), GenreID=ids.get(track.row), BPM=12400,
+                Rating=3, Commnt="a comment a person typed",
+                rb_local_deleted=1 if track.deleted else 0,
+                FolderPath=locations.location_url(path),
+            ))
         db_session.commit()
     engine.dispose()
     collection.reset_cache()
     return paths
-
-
-def _content(cfg: config.Config) -> dict[str, dict]:
-    connection = sqlite3.connect(cfg.library.db_path)
-    connection.row_factory = sqlite3.Row
-    try:
-        found = connection.execute("SELECT * FROM djmdContent").fetchall()
-        return {str(row["ID"]): dict(row) for row in found}
-    finally:
-        connection.close()
-
-
-def _genre_of(cfg: config.Config, content_id: str) -> str:
-    connection = sqlite3.connect(cfg.library.db_path)
-    try:
-        ((name,),) = connection.execute(
-            "SELECT g.Name FROM djmdContent c LEFT JOIN djmdGenre g ON g.ID = c.GenreID "
-            "WHERE c.ID = ?",
-            (content_id,),
-        ).fetchall()
-    finally:
-        connection.close()
-    return name or ""
 
 
 def _bytes(paths: dict[str, Path]) -> dict[str, str]:
@@ -160,11 +130,8 @@ def _bytes(paths: dict[str, Path]) -> dict[str, str]:
 
 
 def _planned(cfg: config.Config, **kwargs) -> suggest.SuggestPlan:
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg) as db:
         return suggest.plan_suggestions(cfg, db, active_taxonomy.load(cfg), **kwargs)
-    finally:
-        rb_writer.close_db(db)
 
 
 def _item(plan: suggest.SuggestPlan, content_id: str) -> suggest.Item:
@@ -175,6 +142,14 @@ def _item(plan: suggest.SuggestPlan, content_id: str) -> suggest.Item:
 def _artist_of_eight(genre: str = MELODIC) -> list[Track]:
     """Eight tracks by one artist, all one genre, in a folder of their own."""
     return [Track(f"2{n}", genre, genre, artist="The Artist", folder="one") for n in range(8)]
+
+
+def _labelled(*genres: str) -> list[Track]:
+    """Rows 30 on carrying ``genres`` in folder ``label``, an artist each, and blank row 10."""
+    return [
+        *(Track(f"3{n}", g, g, artist="abcd"[n], folder="label") for n, g in enumerate(genres)),
+        Track("10", artist="e", folder="label"),
+    ]
 
 
 class _Lookup:
@@ -215,10 +190,8 @@ def test_the_band_is_the_share_over_enough_votes(weight, total, band):
 def test_only_a_genre_adoption_files_by_its_exact_name_is_suggestable():
     assert suggest.suggestable(DECLARED, MELODIC)
     assert suggest.suggestable(DECLARED, AFRO)
-    assert not suggest.suggestable(DECLARED, LOOSE)
-    assert not suggest.suggestable(DECLARED, COARSE)
-    assert not suggest.suggestable(DECLARED, "")
-    assert not suggest.suggestable(DECLARED, "Zydeco Polka Fusion")
+    for word in (LOOSE, COARSE, "", "Zydeco Polka Fusion"):
+        assert not suggest.suggestable(DECLARED, word), word
 
 
 def test_an_undeclared_word_lowers_the_agreement_and_is_never_suggested():
@@ -230,9 +203,7 @@ def test_an_undeclared_word_lowers_the_agreement_and_is_never_suggested():
 
 def test_a_tie_between_declared_genres_is_a_split_with_no_default():
     assert suggest.weigh(DECLARED, {MELODIC: 2, DEEP: 2, LOOSE: 4}) == (
-        "",
-        suggest.SPLIT,
-        (DEEP, MELODIC),
+        "", suggest.SPLIT, (DEEP, MELODIC),
     )
 
 
@@ -248,15 +219,7 @@ def test_an_artist_with_eight_tracks_all_melodic_house_suggests_it_high(machine,
 
 
 def test_a_folder_that_splits_evenly_offers_both_genres_and_no_default(machine, silence):
-    build(
-        machine,
-        silence,
-        Track("30", MELODIC, MELODIC, artist="a", folder="label"),
-        Track("31", MELODIC, MELODIC, artist="b", folder="label"),
-        Track("32", DEEP, DEEP, artist="c", folder="label"),
-        Track("33", DEEP, DEEP, artist="d", folder="label"),
-        Track("10", artist="e", folder="label"),
-    )
+    build(machine, silence, *_labelled(MELODIC, MELODIC, DEEP, DEEP))
     plan = _planned(machine)
     item = _item(plan, "10")
     assert (item.genre, item.band, item.options) == ("", suggest.SPLIT, (DEEP, MELODIC))
@@ -268,9 +231,7 @@ def test_a_neighbour_by_the_artist_in_the_same_folder_votes_once_at_the_artist_w
     machine, silence
 ):
     build(
-        machine,
-        silence,
-        Track("30", DEEP, DEEP, artist="a", folder="label"),
+        machine, silence, Track("30", DEEP, DEEP, artist="a", folder="label"),
         Track("10", artist="a", folder="label"),
     )
     assert _item(_planned(machine), "10").votes == ((DEEP, suggest.ARTIST_WEIGHT),)
@@ -278,8 +239,7 @@ def test_a_neighbour_by_the_artist_in_the_same_folder_votes_once_at_the_artist_w
 
 def test_the_artist_outweighs_the_folder(machine, silence):
     build(
-        machine,
-        silence,
+        machine, silence,
         Track("30", DEEP, DEEP, artist="a", folder="elsewhere"),
         Track("31", DEEP, DEEP, artist="a", folder="elsewhere"),
         Track("32", MELODIC, MELODIC, artist="b", folder="label"),
@@ -296,9 +256,7 @@ def test_a_row_whose_file_carries_a_genre_its_row_lacks_votes_with_the_files_wor
     machine, silence
 ):
     build(
-        machine,
-        silence,
-        *[Track(f"3{n}", "", DEEP, artist="a", folder="x") for n in range(3)],
+        machine, silence, *[Track(f"3{n}", "", DEEP, artist="a", folder="x") for n in range(3)],
         Track("10", artist="a", folder="y"),
     )
     plan = _planned(machine)
@@ -318,13 +276,11 @@ def test_a_row_held_out_or_picked_is_not_looked_up(machine, silence):
 
 def test_a_catalogue_answer_outside_the_taxonomy_is_never_suggested(machine, silence):
     build(machine, silence, Track("10"), Track("11"), Track("12"))
-    lookup = _Lookup(
-        {
-            "track 10": suggest.Asked(suggest.MATCHED, genre="Funky Groove", off_taxonomy=True),
-            "track 11": suggest.Asked(suggest.MATCHED, genre=LOOSE),
-            "track 12": suggest.Asked(suggest.MATCHED, genre=MELODIC, source="beatport"),
-        }
-    )
+    lookup = _Lookup({
+        "track 10": suggest.Asked(suggest.MATCHED, genre="Funky Groove", off_taxonomy=True),
+        "track 11": suggest.Asked(suggest.MATCHED, genre=LOOSE),
+        "track 12": suggest.Asked(suggest.MATCHED, genre=MELODIC, source="beatport"),
+    })
     with suggest.KeptCatalogue(machine, lookup) as kept:
         plan = _planned(machine, catalogue=kept)
     assert _item(plan, "10").votes == () and _item(plan, "10").reason == suggest.NO_VOTES
@@ -352,40 +308,20 @@ def test_a_row_carrying_a_genre_is_counted_and_never_offered(machine, silence):
 
 def test_every_live_row_lands_in_exactly_one_outcome(machine, silence):
     build(
-        machine,
-        silence,
-        *_artist_of_eight(),
-        Track("10", artist="The Artist"),
-        Track("11", file=DEEP, folder="elsewhere"),
-        Track("12", file=ABSENT),
-        Track("13"),
+        machine, silence, *_artist_of_eight(), Track("10", artist="The Artist"),
+        Track("11", file=DEEP, folder="elsewhere"), Track("12", file=ABSENT), Track("13"),
     )
     plan = _planned(machine)
-    wanted = dict.fromkeys(suggest.OUTCOMES, 0)
-    wanted.update(
-        {
-            suggest.WRITE: 1,
-            suggest.ROW_HAS_GENRE: 8,
-            suggest.FILE_HAS_GENRE: 1,
-            "file-missing": 1,
-            suggest.NO_VOTES: 1,
-            "no-path": BASELINE,
-        }
-    )
-    assert dict(plan.counts) == wanted
+    assert dict(plan.counts) == {
+        **dict.fromkeys(suggest.OUTCOMES, 0),
+        suggest.WRITE: 1, suggest.ROW_HAS_GENRE: 8, suggest.FILE_HAS_GENRE: 1, "file-missing": 1,
+        suggest.NO_VOTES: 1, "no-path": BASELINE,
+    }
     assert [item.content_id for item in plan.items] == ["10", "13"]
 
 
 def test_a_suggestion_below_the_band_is_offered_and_written_only_when_widened(machine, silence):
-    build(
-        machine,
-        silence,
-        Track("30", MELODIC, MELODIC, artist="a", folder="label"),
-        Track("31", MELODIC, MELODIC, artist="b", folder="label"),
-        Track("32", MELODIC, MELODIC, artist="c", folder="label"),
-        Track("33", DEEP, DEEP, artist="d", folder="label"),
-        Track("10", artist="e", folder="label"),
-    )
+    build(machine, silence, *_labelled(MELODIC, MELODIC, MELODIC, DEEP))
     held = _item(_planned(machine), "10")
     assert (held.genre, held.band, held.reason) == (MELODIC, suggest.MEDIUM, suggest.BELOW_BAND)
     widened = _item(_planned(machine, band=suggest.MEDIUM), "10")
@@ -395,9 +331,7 @@ def test_a_suggestion_below_the_band_is_offered_and_written_only_when_widened(ma
 
 def test_a_person_picks_a_genre_for_a_split(machine, silence):
     build(
-        machine,
-        silence,
-        Track("30", MELODIC, MELODIC, artist="a", folder="label"),
+        machine, silence, Track("30", MELODIC, MELODIC, artist="a", folder="label"),
         Track("32", DEEP, DEEP, artist="c", folder="label"),
         Track("10", artist="e", folder="label"),
     )
@@ -424,12 +358,8 @@ def test_a_declared_genre_the_library_has_no_lookup_row_for_is_left(machine, sil
 
 def test_the_plan_groups_by_genre_and_band(machine, silence):
     build(
-        machine,
-        silence,
-        *_artist_of_eight(),
-        Track("10", artist="The Artist"),
-        Track("11", artist="The Artist"),
-        Track("12"),
+        machine, silence, *_artist_of_eight(), Track("10", artist="The Artist"),
+        Track("11", artist="The Artist"), Track("12"),
     )
     assert _planned(machine).groups() == [
         {"genre": MELODIC, "band": suggest.HIGH, "action": suggest.WRITE, "rows": 2},
@@ -491,15 +421,11 @@ def test_three_rows_in_a_row_nobody_could_read_stop_the_walk_asking(machine):
 
 
 def test_an_unread_answer_between_two_reads_does_not_stop_the_walk(machine):
-    lookup = _Lookup(
-        {
-            "t0": suggest.Asked(suggest.UNREAD),
-            "t1": suggest.Asked(suggest.UNREAD),
-            "t2": suggest.Asked(suggest.MATCHED, genre=DEEP),
-            "t3": suggest.Asked(suggest.UNREAD),
-            "t4": suggest.Asked(suggest.UNREAD),
-        }
-    )
+    unread = suggest.Asked(suggest.UNREAD)
+    lookup = _Lookup({
+        "t0": unread, "t1": unread, "t2": suggest.Asked(suggest.MATCHED, genre=DEEP),
+        "t3": unread, "t4": unread,
+    })
     with suggest.KeptCatalogue(machine, lookup) as kept:
         for n in range(5):
             kept.answer(str(n), "a", f"t{n}", "")
@@ -508,9 +434,6 @@ def test_an_unread_answer_between_two_reads_does_not_stop_the_walk(machine):
 
 def test_rows_unread_only_by_a_catalogue_nobody_asked_do_not_stop_the_walk(machine):
     """U244 review B2: rows unread only by a catalogue nobody asked are no refusal."""
-    from urllib.parse import quote_plus
-
-    from cratekit.tagging import searchers
     from tests.test_catalogue_searcher import _beatport_page, _beatport_track
 
     carried = {"Song Four", "Song Five"}
@@ -539,9 +462,6 @@ def test_rows_unread_only_by_a_catalogue_nobody_asked_do_not_stop_the_walk(machi
 
 
 def test_a_row_a_catalogue_refused_beside_one_nobody_asked_still_counts():
-    from cratekit.tagging import searchers
-    from cratekit.tagging.tag import SourceAnswer
-
     hit = SearchHit(
         answers=(
             SourceAnswer("beatport", "blocked"),
@@ -554,26 +474,28 @@ def test_a_row_a_catalogue_refused_beside_one_nobody_asked_still_counts():
     assert asked.note == "unread: beatport"
 
 
+#: A row Discogs passed over for want of a token.
+PASSED = suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))
+
+
 def test_a_kept_answer_keeps_what_it_passed_over(machine):
     today = date(2026, 11, 12)
-    passed = suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))
-    lookup = _Lookup({"t": passed})
+    lookup = _Lookup({"t": PASSED})
     with suggest.KeptCatalogue(machine, lookup, today=today) as kept:
         kept.answer("1", "a", "t", "")
     with suggest.KeptCatalogue(machine, lookup, today=today) as kept:
         again = kept.answer("1", "a", "t", "")
-    assert again == passed and len(lookup.asked) == 1
+    assert again == PASSED and len(lookup.asked) == 1
 
 
 def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_recorded(machine):
     """U244 round two, B2: a token recorded later the same day asks again."""
     today = date(2026, 11, 12)
-    passed = suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))
-    lookup = _Lookup({"t": passed})
-    with suggest.KeptCatalogue(machine, lookup, today=today, unasked=frozenset({"discogs"})) as kept:
-        kept.answer("1", "a", "t", "")
-    with suggest.KeptCatalogue(machine, lookup, today=today, unasked=frozenset({"discogs"})) as kept:
-        kept.answer("1", "a", "t", "")
+    lookup = _Lookup({"t": PASSED})
+    for _ in range(2):
+        unasked = frozenset({"discogs"})
+        with suggest.KeptCatalogue(machine, lookup, today=today, unasked=unasked) as kept:
+            kept.answer("1", "a", "t", "")
     assert len(lookup.asked) == 1, "still no token: the day's answer is kept"
     lookup.answers["t"] = suggest.Asked(suggest.MATCHED, genre=DEEP)
     with suggest.KeptCatalogue(machine, lookup, today=today, unasked=frozenset()) as kept:
@@ -583,10 +505,6 @@ def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_reco
 
 def test_a_row_passed_over_is_said_as_not_asked_and_not_as_unreadable():
     """U244 round two, D1: passed over for want of a token is not refused, and login is named."""
-    from collections import defaultdict
-
-    from cratekit.tagging import searchers
-
     def item(content_id: str, asked: suggest.Asked) -> suggest.Item:
         return suggest.Item(
             content_id=content_id, path="", artist="a", title="t", genre="", band="",
@@ -594,14 +512,9 @@ def test_a_row_passed_over_is_said_as_not_asked_and_not_as_unreadable():
         )
 
     plan = suggest.SuggestPlan(
-        items=(
-            item("1", suggest.Asked(suggest.UNREAD, note="unread: beatport")),
-            item("2", suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))),
-        ),
-        counts=defaultdict(int),
-        changes=None,
-        band="",
-        catalogue=True,
+        items=(item("1", suggest.Asked(suggest.UNREAD, note="unread: beatport")),
+               item("2", PASSED)),
+        counts=defaultdict(int), changes=None, band="", catalogue=True,
     )
     (warning,) = [w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD]
     assert "could not be read for 1 row(s), 1," in warning["message"]
@@ -612,16 +525,16 @@ def test_a_row_passed_over_is_said_as_not_asked_and_not_as_unreadable():
 def test_the_general_catalogue_is_asked_only_when_the_shops_gave_no_genre():
     asked: list[str | None] = []
 
-    def published(hit, isrc):
+    def general(hit, isrc):
         asked.append(isrc)
         return SearchHit(genre=PROGRESSIVE, source="deezer")
 
     search, _ = _searcher(SearchHit(), SearchHit())
-    answer = suggest.catalogue_lookup(search, published)("a", "t", "ISRC1")
+    answer = suggest.catalogue_lookup(search, general)("a", "t", "ISRC1")
     assert (answer.genre, asked) == (PROGRESSIVE, ["ISRC1"])
 
     search, _ = _searcher(SearchHit(genre=DEEP))
-    suggest.catalogue_lookup(search, published)("a", "t", "ISRC2")
+    suggest.catalogue_lookup(search, general)("a", "t", "ISRC2")
     assert asked == ["ISRC1"]
 
 
@@ -674,52 +587,36 @@ def _first_act(verb: list[str] = VERB) -> tuple[str, dict]:
     return refused["run_id"], refused
 
 
-def _decide(run_id: str, answer: str = "apply") -> None:
-    decided, envelope = drive(["run", "decide", run_id, GATE, answer, "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
+def _offered(cfg: config.Config, silence: Path, *more: Track) -> dict[str, Path]:
+    """The artist's eight Melodic House tracks, row 10 by the artist with no genre, and ``more``."""
+    return build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"), *more)
 
 
-def _two_acts(verb: list[str] = VERB) -> tuple[int, dict, dict]:
-    run_id, refused = _first_act(verb)
-    _decide(run_id)
-    code, acted = drive(["--run", run_id, *verb])
-    return code, acted, refused
+def _refusing_writes(monkeypatch, path: Path) -> None:
+    """``tags.write_genre`` answering no for ``path`` and writing every other file."""
+    real = tags.write_genre
+    monkeypatch.setattr(
+        tags, "write_genre", lambda file, genre: False if file == path else real(file, genre)
+    )
 
 
 def test_the_file_and_the_row_carry_the_genre_and_nothing_else_moved(acknowledged, silence):
     cfg = acknowledged
-    paths = build(
-        cfg,
-        silence,
-        *_artist_of_eight(),
-        Track("10", artist="The Artist"),
-        Track("11"),
-    )
+    paths = _offered(cfg, silence, Track("11"))
     before = _content(cfg)
     untouched = _bytes({key: path for key, path in paths.items() if key != "10"})
 
-    code, acted, refused = _two_acts()
+    code, acted, refused = acts(VERB, GATE)
 
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["digest"] == acted["data"]["digest"]
-    assert {
-        "genre": MELODIC,
-        "band": suggest.HIGH,
-        "action": suggest.WRITE,
-        "rows": 1,
-    } in shown["groups"]
+    group = {"genre": MELODIC, "band": suggest.HIGH, "action": suggest.WRITE, "rows": 1}
+    assert group in shown["groups"]
     assert tags.read_genre_from_file(paths["10"]) == MELODIC
     assert _genre_of(cfg, "10") == MELODIC and _genre_of(cfg, "11") == ""
     assert _bytes({key: path for key, path in paths.items() if key != "10"}) == untouched
-    after = _content(cfg)
-    for content_id, was in before.items():
-        moved = {
-            column
-            for column, value in after[content_id].items()
-            if value != was[column] and column not in rb_writer.BOOKKEEPING_COLUMNS
-        }
-        assert moved == ({"GenreID"} if content_id == "10" else set()), content_id
+    assert _rows_suite.moved_columns(before, _content(cfg)) == {"10": {"GenreID"}}
     totals = acted["data"]["totals"]
     assert (totals["written"], totals["read_back"]) == (1, 1)
     codes = [warning["code"] for warning in acted["warnings"]]
@@ -730,31 +627,23 @@ def test_the_file_and_the_row_carry_the_genre_and_nothing_else_moved(acknowledge
 
 def test_a_declined_plan_writes_nothing_and_the_row_is_offered_again(acknowledged, silence):
     cfg = acknowledged
-    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    paths = _offered(cfg, silence)
     before, files = _content(cfg), _bytes(paths)
 
-    run_id, refused = _first_act()
-    _decide(run_id, "abort")
-    code, declined = drive(["--run", run_id, *VERB])
+    code, declined, refused = acts(VERB, GATE, "abort")
     assert code == int(ExitCode.OK) and declined["outcome"] == "no_op", declined
     assert _content(cfg) == before and _bytes(paths) == files and session.records(cfg) == ()
 
     _again, shown = _first_act()
-    assert shown["cause"]["detail"]["shown"]["digest"] == refused["cause"]["detail"]["shown"][
-        "digest"
-    ]
+    assert shown["cause"]["detail"]["shown"]["digest"] == (
+        refused["cause"]["detail"]["shown"]["digest"]
+    )
 
 
 def test_a_row_left_out_stays_as_it_is_and_is_offered_next_run(acknowledged, silence):
     cfg = acknowledged
-    build(
-        cfg,
-        silence,
-        *_artist_of_eight(),
-        Track("10", artist="The Artist"),
-        Track("11", artist="The Artist"),
-    )
-    code, acted, _ = _two_acts([*VERB, "--leave", "11"])
+    _offered(cfg, silence, Track("11", artist="The Artist"))
+    code, acted, _ = acts([*VERB, "--leave", "11"], GATE)
     assert code == int(ExitCode.OK), acted
     assert (_genre_of(cfg, "10"), _genre_of(cfg, "11")) == (MELODIC, "")
     plan = _planned(cfg)
@@ -763,11 +652,8 @@ def test_a_row_left_out_stays_as_it_is_and_is_offered_next_run(acknowledged, sil
 
 def test_the_gate_refuses_a_plan_that_changed(acknowledged, silence):
     cfg = acknowledged
-    paths = build(
-        cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"), Track("11")
-    )
-    run_id, _ = _first_act()
-    _decide(run_id)
+    paths = _offered(cfg, silence, Track("11"))
+    run_id, _ = decided(VERB, GATE)
     assert tags.write_tags(paths["11"], {"genre": DEEP})
     before, files = _content(cfg), _bytes(paths)
 
@@ -779,14 +665,14 @@ def test_the_gate_refuses_a_plan_that_changed(acknowledged, silence):
 
 def test_the_gate_takes_no_inline_answer(acknowledged, silence):
     cfg = acknowledged
-    build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    _offered(cfg, silence)
     code, refused = drive(["-d", f"{GATE}=apply", *VERB])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert _genre_of(cfg, "10") == ""
 
 
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine, silence):
-    build(machine, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    _offered(machine, silence)
     code, envelope = drive(VERB)
     assert envelope["cause"]["reason"] == "backup-acknowledgment-missing", envelope
     assert code != int(ExitCode.OK)
@@ -798,10 +684,10 @@ def test_with_rekordbox_open_the_plan_is_read_and_no_file_is_written(
     acknowledged, silence, monkeypatch
 ):
     cfg = acknowledged
-    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    paths = _offered(cfg, silence)
     files = _bytes(paths)
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-    code, running, _ = _two_acts()
+    code, running, _ = acts(VERB, GATE)
     assert code != int(ExitCode.OK) and running["cause"]["reason"] == "rekordbox-running"
     assert _bytes(paths) == files and _genre_of(cfg, "10") == ""
 
@@ -810,18 +696,9 @@ def test_a_file_that_will_not_take_its_genre_leaves_its_row_and_the_rest_land(
     acknowledged, silence, monkeypatch
 ):
     cfg = acknowledged
-    paths = build(
-        cfg,
-        silence,
-        *_artist_of_eight(),
-        Track("10", artist="The Artist"),
-        Track("11", artist="The Artist"),
-    )
-    real = tags.write_genre
-    monkeypatch.setattr(
-        tags, "write_genre", lambda path, genre: False if path == paths["11"] else real(path, genre)
-    )
-    code, refused, _ = _two_acts()
+    paths = _offered(cfg, silence, Track("11", artist="The Artist"))
+    _refusing_writes(monkeypatch, paths["11"])
+    code, refused, _ = acts(VERB, GATE)
     assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "tag-suggest-unwritten"
     assert refused["cause"]["detail"]["failed"] == ["11"]
     assert (_genre_of(cfg, "10"), _genre_of(cfg, "11")) == (MELODIC, "")
@@ -832,13 +709,10 @@ def test_a_session_gate_that_refuses_leaves_every_file_as_it_was(
     acknowledged, silence, monkeypatch
 ):
     """The files are written inside the row session, behind its lock."""
-    from cratekit.tagging import rows
-
     cfg = acknowledged
-    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    paths = _offered(cfg, silence)
     files = _bytes(paths)
-    run_id, _ = _first_act()
-    _decide(run_id)
+    run_id, _ = decided(VERB, GATE)
 
     def busy(*args, **kwargs):
         raise refuse("library-volume-mismatch", "the volume is not the recorded one")
@@ -852,22 +726,10 @@ def test_a_session_gate_that_refuses_leaves_every_file_as_it_was(
 def test_a_row_that_reads_back_wrong_also_names_the_files_that_did_not_take_it(
     acknowledged, silence, monkeypatch
 ):
-    from cratekit.tagging import rows
-
-    cfg = acknowledged
-    paths = build(
-        cfg,
-        silence,
-        *_artist_of_eight(),
-        Track("10", artist="The Artist"),
-        Track("11", artist="The Artist"),
-    )
-    real = tags.write_genre
-    monkeypatch.setattr(
-        tags, "write_genre", lambda path, genre: False if path == paths["11"] else real(path, genre)
-    )
+    paths = _offered(acknowledged, silence, Track("11", artist="The Artist"))
+    _refusing_writes(monkeypatch, paths["11"])
     monkeypatch.setattr(rows, "judge", lambda writes, *rest: (("10: reads wrong",), ()))
-    code, refused, _ = _two_acts()
+    code, refused, _ = acts(VERB, GATE)
     assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "internal-error"
     assert "could not be written: 11" in refused["cause"]["message"]
     assert refused["cause"]["detail"]["files"]["failed"] == ["11"]
@@ -877,10 +739,8 @@ def test_a_file_given_a_genre_after_the_gate_is_left_and_named(
     acknowledged, silence, monkeypatch
 ):
     """Approved blank, carrying a genre by the time the write reaches it."""
-    from cratekit.tagging import rows
-
     cfg = acknowledged
-    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    paths = _offered(cfg, silence)
     real = rows.apply_rows
 
     def a_person_got_there_first(*args, **kwargs):
@@ -888,7 +748,7 @@ def test_a_file_given_a_genre_after_the_gate_is_left_and_named(
         return real(*args, **kwargs)
 
     monkeypatch.setattr(rows, "apply_rows", a_person_got_there_first)
-    code, refused, _ = _two_acts()
+    code, refused, _ = acts(VERB, GATE)
     assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "tag-suggest-unwritten"
     assert refused["cause"]["detail"]["moved"] == ["10"]
     assert tags.read_genre_from_file(paths["10"]) == DEEP and _genre_of(cfg, "10") == ""
@@ -898,9 +758,9 @@ def test_a_file_the_writer_says_it_wrote_and_that_does_not_read_back_leaves_its_
     acknowledged, silence, monkeypatch
 ):
     cfg = acknowledged
-    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    paths = _offered(cfg, silence)
     monkeypatch.setattr(tags, "write_genre", lambda path, genre: True)
-    code, refused, _ = _two_acts()
+    code, refused, _ = acts(VERB, GATE)
     assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "tag-suggest-unwritten"
     assert refused["cause"]["detail"]["wrong"] == ["10"]
     assert _genre_of(cfg, "10") == "" and not tags.read_genre_from_file(paths["10"])
@@ -918,24 +778,15 @@ def test_a_pick_outside_the_taxonomy_is_refused_before_any_row_is_read(acknowled
 
 
 def test_an_empty_plan_still_asks_and_opens_nothing_to_write(acknowledged, silence, monkeypatch):
-    cfg = acknowledged
-    build(cfg, silence, Track("10", DEEP, DEEP))
-    real_open = rb_writer.open_db
-
-    def read_only(path, *args, require_closed=False, **kwargs):
-        assert not require_closed, "an empty plan opened the database to write"
-        return real_open(path, *args, require_closed=require_closed, **kwargs)
-
-    monkeypatch.setattr(rb_writer, "open_db", read_only)
-    code, acted, refused = _two_acts()
+    build(acknowledged, silence, Track("10", DEEP, DEEP))
+    _rows_suite.read_only_opens(monkeypatch)
+    code, acted, refused = acts(VERB, GATE)
     assert refused["cause"]["detail"]["shown"]["count"] == 0
     assert code == int(ExitCode.OK) and acted["outcome"] == "no_op", acted
     assert acted["warnings"][0]["code"] == suggest_cli.NOTHING_TO_WRITE
 
 
 def test_the_catalogue_is_asked_once_across_the_two_acts(acknowledged, silence, monkeypatch):
-    from cratekit.tagging import published, searchers
-
     cfg = acknowledged
     paths = build(cfg, silence, Track("10"))
     calls: list[tuple[str, str]] = []
@@ -946,15 +797,13 @@ def test_the_catalogue_is_asked_once_across_the_two_acts(acknowledged, silence, 
 
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
     monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
-    code, acted, _ = _two_acts([*VERB, "--catalogue"])
+    code, acted, _ = acts([*VERB, "--catalogue"], GATE)
     assert code == int(ExitCode.OK), acted
     assert calls == [("", "track 10")]
     assert tags.read_genre_from_file(paths["10"]) == DEEP and _genre_of(cfg, "10") == DEEP
 
 
 def test_the_verb_declares_the_file_and_the_row():
-    from cratekit.cli import registry
-
     entry = registry.find("tag.suggest") if hasattr(registry, "find") else None
     if entry is None:
         (entry,) = [one for one in registry.ENTRIES if one.name == "tag.suggest"]
@@ -967,7 +816,6 @@ def test_tag_suggest_asks_deezer_past_a_refusing_beatport_by_each_files_isrc(
     acknowledged, silence, monkeypatch
 ):
     """U322: a row Discogs missed and Beatport refused is still asked by ISRC."""
-    from cratekit.tagging import published, searchers
     from tests.test_beatport_refusal import REFUSED, _over_the_wire
     from tests.test_discogs_searcher import SENT
 

@@ -20,14 +20,27 @@ import pytest
 from cratekit.adopt import collection
 from cratekit.adopt import genres as genres_report
 from cratekit.adopt import scan as adopt_scan
-from cratekit.core import active_taxonomy, config, locations, rb_writer, taxonomy
+from cratekit.cli import registry
+from cratekit.core import active_taxonomy, config, locations, tags, taxonomy
 from cratekit.core import taxonomy_word as word_edit
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.tagging import backlog, rows, suggest
+from cratekit.tagging import backlog, published, rows, searchers, suggest
 from cratekit.tagging.tag import SearchHit
+from cratekit.write import metadata_cli
 from tests import test_tag_suggest as _suggest_suite
 from tests.cli_drive import drive, drive_human
+from tests.test_beatport_refusal import (
+    MISSED,
+    REFUSED,
+    _beatport_requests,
+    _discogs_searches,
+    _over_the_wire,
+    _Response,
+)
+from tests.test_discogs_searcher import SENT
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
+from tests.test_tag_rows import opened
 
 machine = _suggest_suite.machine
 silence = _suggest_suite.silence
@@ -81,17 +94,13 @@ def _active_copy(request):
     path.write_text(SHIPPED, encoding="utf-8")
 
 
-def build(cfg, silence, *tracks):
-    return _suggest_suite.build(cfg, silence, *tracks)
+build = _suggest_suite.build
 
 
 def _planned(cfg: config.Config, **kwargs) -> backlog.Backlog:
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg) as db:
         _path, text = active_taxonomy.read_text(cfg)
         return backlog.plan_backlog(cfg, db, active_taxonomy.load(cfg), text=text, **kwargs)
-    finally:
-        rb_writer.close_db(db)
 
 
 def _row(plan: backlog.Backlog, content_id: str) -> backlog.Row:
@@ -106,28 +115,18 @@ def _word(plan: backlog.Backlog, spelling: str) -> backlog.Word:
 
 def _census_needing(cfg: config.Config) -> set[str]:
     """Adoption's own census, asked directly: the rows it reads as needs genre."""
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg) as db:
         census = adopt_scan.scan_rows(
-            collection.collection_rows(list(db.get_content())),
-            active_taxonomy.load(cfg),
+            collection.collection_rows(list(db.get_content())), active_taxonomy.load(cfg),
             root=Path(cfg.library.root),
             prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
             energy_reader=rows._no_energy,
         )
-        return {
-            track.content_id
-            for track in census
-            if track.disposition is adopt_scan.Disposition.NEEDS_GENRE
-        }
-    finally:
-        rb_writer.close_db(db)
+        return {t.content_id for t in census if t.disposition is adopt_scan.Disposition.NEEDS_GENRE}
 
 
 def _eight(genre: str = MELODIC, artist: str = "The Artist", folder: str = "one", first: int = 20):
-    return [
-        Track(str(first + n), genre, genre, artist=artist, folder=folder) for n in range(8)
-    ]
+    return [Track(str(first + n), genre, genre, artist=artist, folder=folder) for n in range(8)]
 
 
 def _sha(path: Path) -> str:
@@ -139,6 +138,30 @@ def _tree(cfg: config.Config) -> dict[str, str]:
     found = {str(path): _sha(path) for path in root.rglob("*") if path.is_file()}
     found["db"] = _sha(Path(cfg.library.db_path))
     return found
+
+
+def _catalogue(monkeypatch, search) -> None:
+    """The verb's catalogue searcher made ``search``, the general catalogue answering nothing."""
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+
+
+def _blocked(artist, title):
+    """A catalogue nobody could read."""
+    raise refuse("catalogue-unreachable", "blocked", origin=("test",))
+
+
+def _wired(answers, **kwargs):
+    """The shipped searcher over the recorded wire, Discogs asked with a recorded token."""
+    fetch = _over_the_wire(answers, **kwargs)
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    return searchers.catalogue_searcher(DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker)
+
+
+def _nobodys(cfg, silence, count: int = 1) -> dict:
+    """Rows 60 on with no genre by an artist nothing else is by, in folder ``x``."""
+    tracks = (Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(count))
+    return build(cfg, silence, *tracks)
 
 
 # 1. The rules
@@ -166,16 +189,8 @@ def test_the_cause_of_a_row_is_tested_in_order(row, file, cause, word):
 
 def _item(votes, genre=MELODIC, band=suggest.HIGH, catalogue=None):
     return suggest.Item(
-        content_id="1",
-        path="p",
-        artist="a",
-        title="t",
-        genre=genre,
-        band=band,
-        options=(genre,),
-        votes=tuple(votes),
-        catalogue=catalogue,
-        action=suggest.WRITE,
+        content_id="1", path="p", artist="a", title="t", genre=genre, band=band, options=(genre,),
+        votes=tuple(votes), catalogue=catalogue, action=suggest.WRITE,
     )
 
 
@@ -203,15 +218,9 @@ def test_an_off_taxonomy_catalogue_match_is_not_the_source():
 def _members(count, spelling=INDIE, file=None, start=0):
     return [
         backlog.Row(
-            content_id=str(start + n),
-            path=f"p{n}",
-            artist="",
-            title="",
-            row_word="",
-            file_word=spelling if file is None else file,
-            cause=backlog.OFF_TAXONOMY,
-            word=spelling,
-            status=backlog.ASKED,
+            content_id=str(start + n), path=f"p{n}", artist="", title="", row_word="",
+            file_word=spelling if file is None else file, cause=backlog.OFF_TAXONOMY,
+            word=spelling, status=backlog.ASKED,
         )
         for n in range(count)
     ]
@@ -301,11 +310,8 @@ def test_with_no_active_copy_no_word_is_answered():
 
 
 def test_a_word_counts_its_spellings_files_and_rows_apart():
-    members = [
-        *_members(3, INDIE),
-        *_members(1, "indie tech", start=10),
-        *_members(2, INDIE, file="", start=20),
-    ]
+    members = [*_members(3, INDIE), *_members(1, "indie tech", start=10),
+               *_members(2, INDIE, file="", start=20)]
     members = [replace(row, row_word=INDIE) if not row.file_word else row for row in members]
     word = _word_of(members, {}, several=frozenset({"0"}), rows_write={"1": INDIE})
     assert word.spelling == INDIE and word.rows == 6
@@ -351,22 +357,16 @@ def test_a_neighbour_votes_once_for_a_whole_word_at_its_higher_weight():
         "5": backlog._Live("5", "A", "g", GRIME, "t"),
     }
     assert backlog.neighbour_votes(["1", "2"], live, DECLARED) == {
-        MELODIC: suggest.ARTIST_WEIGHT,
-        DEEP: suggest.FOLDER_WEIGHT,
+        MELODIC: suggest.ARTIST_WEIGHT, DEEP: suggest.FOLDER_WEIGHT,
     }
 
 
 def test_the_digest_names_no_copy():
     row = backlog.Row("1", "/a/one.flac", "x", "y", "", "", backlog.NO_GENRE, "", backlog.LEFT)
     one = backlog.Backlog(rows=(row,), words=(), tracks=1, catalogue=False)
-    other = backlog.Backlog(
-        rows=(replace(row, path="/b/elsewhere.flac", artist="z", title="w"),),
-        words=(),
-        tracks=1,
-        catalogue=False,
-    )
+    other = replace(one, rows=(replace(row, path="/b/elsewhere.flac", artist="z", title="w"),))
     assert one.digest == other.digest
-    moved = backlog.Backlog(rows=(replace(row, reason="x"),), words=(), tracks=1, catalogue=False)
+    moved = replace(one, rows=(replace(row, reason="x"),))
     assert moved.digest != one.digest
 
 
@@ -412,11 +412,8 @@ def test_every_needs_genre_row_lands_in_exactly_one_cause_and_a_routed_row_in_no
     assert not {str(20 + n) for n in range(8)} & set(ids) and "19" not in ids
     assert sum(plan.counts.values()) == len(plan.rows) == sum(plan.statuses.values())
     assert plan.counts == {
-        backlog.FILE_UNREAD: 0,
-        backlog.ROW_LAGS_FILE: 2,
-        backlog.NO_GENRE: 2,
-        backlog.TOO_COARSE: 1,
-        backlog.OFF_TAXONOMY: 6,
+        backlog.FILE_UNREAD: 0, backlog.ROW_LAGS_FILE: 2, backlog.NO_GENRE: 2,
+        backlog.TOO_COARSE: 1, backlog.OFF_TAXONOMY: 6,
     }
 
 
@@ -425,17 +422,11 @@ def test_a_row_lagging_its_file_is_served_exactly_when_tag_rows_would_write_it(m
     plan = _planned(machine)
     served, unknown = _row(plan, "10"), _row(plan, "11")
     assert (served.cause, served.status, served.verb, served.word) == (
-        backlog.ROW_LAGS_FILE,
-        backlog.SERVED,
-        backlog.ROWS_VERB,
-        MELODIC,
+        backlog.ROW_LAGS_FILE, backlog.SERVED, backlog.ROWS_VERB, MELODIC,
     )
     assert (unknown.status, unknown.reason) == (backlog.LEFT, rows.GENRE_UNKNOWN)
-    db = rb_writer.open_db(machine.library.db_path, unlock=False, cfg=machine)
-    try:
+    with opened(machine) as db:
         written = {item.content_id for item in rows.plan_rows(machine, db, DECLARED).writes}
-    finally:
-        rb_writer.close_db(db)
     lagging = {row.content_id for row in plan.rows if row.cause == backlog.ROW_LAGS_FILE}
     assert {row.content_id for row in plan.rows if row.status == backlog.SERVED} == written & lagging
     # TAG ROWS ALSO WRITES A WORD NO FOLDER TAKES onto a blank row, which moves
@@ -454,9 +445,7 @@ def test_a_row_with_no_genre_and_agreeing_neighbours_is_proposed_from_the_neighb
 
 def test_a_row_below_the_floor_is_never_proposed_and_is_left_with_its_band(machine, silence):
     build(
-        machine,
-        silence,
-        Track("30", MELODIC, MELODIC, artist="Pair", folder="x"),
+        machine, silence, Track("30", MELODIC, MELODIC, artist="Pair", folder="x"),
         Track("31", MELODIC, MELODIC, artist="Pair", folder="y"),
         Track("32", "", "", artist="Pair", folder="z"),
     )
@@ -467,32 +456,33 @@ def test_a_row_below_the_floor_is_never_proposed_and_is_left_with_its_band(machi
     assert any(entry["reason"] == suggest.BELOW_BAND for entry in plan.remainder())
 
 
-def test_a_row_with_nothing_beside_it_is_left_with_no_votes(machine, silence):
+@pytest.mark.parametrize(
+    ("content_id", "fields", "expected"),
+    [
+        pytest.param(
+            "13", ("cause", "status", "reason"), (backlog.NO_GENRE, backlog.LEFT, suggest.NO_VOTES),
+            id="nothing-beside-it",
+        ),
+        pytest.param(
+            "14", ("cause", "status", "verb", "word"),
+            (backlog.TOO_COARSE, backlog.LEFT, backlog.RETAG_VERB, COARSE), id="a-catch-all",
+        ),
+    ],
+)
+def test_a_row_with_nothing_beside_it_is_left_with_no_votes(
+    machine, silence, content_id, fields, expected
+):
+    """A row with no votes is left with no votes; a catch all is left to tag retag."""
     build(machine, silence, *_library())
-    row = _row(_planned(machine), "13")
-    assert (row.cause, row.status, row.reason) == (backlog.NO_GENRE, backlog.LEFT, suggest.NO_VOTES)
-
-
-def test_a_catch_all_is_left_to_tag_retag(machine, silence):
-    build(machine, silence, *_library())
-    row = _row(_planned(machine), "14")
-    assert (row.cause, row.status, row.verb, row.word) == (
-        backlog.TOO_COARSE,
-        backlog.LEFT,
-        backlog.RETAG_VERB,
-        COARSE,
-    )
+    row = _row(_planned(machine), content_id)
+    assert tuple(getattr(row, field) for field in fields) == expected
 
 
 def test_off_taxonomy_words_are_grouped_across_spellings_and_ranked_by_rows(machine, silence):
     build(machine, silence, *_library(), Track("40", "", GRIME, artist="Nobody", folder="five"))
     plan = _planned(machine)
     assert [word.spelling.casefold() for word in plan.words] == [
-        "indie tech",
-        ALTERNATIVE,
-        AMAPIANO,
-        "grime",
-        MPB,
+        "indie tech", ALTERNATIVE, AMAPIANO, "grime", MPB,
     ]
     indie = _word(plan, INDIE)
     assert (indie.rows, indie.files_carry, indie.elsewhere, indie.on_row) == (3, 2, 1, 2)
@@ -533,11 +523,8 @@ def test_the_campaign_lists_the_existing_verbs_in_order_and_the_projection(machi
     plan = _planned(machine)
     commands = [step["command"] for step in plan.campaign()]
     assert commands == [
-        backlog.ROWS_VERB,
-        backlog.SUGGEST_VERB,
-        f"{word_edit.ALIAS_VERB} mpb 'R&B'",
-        f"{word_edit.ALIAS_VERB} WORD GENRE or {word_edit.FOLDER_VERB} WORD",
-        backlog.ROWS_VERB,
+        backlog.ROWS_VERB, backlog.SUGGEST_VERB, f"{word_edit.ALIAS_VERB} mpb 'R&B'",
+        f"{word_edit.ALIAS_VERB} WORD GENRE or {word_edit.FOLDER_VERB} WORD", backlog.ROWS_VERB,
         backlog.RESORT_VERB,
     ]
     rows_moved = [step["rows"] for step in plan.campaign()]
@@ -573,19 +560,19 @@ class _Recorded:
         return self.hits.get(title)
 
 
+#: A recorded Discogs match for row 60.
+DISCOGS_60 = {"track 60": SearchHit(genre=DEEP, source="discogs", source_genre="Deep House")}
+
+
 def test_a_lone_discogs_match_is_proposed_from_discogs_with_its_word(machine, silence):
-    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
-    search = _Recorded(
-        {"track 60": SearchHit(genre=DEEP, source="discogs", source_genre="Deep House")}
-    )
+    _nobodys(machine, silence)
+    search = _Recorded(DISCOGS_60)
     with suggest.KeptCatalogue(machine, suggest.catalogue_lookup(search)) as kept:
         plan = _planned(machine, catalogue=kept)
     row = _row(plan, "60")
     assert row.status == backlog.PROPOSED
     assert (row.proposal.genre, row.proposal.source, row.proposal.source_genre) == (
-        DEEP,
-        "discogs",
-        "Deep House",
+        DEEP, "discogs", "Deep House",
     )
     assert row.proposal.band == suggest.HIGH and plan.catalogue
     assert plan.campaign()[0]["command"] == f"{backlog.SUGGEST_VERB} --catalogue"
@@ -625,14 +612,9 @@ def test_the_verb_reports_the_backlog_and_asks_no_gate(machine, silence):
 def test_the_verb_with_catalogue_asks_the_recorded_catalogue_and_keeps_its_answers(
     machine, silence, monkeypatch
 ):
-    from cratekit.tagging import published, searchers
-
-    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
-    search = _Recorded(
-        {"track 60": SearchHit(genre=DEEP, source="discogs", source_genre="Deep House")}
-    )
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
-    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    _nobodys(machine, silence)
+    search = _Recorded(DISCOGS_60)
+    _catalogue(monkeypatch, search)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     (item,) = envelope["data"]["summary"]["items"]
@@ -645,16 +627,8 @@ def test_the_verb_with_catalogue_asks_the_recorded_catalogue_and_keeps_its_answe
 
 
 def test_a_catalogue_nobody_could_read_is_named(machine, silence, monkeypatch):
-    from cratekit.core.cause import refuse
-    from cratekit.tagging import published, searchers
-
-    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
-
-    def blocked(artist, title):
-        raise refuse("catalogue-unreachable", "blocked", origin=("test",))
-
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
-    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    _nobodys(machine, silence)
+    _catalogue(monkeypatch, _blocked)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
@@ -679,8 +653,6 @@ def test_a_person_reads_the_backlog(machine, silence):
 
 
 def test_the_verb_declares_no_write_and_no_gate():
-    from cratekit.cli import registry
-
     entry = registry.entry("tag.backlog")
     assert entry.writes == frozenset() and not entry.destructive and entry.gates == ()
     assert entry.output_schema == "diagnostic/1"
@@ -730,8 +702,6 @@ def test_a_neighbour_votes_with_its_files_word_as_tag_suggest_votes_it(machine, 
 def test_a_folder_counts_a_row_only_where_tag_rows_would_write_its_word(machine, silence):
     """Round one: a file holding the word beside another genre is left by tag rows."""
     paths = build(machine, silence, Track("15", "", INDIE), Track("16", "", INDIE))
-    from cratekit.core import tags
-
     assert tags.write_tag_values(paths["16"], "genre", [INDIE, DEEP])
     assert tags.read_tag_values(paths["16"], "genre") == (INDIE, DEEP)
     indie = _word(_planned(machine), INDIE)
@@ -753,25 +723,18 @@ def test_the_digest_covers_the_words_the_unread_and_the_joining():
 
 
 def test_a_library_most_of_whose_rows_are_under_no_prefix_rule_refuses(machine, silence, monkeypatch):
-    from cratekit.write import metadata_cli
-
     build(machine, silence, Track("70", "", ""))
-    monkeypatch.setattr(
-        metadata_cli,
-        "resolution_totals",
-        lambda cfg, db: metadata_cli.ResolutionTotals(
-            active=10, unresolved=9, unmapped=9, prefixes={"/Elsewhere": 9}
-        ),
+    totals = metadata_cli.ResolutionTotals(
+        active=10, unresolved=9, unmapped=9, prefixes={"/Elsewhere": 9}
     )
+    monkeypatch.setattr(metadata_cli, "resolution_totals", lambda cfg, db: totals)
     code, envelope = drive(VERB)
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "library-paths-majority-unresolved"
 
 
 def test_discogs_passed_over_is_said_with_how_to_record_a_token(machine, silence, monkeypatch):
-    from cratekit.tagging import searchers
-
-    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
+    _nobodys(machine, silence)
     passed = suggest.Asked(
         suggest.UNREAD, note="unread: discogs, no token", passed_over=(searchers.DISCOGS,)
     )
@@ -787,21 +750,7 @@ def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_coun
     machine, silence, monkeypatch
 ):
     """U322, sitting 102: Beatport refusing every row is fetched three times and counted."""
-    from cratekit.core import tags
-    from cratekit.tagging import published, searchers
-    from tests.test_beatport_refusal import (
-        REFUSED,
-        _beatport_requests,
-        _discogs_searches,
-        _over_the_wire,
-    )
-    from tests.test_discogs_searcher import SENT
-
-    paths = build(
-        machine,
-        silence,
-        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(6)),
-    )
+    paths = _nobodys(machine, silence, 6)
     for n, path in enumerate(sorted(paths.values())):
         assert tags.write_tags(path, {"isrc": f"GBAYE00000{n:02d}"})
     general: list[object] = []
@@ -812,12 +761,7 @@ def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_coun
 
     monkeypatch.setattr(published, "for_lookup", lambda: deezer)
     seen: list[str] = []
-    fetch = _over_the_wire(REFUSED, seen=seen)
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    search = searchers.catalogue_searcher(
-        DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker
-    )
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: _wired(REFUSED, seen=seen))
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
 
@@ -850,7 +794,7 @@ def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_coun
 
 
 def test_the_catalogue_line_is_absent_without_the_catalogue(machine, silence):
-    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
+    _nobodys(machine, silence)
     code, envelope = drive(VERB)
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["summary"]["catalogue_answers"] is None
@@ -858,20 +802,8 @@ def test_the_catalogue_line_is_absent_without_the_catalogue(machine, silence):
 
 
 def test_the_catalogue_line_names_the_rows_the_walk_stopped_before(machine, silence, monkeypatch):
-    from cratekit.core.cause import refuse
-    from cratekit.tagging import published, searchers
-
-    build(
-        machine,
-        silence,
-        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(5)),
-    )
-
-    def blocked(artist, title):
-        raise refuse("catalogue-unreachable", "blocked", origin=("test",))
-
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
-    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    _nobodys(machine, silence, 5)
+    _catalogue(monkeypatch, _blocked)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["summary"]["catalogue_answers"]["stopped"] == 2
@@ -887,23 +819,9 @@ def test_a_token_discogs_refused_is_said_and_beatport_is_asked_on_every_row(
     machine, silence, monkeypatch
 ):
     """U322 review: a refused token no longer stops the walk, and the warning says so."""
-    from cratekit.tagging import published, searchers
-    from tests.test_beatport_refusal import MISSED, _beatport_requests, _over_the_wire, _Response
-    from tests.test_discogs_searcher import SENT
-
-    build(
-        machine,
-        silence,
-        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(5)),
-    )
+    _nobodys(machine, silence, 5)
     seen: list[str] = []
-    fetch = _over_the_wire(MISSED, discogs=_Response(401, "{}", {}), seen=seen)
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    search = searchers.catalogue_searcher(
-        DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker
-    )
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
-    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    _catalogue(monkeypatch, _wired(MISSED, discogs=_Response(401, "{}", {}), seen=seen))
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     assert _beatport_requests(seen) == 5

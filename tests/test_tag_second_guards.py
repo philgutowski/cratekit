@@ -10,18 +10,18 @@ applies: no real volume, person or track.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, rb_writer, tags
+from cratekit.core import config, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import second, second_cli
 from tests.cli_drive import drive
-from tests.test_tag_second import DEEP, NOWHERE, TECH, Track, _plan, _second_of, build
+from tests.test_tag_rows import opened
+from tests.test_tag_second import DEEP, NOWHERE, TECH, Track, _plan, _second_of, _seed, build
 from tests.test_tag_second import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_tag_second import _less_work as _less_work  # noqa: PLC0414
 from tests.test_tag_second import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -34,49 +34,14 @@ from tests.test_tag_second import silence as silence  # noqa: PLC0414
 LIVE_PATH = "Crates / Warm"
 
 
-def _seed(
-    cfg: config.Config,
-    nodes: list[tuple[str, str, int, str, int]],
-    members: list[tuple[str, str, str, int]],
-) -> None:
-    """Playlist rows ``(id, name, attribute, parent, removed)`` and memberships
-    ``(id, playlist, content, removed)`` written straight into the copy."""
-    connection = sqlite3.connect(cfg.library.db_path)
-    try:
-        has_seq = any(
-            row[1] == "Seq" for row in connection.execute("PRAGMA table_info(djmdPlaylist)")
-        )
-        for pid, name, attribute, parent, removed in nodes:
-            fields = {
-                "ID": pid, "Name": name, "Attribute": attribute, "ParentID": parent,
-                "rb_local_deleted": removed, **({"Seq": 0} if has_seq else {}),
-            }
-            connection.execute(
-                f"INSERT INTO djmdPlaylist ({', '.join(fields)}) "
-                f"VALUES ({', '.join('?' * len(fields))})",
-                tuple(fields.values()),
-            )
-        connection.executemany(
-            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted) "
-            "VALUES (?, ?, ?, 0, ?)",
-            members,
-        )
-        connection.commit()
-    finally:
-        connection.close()
-
-
 #: A folder, a live playlist under it holding 10 and 11 live and 12 removed.
 _TREE = [("800", "Crates", 1, "root", 0), ("801", "Warm", 0, "800", 0)]
 _MEMBERS = [("850", "801", "10", 0), ("851", "801", "11", 0), ("852", "801", "12", 1)]
 
 
 def _members(cfg: config.Config, path: str) -> tuple[str, ...]:
-    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
-    try:
+    with opened(cfg) as db:
         return second.playlist_members(db, path)
-    finally:
-        rb_writer.close_db(db)
 
 
 def _refused(cfg: config.Config, path: str) -> str:
