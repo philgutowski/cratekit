@@ -286,8 +286,7 @@ def test_home_of_reads_the_longest_subfolder_and_strips_the_prefix(world):
 
 
 def test_home_of_refuses_the_folder_holding_the_favourites(world):
-    gig = world.folder("GIG READY")
-    world.playlist("All Favorites", under=gig)
+    world.in_gig_ready("All Favorites")
     assert "favourites" in _home(world, "GIG READY", "GIG READY Closer")
 
 

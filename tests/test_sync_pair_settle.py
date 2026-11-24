@@ -39,8 +39,7 @@ def _ids(*content_ids: str) -> list[str]:
 @pytest.fixture
 def owed(world):
     """One pair synced in GIG READY, then reordered in rekordbox, so its account side owes an order."""
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    opener = world.in_gig_ready("Opener", "1", "2", "3", "4")
     exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     return opener, world.titled("GIG READY Opener")
@@ -940,8 +939,7 @@ def test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_readin
 @pytest.fixture
 def longer(world):
     """One GIG READY pair synced on seven tracks, then reversed in rekordbox, so its account owes six moves."""
-    gig = world.folder("GIG READY")
-    closer = world.playlist("Closer", "1", "2", "3", "4", "5", "6", "7", under=gig)
+    closer = world.in_gig_ready("Closer", "1", "2", "3", "4", "5", "6", "7")
     exited(sync())
     _reordered(world, closer, "7", "6", "5", "4", "3", "2", "1")
     return closer, world.titled("GIG READY Closer")
@@ -1407,18 +1405,11 @@ def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
 
     one = pair_cli.PairPlan(
         target=pair_cli.Target(account_id="acct", rekordbox_id="7", marked=True),
-        name="Opener",
-        rekordbox_name="Opener",
-        first=False,
-        merged=pair_merge.Merged(
-            order=("remote:t6", "remote:t5"), leader="rekordbox", first=False
-        ),
-        account_now=(),
-        rekordbox_before=(),
+        name="Opener", rekordbox_name="Opener", first=False,
+        merged=pair_merge.Merged(order=("remote:t6", "remote:t5"), leader="rekordbox", first=False),
+        account_now=(), rekordbox_before=(),
         change=playlist_pair.Change(playlist_id="7", before=()),
-        account_adds=("t5", "t6"),
-        account_order=("t6", "t5"),
-        finishing_order=True,
+        account_adds=("t5", "t6"), account_order=("t6", "t5"), finishing_order=True,
     )
     asked: list[tuple[str, tuple[str, ...], object]] = []
 
@@ -1467,40 +1458,24 @@ def test_with_no_stopped_write_an_unread_track_follows_the_one_listed_before_it(
     [
         # The stopped move put t9 in front, the target puts it behind t4.
         (
-            ["t2", "t3", "t4", "t1", "t5"],
-            ["t9", "t1", "t2", "t3", "t4", "t5"],
-            ["t2", "t3", "t4", "t9", "t1"],
-            ("t2", "t3", "t4", "t9", "t1", "t5"),
+            ["t2", "t3", "t4", "t1", "t5"], ["t9", "t1", "t2", "t3", "t4", "t5"],
+            ["t2", "t3", "t4", "t9", "t1"], ("t2", "t3", "t4", "t9", "t1", "t5"),
         ),
         # Two unread ids the target names, in either order the moves left them.
         (
-            ["t2", "t1"],
-            ["u2", "u1", "t1", "t2"],
-            ["t2", "u1", "u2", "t1"],
-            ("t2", "u1", "u2", "t1"),
+            ["t2", "t1"], ["u2", "u1", "t1", "t2"],
+            ["t2", "u1", "u2", "t1"], ("t2", "u1", "u2", "t1"),
         ),
         (
-            ["t2", "t1"],
-            ["u1", "u2", "t1", "t2"],
-            ["t2", "u1", "u2", "t1"],
-            ("t2", "u1", "u2", "t1"),
+            ["t2", "t1"], ["u1", "u2", "t1", "t2"],
+            ["t2", "u1", "u2", "t1"], ("t2", "u1", "u2", "t1"),
         ),
         # The track the target puts before it is gone: behind the one before that.
-        (
-            ["t2", "t1"],
-            ["t9", "t1", "t2"],
-            ["t2", "t3", "t9", "t1"],
-            ("t2", "t9", "t1"),
-        ),
+        (["t2", "t1"], ["t9", "t1", "t2"], ["t2", "t3", "t9", "t1"], ("t2", "t9", "t1")),
         # First in the target: the front.
         (["t2", "t1"], ["t1", "t2", "t9"], ["t9", "t2", "t1"], ("t9", "t2", "t1")),
         # An unread id the target does not name follows the track listed before it.
-        (
-            ["t2", "t1"],
-            ["t9", "t8", "t1", "t2"],
-            ["t2", "t9", "t1"],
-            ("t2", "t9", "t8", "t1"),
-        ),
+        (["t2", "t1"], ["t9", "t8", "t1", "t2"], ["t2", "t9", "t1"], ("t2", "t9", "t8", "t1")),
         # An unread id of the target the playlist no longer holds is never put back.
         (["t2", "t1"], ["t1", "t2"], ["t2", "t9", "t1"], ("t2", "t1")),
     ],
@@ -1612,8 +1587,7 @@ def test_a_track_unread_at_the_stop_and_read_since_is_read_as_the_persons_when_m
 
 def _five_owed(world):
     """A pair of the playlist 1 to 5 synced once. Answers the rekordbox playlist and the account playlist."""
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", "5", under=gig)
+    opener = world.in_gig_ready("Opener", "1", "2", "3", "4", "5")
     exited(sync())
     return opener, world.titled("GIG READY Opener")
 
@@ -1694,15 +1668,9 @@ def _write_from(start: list[str], target: list[str]):
     from cratekit.sync import pair_stopped
 
     return pair_stopped.StoppedWrite(
-        run_id="run-1",
-        account_id="acct",
-        at=datetime(2026, 11, 7, tzinfo=UTC),
-        start=tuple(start),
-        target=tuple(target),
-        leader="rekordbox",
-        rekordbox=(),
-        written=True,
-        links={},
+        run_id="run-1", account_id="acct", at=datetime(2026, 11, 7, tzinfo=UTC),
+        start=tuple(start), target=tuple(target), leader="rekordbox", rekordbox=(),
+        written=True, links={},
     )
 
 

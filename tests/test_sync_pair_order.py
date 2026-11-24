@@ -256,8 +256,7 @@ def _ids(*content_ids: str) -> list[str]:
 def _four_reordered(world) -> tuple[str, str]:
     """GIG READY Opener on rows 1 to 4, synced, then reordered 4, 3, 1, 2 in rekordbox.
     Answers rekordbox's playlist and the account's."""
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    opener = world.in_gig_ready("Opener", "1", "2", "3", "4")
     exited(sync())
     _reordered(world, opener, "4", "3", "1", "2")
     return opener, world.titled("GIG READY Opener")
@@ -350,7 +349,9 @@ def test_a_continue_of_a_refused_order_that_also_added_finishes_it(world, cfg, m
 
 
 @pytest.mark.parametrize(
-    "reordered", [("2", "4", "1", "3", "5"), ("1", "2", "5", "3", "4")], ids=["whole", "added-alone"]
+    "reordered",
+    [("2", "4", "1", "3", "5"), ("1", "2", "5", "3", "4")],
+    ids=["whole", "added-alone"],
 )
 def test_a_continue_of_a_refused_order_that_also_added_holds_a_reorder_made_since(
     world, monkeypatch, reordered

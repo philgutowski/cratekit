@@ -41,8 +41,7 @@ def _stale(run_id: str) -> dict:
 
 def test_a_playlist_of_the_title_made_in_the_folder_before_the_write_refuses_stale(world):
     folder_id = world.account.create_folder("GIG READY")
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", "2", under=gig)
+    world.in_gig_ready("Opener", "1", "2")
     run_id = _to_the_write()
     theirs = world.account.create_playlist("GIG READY Opener")
     world.account.move_to_folder(theirs, folder_id)
@@ -56,8 +55,7 @@ def test_a_playlist_of_the_title_made_in_the_folder_before_the_write_refuses_sta
 
 
 def test_a_root_folder_the_plan_makes_made_before_the_write_refuses_stale(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.account.create_folder("GIG READY")
     assert _stale(run_id)["detail"]["moved"][0]["side"] == "account-folder"
@@ -65,8 +63,7 @@ def test_a_root_folder_the_plan_makes_made_before_the_write_refuses_stale(world)
 
 
 def test_a_made_pair_whose_rekordbox_side_moved_before_the_write_refuses_stale(world):
-    gig = world.folder("GIG READY")
-    opener = world.playlist("Opener", "1", under=gig)
+    opener = world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.rekordbox_add(opener, "2")
     assert [one["playlist_id"] for one in _stale(run_id)["detail"]["moved"]] == [opener]
@@ -89,8 +86,7 @@ def test_a_no_change_sync_of_every_made_pair_asks_nothing_about_a_track(world, c
 
 
 def test_every_pair_plans_once_across_its_gates(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", "2", under=gig)
+    world.in_gig_ready("Opener", "1", "2")
     code, first = drive(VERB)
     asked = len(world.account.matches)
     assert asked == 2
@@ -173,8 +169,7 @@ def test_a_row_the_plan_adds_gone_before_the_write_stops_every_pair(world):
 
 def test_the_folder_a_made_side_goes_in_gone_before_the_write_refuses_stale(world):
     folder_id = world.account.create_folder("GIG READY")
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.account.folder_names.pop(folder_id)
     assert _stale(run_id)["detail"]["moved"][0]["why"] == (
@@ -184,8 +179,7 @@ def test_the_folder_a_made_side_goes_in_gone_before_the_write_refuses_stale(worl
 
 
 def test_a_root_folder_to_make_is_named_without_an_empty_identifier(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     run_id = _to_the_write()
     world.account.create_folder("GIG READY")
     said = _stale(run_id)["message"]

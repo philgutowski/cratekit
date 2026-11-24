@@ -197,8 +197,7 @@ def test_every_reason_names_the_rekordbox_playlist_to_pair_by_hand(world, trivia
 
 
 def test_a_downloaded_copy_in_a_created_folder_is_named_a_copy(world):
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     world.dates["t1"] = LONG_AGO
     assert sync()[0] == int(ExitCode.OK)
     on_account(world, "DOWNLOADED Opener", "GIG READY", "t1")
@@ -245,8 +244,7 @@ def test_without_a_record_the_creation_time_decides(world, cfg, trivia):
 def test_without_a_record_the_moment_is_read_from_this_folders_own_pairs(world, cfg, trivia):
     """A pair made earlier in another folder does not date this folder's adoption."""
     rekordbox, _copies = trivia
-    gig = world.folder("GIG READY")
-    world.playlist("Opener", "1", under=gig)
+    world.in_gig_ready("Opener", "1")
     assert sync()[0] == int(ExitCode.OK)
     unrecorded(cfg)
 
