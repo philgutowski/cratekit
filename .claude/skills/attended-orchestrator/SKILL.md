@@ -1,6 +1,6 @@
 ---
 name: attended-orchestrator
-description: Run a whole attended sitting on Phillip's Mac from one session. Reads the board for every open attended card, groups them into one battery, the sweeps on copies, the rekordbox settlements, one sync pass and its visit, drives rekordbox and app dialogs with desktop control, directs worker sessions Phillip starts with a one line kickoff through files in the ignored state folder, records and closes each card, and asks Phillip nothing. Use when Phillip says /attended-orchestrator, run the attended work, work the attended cards, or start an attended sitting.
+description: Run a whole attended sitting on Phillip's Mac from one session. Reads the board for every open attended card, runs the standing macOS battery once, groups the cards into the sweeps on copies, the rekordbox settlements, one sync pass and its visit, drives rekordbox and app dialogs with desktop control, directs worker sessions Phillip starts with a one line kickoff through files in the ignored state folder, records and closes each card, and asks Phillip nothing. Use when Phillip says /attended-orchestrator, run the attended work, work the attended cards, or start an attended sitting.
 ---
 
 # The attended sitting
@@ -233,10 +233,13 @@ sync pass each serve as many cards as they can, write the plan into
 STATE.md, and run it in this order. The sittings that need no live library
 go to the workers first, so they run while the live ones do.
 
-**The battery (a worker, first).** One battery over the `main` commit
-pulled, in this checkout with a clean tree, serves every card owing a macOS
-battery at or after a merge that commit carries: CLAUDE.md's three
-commands, plus any test file a card says must pass whole. The order asks for
+**The battery (a worker, first).** METHOD-local's standing macOS battery,
+over the `main` commit pulled, in this checkout with a clean tree, recorded
+as its one line in the sitting's section. No card is filed or kept open for
+it; a card older than that rule with nothing else owed closes against the
+line, and a card with a live step keeps the live step only. The run is
+CLAUDE.md's three commands; the full suite already runs every test file a
+record's OWED paragraph names, so none is run apart. The order asks for
 the counts and every failure with its test id; the orchestrator judges
 whether a failure is the card's. Never a worktree, because the editable
 install names this checkout. A timing test that fails while a sweep loads

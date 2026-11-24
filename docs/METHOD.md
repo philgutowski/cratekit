@@ -378,8 +378,10 @@ whose header does not end `history full ids whole`; `--temp memory` is not
 for a merge battery until Phillip answers #702 (U273). `docs/DEVELOPING.md`
 has the mechanics. Nothing is skipped or marked, a newly failing test is the
 branch's, and one that fails only under a parallel run on ext4 is rerun alone
-before it is called either. The macOS battery is owed on a Mac, in each
-record's OWED paragraph, and runs whenever Phillip next builds or sits locally.
+before it is called either. The macOS battery is owed by `main`, never by a
+unit: a record's OWED paragraph names it, no card is filed for it, and
+METHOD-local's standing battery settles every merge before the commit it
+runs on (decided by Phillip on 2026-11-24).
 
 **GitHub GraphQL is refused on the container**: `gh issue`, `gh repo`,
 `gh project` and `gh api --paginate` fail, `board.py` reads issues over REST,
