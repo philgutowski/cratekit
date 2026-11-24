@@ -1,8 +1,5 @@
-"""U124: the restart state and the residuals are per unit files.
-
-``docs/restart/<unit>.md`` and ``docs/residuals/``, numbered on main by
-``scripts/board.py residuals --land``; ``scripts/scan_repo.py`` guards the former.
-"""
+"""U124: ``docs/restart/<unit>.md``, guarded by the scan, and ``docs/residuals/``, numbered on
+main by ``scripts/board.py residuals --land``."""
 
 from __future__ import annotations
 
@@ -275,6 +272,15 @@ def _long_ledger(count: int = 30) -> str:
     return text
 
 
+def _long_ledger_file(tmp_path: Path, monkeypatch, board) -> Path:
+    """``_long_ledger`` as ``docs/residual-findings.md``, archived at 40 lines."""
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    ledger = tmp_path / "docs" / "residual-findings.md"
+    ledger.parent.mkdir()
+    ledger.write_text(_long_ledger())
+    return ledger
+
+
 def _layout(root: Path) -> dict[str, str]:
     docs = root / "docs"
     return {p.relative_to(docs).as_posix(): p.read_text() for p in sorted(docs.rglob("*.md"))}
@@ -283,10 +289,7 @@ def _layout(root: Path) -> dict[str, str]:
 def test_the_archive_moves_every_entry_byte_for_byte_and_a_rerun_changes_nothing(
     tmp_path, monkeypatch, board
 ):
-    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
-    ledger = tmp_path / "docs" / "residual-findings.md"
-    ledger.parent.mkdir()
-    ledger.write_text(_long_ledger())
+    ledger = _long_ledger_file(tmp_path, monkeypatch, board)
     written = board.archive_ledger(ledger)
     assert len(written) > 2
     files = board.ledger_files(ledger)
@@ -343,10 +346,7 @@ def _check(board, monkeypatch, ledger, against=None, unchanged=False) -> int:
 def test_check_refuses_a_heading_in_two_archives_and_a_misnamed_one(
     tmp_path, monkeypatch, capsys, board
 ):
-    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
-    ledger = tmp_path / "docs" / "residual-findings.md"
-    ledger.parent.mkdir()
-    ledger.write_text(_long_ledger())
+    ledger = _long_ledger_file(tmp_path, monkeypatch, board)
     first, second = board.archive_ledger(ledger)[:2]
     assert _check(board, monkeypatch, ledger) == 0
     entry = "\n## R-3. Finding 3\n\nCopied.\n"
@@ -409,10 +409,7 @@ def test_check_against_a_revision_without_the_ledger_is_refused_not_read_as_empt
 def test_check_refuses_a_file_over_the_limit_and_archives_that_overlap(
     tmp_path, monkeypatch, capsys, board
 ):
-    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
-    ledger = tmp_path / "docs" / "residual-findings.md"
-    ledger.parent.mkdir()
-    ledger.write_text(_long_ledger())
+    ledger = _long_ledger_file(tmp_path, monkeypatch, board)
     board.archive_ledger(ledger)
     monkeypatch.setattr(board, "LEDGER_LIMIT", 12)
     assert _check(board, monkeypatch, ledger) == 1
@@ -429,10 +426,7 @@ def test_check_refuses_a_file_over_the_limit_and_archives_that_overlap(
 def test_the_working_file_archives_at_one_line_over_the_limit_and_not_at_it(
     tmp_path, monkeypatch, board
 ):
-    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
-    ledger = tmp_path / "docs" / "residual-findings.md"
-    ledger.parent.mkdir()
-    ledger.write_text(_long_ledger())
+    ledger = _long_ledger_file(tmp_path, monkeypatch, board)
     board.archive_ledger(ledger)
     assert len(board.ledger_entries(ledger.read_text())) > 1
     lines = ledger.read_text().count("\n")
