@@ -39,10 +39,8 @@ REBUILD = ("rebuild", "--actor", "a-person")
 
 def _unread(cfg: config.Config, root_id: str, *, beside: str = "2") -> str:
     """Track 1, which the tree files, in a playlist of a folder no write recorded.
-
     The playlist bears the name of the one a write filed track ``beside`` into, so
-    the check cannot tell whose it is: the case R-1991 names as not compared.
-    """
+    the check cannot tell whose it is: the case R-1991 names as not compared."""
     (playlist_name,) = {
         node.playlist_display
         for node in routing._tree_nodes(cfg, root_id)

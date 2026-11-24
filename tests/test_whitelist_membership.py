@@ -67,7 +67,6 @@ def test_the_content_allow_list_with_every_operation_enabled_is_exactly_four_col
 
 def test_the_bookkeeping_set_is_exactly_these_ten_columns():
     """The quietest widening, so the tightest pin: an entry is IGNORED when a write is judged.
-
     A count misses a swap that keeps the length at ten."""
     assert W.BOOKKEEPING_COLUMNS == frozenset({
         "ID", "UUID", "usn", "rb_local_usn", "rb_data_status", "rb_local_data_status",
@@ -100,7 +99,6 @@ def _called_name(node: ast.AST) -> str | None:
 
 def _audit_database_opens(tree: ast.AST) -> tuple[int, list[tuple[int, str]]]:
     """Count the constructor calls in one module and say what is wrong with each.
-
     A reference that is not a call (an alias, a ``partial``) is itself a problem, since
     its arguments are supplied where this walk cannot see."""
     names = {_CONSTRUCTOR}
@@ -133,7 +131,6 @@ def _audit_database_opens(tree: ast.AST) -> tuple[int, list[tuple[int, str]]]:
 
 def test_every_database_open_in_src_names_the_file_it_opens():
     """R-15's related half: ``db_dir`` is not the database, so ``path`` must name the file.
-
     With ``path`` empty the binding opens the configured live library, so a call passing
     ``db_dir`` alone reads live rows while appearing to read a copy. Every module is parsed,
     since a string of the constructor's name can be joined from pieces no text search finds."""

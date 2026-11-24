@@ -774,10 +774,8 @@ def test_the_acknowledgment_file_is_private_under_any_umask(cfg):
 
 def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
     """AE20 and R34: no flag, configuration key or environment variable satisfies it.
-
     Signatures, every module toggle on, and an environment read scan of the consult and the
-    mint, since a behavioural test would have to guess the variable name.
-    """
+    mint, since a behavioural test would have to guess the variable name."""
     from cratekit.core import profiles
 
     for function in (session.assert_gates, session.assert_backup_acknowledged):
@@ -1115,9 +1113,7 @@ def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp
 
 def test_the_tree_writers_reach_for_the_session_spine(cfg):
     """P5: they call ``assert_gates`` and ``assert_verified`` and pass ``analysis_roots``.
-
-    On the syntax tree, since a substring search passes on the module's own docstring.
-    """
+    On the syntax tree, since a substring search passes on the module's own docstring."""
     import importlib
 
     from tests.test_tree_registry import _called_names
@@ -1804,9 +1800,7 @@ SHARED_CAPTURE = "attached_capture"
 
 def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
     """Every function in ``src`` that takes a capture, with what it still owes, per function.
-
-    Unattributable spellings are returned, not passed; the shared function's body is no taker.
-    """
+    Unattributable spellings are returned, not passed; the shared function's body is no taker."""
     takers: dict[str, set[str]] = {}
     unreadable: list[str] = []
     for path in sorted(src.rglob("*.py")):

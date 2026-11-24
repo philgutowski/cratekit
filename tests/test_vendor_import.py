@@ -105,9 +105,7 @@ def test_no_dependency_specifier_names_the_vendored_project(pyproject):
 
 def _files_outside_dot_directories(root: Path):
     """Every file under ``root`` with no dot-named part, pruned while walking, links not followed.
-
-    So .venv, .git and the .claude worktrees, whole extra checkouts, are never read.
-    """
+    So .venv, .git and the .claude worktrees, whole extra checkouts, are never read."""
     for directory, subdirectories, files in os.walk(root):
         subdirectories[:] = [name for name in subdirectories if not name.startswith(".")]
         for name in files:
@@ -185,9 +183,7 @@ def test_the_atmos_client_credentials_are_empty():
 
 def test_no_module_in_the_vendored_tree_carries_a_credential_literal():
     """Any assignment or mapping entry named like a client credential is empty.
-
-    Stricter than the repository scan, which expects snake_case; upstream also uses camelCase.
-    """
+    Stricter than the repository scan, which expects snake_case; upstream also uses camelCase."""
     offenders: list[str] = []
     credential_name = re.compile(
         r"client_?(?:id|secret)|api_?key|access_?token|refresh_?token", re.IGNORECASE
@@ -239,10 +235,8 @@ def test_no_session_or_token_file_rode_along():
 
 def test_the_vendored_downloader_writes_no_tempo_tag():
     """R17: no Vorbis ``BPM`` comment, ID3 ``TBPM`` frame or MP4 ``tmpo`` atom, as upstream wrote.
-
     Each seeds a grid in rekordbox; the repository's own R17 guard sees only subscript
-    assignments, missing the ID3 call and the MP4 key.
-    """
+    assignments, missing the ID3 call and the MP4 key."""
     offenders: list[str] = []
 
     for source in _vendored_sources():
@@ -500,9 +494,7 @@ def test_a_move_lost_to_another_process_resolves_the_new_directory(tmp_path, mon
 
 def test_version_detection_does_not_read_a_nearby_pyproject():
     """Version detection never reads a nearby ``pyproject.toml``, which would raise at import.
-
-    Upstream walks three parents from its ``__file__``, one short of Cratekit's own.
-    """
+    Upstream walks three parents from its ``__file__``, one short of Cratekit's own."""
     tree = ast.parse((VENDORED_PACKAGE / "__init__.py").read_text(encoding="utf-8"))
     # Asserted over the syntax tree, since the patch's comment names the filename.
     literals = [

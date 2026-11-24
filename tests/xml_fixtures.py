@@ -66,10 +66,8 @@ def _ml_track(tid: int, name: str, *, analyzed: bool = False) -> list[str]:
 
 def _routing_xml(*, collision: bool = False) -> bytes:
     """A FRESH export with ROOT / BY GENRE / Deep House / High Energy, empty at the real indent.
-
     ``collision=True`` adds a COLLECTION TRACK named as the genre folder, the bait that
-    made the source system's splicers mis-anchor outside <PLAYLISTS>.
-    """
+    made the source system's splicers mis-anchor outside <PLAYLISTS>."""
     collection = _EMPTY_COLLECTION
     if collision:
         bait = 'Name="Deep House" Artist="Bait" Location="file://localhost/bait.flac"/>'

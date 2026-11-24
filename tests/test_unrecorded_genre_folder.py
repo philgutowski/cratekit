@@ -314,10 +314,8 @@ def test_a_leftover_beside_a_folder_a_write_made_again_is_named_as_not_compared(
     cfg, gates_pass, db, adopted_root
 ):
     """ROUND ONE: the record ties the renamed folder to Tech House, but its Low is bound elsewhere.
-
     A write made Tech House / Low again by name, so the leftover reads as a second node of a
-    bound destination, which :func:`namesakes` leaves alone; it is named, not read clean.
-    """
+    bound destination, which :func:`namesakes` leaves alone; it is named, not read clean."""
     _by_hand(db, adopted_root, {(ONE, LOW): ("1",), (TWO, LOW): ("1",)})
     _adopt(cfg, db, adopted_root, [(TWO, HIGH)])
     _rename(db, adopted_root, TWO)
