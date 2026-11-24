@@ -1694,6 +1694,7 @@ def test_a_streamed_row_is_excused_rather_than_stopping_the_run(cfg, recorded, e
     _music(cfg, ONE)
     references = _references(cfg, [_active(path, row) for row, path in recorded.items()])
     assert references.unnameable == (), "a non path row was called unnameable"
+    assert isinstance(references.not_a_path, tuple)
     assert sorted(references.not_a_path) == excused
     assert references.complete
     candidates.assert_complete(references)

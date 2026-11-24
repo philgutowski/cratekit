@@ -245,7 +245,7 @@ REGISTRY = "class Registry: ...\n"
             {"tagging": ["private cratekit.core.art._open"]},
             id="a-name-of-a-module-handed-over"),
     ])
-def test_a_private_name_crossing_a_package_fails_however_it_is_reached(modules, expected):
+def test_a_private_name_crossing_a_package_fails_by_each_listed_reach(modules, expected):
     assert _private(_tree(**modules)) == expected
 
 
