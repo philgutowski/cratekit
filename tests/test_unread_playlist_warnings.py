@@ -1,14 +1,11 @@
 """R-2020: route resort's gate and the rebuild's report name every playlist not compared.
 
-A playlist the after check could not tie to one destination
-(``ConvergenceReport.unidentified``, R-1991) is not a difference, so a
-rebuild clears a restored tree's flag over it and ``left_behind`` never
-counts it. Only ``crate converge`` named it, so the resort's gate read
-``left behind: N`` as the whole count over a playlist nothing read. Now the
-gate, the resort's drive and the rebuild's drive name each one, in the
-wording ``converge`` uses. Driven through ``cli.run`` over the disposable
-database ``tests/test_routing_workers.py`` builds; every expected name is
-asked of the shipped taxonomy. D1 applies.
+A playlist the after check could not tie to one destination (R-1991) is not a
+difference, so a rebuild clears a restored tree's flag over it and
+``left_behind`` never counts it; the resort's gate read ``left behind: N`` as
+the whole count. Now the gate, the resort's drive and the rebuild's drive name
+each one in ``converge``'s wording, driven through ``cli.run`` over
+``tests/test_routing_workers.py``'s disposable database. D1 applies.
 """
 
 from __future__ import annotations
@@ -23,41 +20,16 @@ from cratekit.cli import rebuild as rebuild_verb
 from cratekit.core import config, convergence, jobs, rb_writer
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild, routing_cli
+from tests import test_routing_workers as routing
 from tests._sync_builders import exited
-from tests.test_routing_workers import (
-    ARRIVED,
-    RESORT,
-    RESORT_GATE,
-    TREE_ID,
-    _approved_adds,
-    _drive,
-    _drive_once,
-    _enqueue_resort,
-    _fail_other_trees,
-    _fails,
-    _membership,
-    _platform_seams,
-    _queue_and_resume,
-    _release_process_locks,
-    _tree_nodes,
-    acknowledged,
-    configured,
-    leftover,
-    library,
-    native,
-    stocked,
-)
 
-__all__ = [
-    "_platform_seams",
-    "_release_process_locks",
-    "acknowledged",
-    "configured",
-    "leftover",
-    "library",
-    "native",
-    "stocked",
-]
+# The routing suite's fixtures and seams, by name so pytest finds them here.
+_platform_seams, _release_process_locks = routing._platform_seams, routing._release_process_locks
+acknowledged, configured, leftover = routing.acknowledged, routing.configured, routing.leftover
+library, native, stocked = routing.library, routing.native, routing.stocked
+
+ARRIVED, RESORT, TREE_ID = routing.ARRIVED, routing.RESORT, routing.TREE_ID
+RESORT_GATE = routing.RESORT_GATE
 
 #: A folder under the tree's root whose name declares no genre and that no write recorded.
 RENAMED = "Loud! Room"
@@ -68,17 +40,17 @@ REBUILD = ("rebuild", "--actor", "a-person")
 def _unread(cfg: config.Config, root_id: str, *, beside: str = "2") -> str:
     """Track 1, which the tree files, in a playlist of a folder no write recorded.
 
-    The playlist bears the name of the one a write filed track ``beside`` into,
-    read back from the database, so the check cannot tell whose it is: the
-    case R-1991 names as not compared.
+    The playlist bears the name of the one a write filed track ``beside`` into, so
+    the check cannot tell whose it is: the case R-1991 names as not compared.
     """
     (playlist_name,) = {
-        node.playlist_display for node in _tree_nodes(cfg, root_id) if beside in node.content_ids
+        node.playlist_display
+        for node in routing._tree_nodes(cfg, root_id)
+        if beside in node.content_ids
     }
     handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
     try:
-        root = handle.get_playlist(ID=root_id)
-        folder = rb_writer.ensure_folder(handle, RENAMED, root)
+        folder = rb_writer.ensure_folder(handle, RENAMED, handle.get_playlist(ID=root_id))
         playlist = rb_writer.ensure_playlist(handle, playlist_name, folder)
         rb_writer.add_memberships(handle, playlist, ["1"])
         handle.session.commit()
@@ -97,10 +69,28 @@ def _left(envelope: dict) -> list[dict]:
 
 def _offered() -> dict:
     """What the resort's gate shows on its first ask, which ends in a refusal."""
-    code, refused = _drive_once([*RESORT])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(routing._drive_once([*RESORT]), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == RESORT_GATE
     return refused["cause"]["detail"]["shown"]
+
+
+def _resumed(argv) -> dict:
+    """``argv`` queued and its job resumed, which must exit OK."""
+    _job_id, code, done = routing._queue_and_resume(argv)
+    assert code == int(ExitCode.OK), done
+    return done
+
+
+def _says_what_it_left(done: dict) -> None:
+    (left,) = _left(done)
+    assert ARRIVED in left["message"] and "1 membership" in left["message"], left
+
+
+def _enqueued(handler_key: str, payload: dict, item_ids: tuple[str, ...]) -> jobs.Job:
+    with jobs.open_store() as store:
+        return jobs.enqueue(
+            store, handler_key=handler_key, payload=payload, cfg=config.load(), item_ids=item_ids
+        )
 
 
 # 1. The resort's gate
@@ -118,7 +108,7 @@ def test_the_resort_gate_names_a_playlist_not_compared_beside_its_left_behind_co
     assert said.endswith(rebuild.UNIDENTIFIED), said
     assert "1 playlist(s)" in said, said
     # Only asking: nothing was written.
-    assert _membership(acknowledged, native) == {"1", "2"}
+    assert routing._membership(acknowledged, native) == {"1", "2"}
 
 
 def test_the_resort_gate_over_nothing_unread_says_nothing_of_it(acknowledged, native, leftover):
@@ -133,7 +123,7 @@ def test_the_resumes_gate_shows_the_playlist_the_plan_could_not_read(
 ):
     """Frozen with the facts, so a person answering later reads what the plan read."""
     unread = _unread(acknowledged, native)
-    job_id = exited(_drive([*RESORT]))["data"]["job_id"]
+    job_id = exited(routing._drive([*RESORT]))["data"]["job_id"]
     with jobs.open_store() as store:
         facts = jobs.get(store, job_id).payload[routing_cli.RESORT_FACTS_KEY]
     assert facts["unidentified"] == [unread], facts
@@ -156,35 +146,28 @@ def test_a_job_an_older_build_froze_says_its_plan_did_not_record_them(
     _unread(acknowledged, native)
     # The facts the base froze over this library: no ``unidentified`` key at all.
     facts = {"left_alone": [], "left_behind": 1, "not_derived": ["vocal"], "trees": [TREE_ID]}
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key="route.resort",
-            payload={
-                routing_cli.RESORT_ADDS_KEY: _approved_adds(),
-                routing_cli.RESORT_FACTS_KEY: facts,
-            },
-            cfg=config.load(),
-            item_ids=(TREE_ID,),
-        )
-    code, refused = _drive_once([*RESORT, "--job", job.job_id])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    payload = {
+        routing_cli.RESORT_ADDS_KEY: routing._approved_adds(), routing_cli.RESORT_FACTS_KEY: facts
+    }
+    job = _enqueued("route.resort", payload, (TREE_ID,))
+    resumed = routing._drive_once([*RESORT, "--job", job.job_id])
+    refused = exited(resumed, ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["playlists not compared"] == [routing_cli.UNRECORDED_UNREAD], shown
     # A plan that recorded the list and found nothing shows nothing.
-    assert routing_cli._resort_facts([], {**facts, "unidentified": []})[
-        "playlists not compared"
-    ] == []
+    recorded = routing_cli._resort_facts([], {**facts, "unidentified": []})
+    assert recorded["playlists not compared"] == []
 
 
 def test_every_envelope_after_the_gate_names_it(acknowledged, native, leftover):
     """Queued, declined and nothing to add alike: an answer over a gate is not complete."""
     unread = _unread(acknowledged, native)
-    (queued,) = _named(exited(_drive([*RESORT])))
+    (queued,) = _named(exited(routing._drive([*RESORT])))
     assert unread in queued["message"]
-    run_id = _drive_once([*RESORT])[1]["run_id"]
-    exited(_drive_once(["run", "decide", run_id, RESORT_GATE, "abort", "--actor", "a-person"]))
-    declined = exited(_drive_once(["--run", run_id, *RESORT]))
+    run_id = routing._drive_once([*RESORT])[1]["run_id"]
+    decide = ["run", "decide", run_id, RESORT_GATE, "abort", "--actor", "a-person"]
+    exited(routing._drive_once(decide))
+    declined = exited(routing._drive_once(["--run", run_id, *RESORT]))
     assert declined["data"]["state"] == "declined"
     (said,) = _named(declined)
     assert unread in said["message"]
@@ -196,18 +179,15 @@ def test_every_envelope_after_the_gate_names_it(acknowledged, native, leftover):
 def test_the_resort_drive_names_the_playlist_beside_what_it_left(acknowledged, native, leftover):
     """The after check's own reading, carried through the item report."""
     unread = _unread(acknowledged, native)
-    _, code, done = _queue_and_resume(RESORT)
-    assert code == int(ExitCode.OK), done
-    assert _membership(acknowledged, native) == {"1", "2"}
-    (left,) = _left(done)
-    assert ARRIVED in left["message"] and "1 membership" in left["message"], left
+    done = _resumed(RESORT)
+    assert routing._membership(acknowledged, native) == {"1", "2"}
+    _says_what_it_left(done)
     (named,) = _named(done)
     assert named["message"] == rebuild.unidentified_message([unread]), named
 
 
 def test_a_resort_drive_over_nothing_unread_says_nothing_of_it(acknowledged, native, leftover):
-    _, code, done = _queue_and_resume(RESORT)
-    assert code == int(ExitCode.OK), done
+    done = _resumed(RESORT)
     assert len(_left(done)) == 1
     assert _named(done) == []
 
@@ -217,9 +197,9 @@ def test_a_resort_that_failed_part_way_names_the_playlist_as_a_step(
 ):
     """The other exit: a refusal carries no warnings, so it is a step on the cause."""
     unread = _unread(acknowledged, native)
-    job = _enqueue_resort(TREE_ID, "second_tree")
-    _fail_other_trees(monkeypatch)
-    refused = _fails(_drive([*RESORT, "--job", job.job_id]))
+    job = routing._enqueue_resort(TREE_ID, "second_tree")
+    routing._fail_other_trees(monkeypatch)
+    refused = routing._fails(routing._drive([*RESORT, "--job", job.job_id]))
     steps = list(refused["cause"]["remediation"]["steps"])
     assert rebuild.unidentified_message([unread]) in steps, steps
     assert any(ARRIVED in step for step in steps), steps
@@ -231,8 +211,7 @@ def test_a_resort_that_failed_part_way_names_the_playlist_as_a_step(
 @pytest.fixture
 def filed(acknowledged, native) -> str:
     """A tree a rebuild filed, then a playlist beside track 1's own that no write recorded."""
-    _, code, done = _queue_and_resume(REBUILD)
-    assert code == int(ExitCode.OK), done
+    _resumed(REBUILD)
     return _unread(acknowledged, native, beside="1")
 
 
@@ -242,8 +221,7 @@ def test_a_rebuild_over_a_restored_tree_clears_its_flag_and_names_the_playlist(
     """THE BRIEF'S THIRD SCENARIO: not a difference, so the flag clears, and it is said."""
     convergence.mark_unconverged(acknowledged, [TREE_ID], reason="a restore")
     assert convergence.read(acknowledged).tree(TREE_ID).blocking
-    _, code, done = _queue_and_resume(REBUILD)
-    assert code == int(ExitCode.OK), done
+    done = _resumed(REBUILD)
     assert not convergence.read(acknowledged).tree(TREE_ID).blocking
     (named,) = _named(done)
     assert named["message"] == rebuild.unidentified_message([filed]), named
@@ -256,18 +234,15 @@ def test_a_rebuild_names_what_it_left_beside_what_it_did_not_compare(
     """R-635: the rebuild says what it left, as the resort does, and the flag stays."""
     unread = _unread(acknowledged, native)
     convergence.mark_unconverged(acknowledged, [TREE_ID], reason="a restore")
-    _, code, done = _queue_and_resume(REBUILD)
-    assert code == int(ExitCode.OK), done
+    done = _resumed(REBUILD)
     assert convergence.read(acknowledged).tree(TREE_ID).blocking
-    (left,) = _left(done)
-    assert ARRIVED in left["message"] and "1 membership" in left["message"], left
+    _says_what_it_left(done)
     (named,) = _named(done)
     assert named["message"] == rebuild.unidentified_message([unread]), named
 
 
 def test_a_rebuild_over_nothing_unread_or_left_says_nothing_of_either(acknowledged, native):
-    _, code, done = _queue_and_resume(REBUILD)
-    assert code == int(ExitCode.OK), done
+    done = _resumed(REBUILD)
     assert _named(done) == [] and _left(done) == []
 
 
@@ -276,16 +251,9 @@ def test_a_rebuild_that_failed_part_way_names_what_the_finished_tree_found_as_st
 ):
     """The rebuild's other exit, new with R-2020: a refusal carries the sentences as steps."""
     unread = _unread(acknowledged, native)
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key="rebuild",
-            payload={"tree": None, "actor": "a-person"},
-            cfg=config.load(),
-            item_ids=(TREE_ID, "second_tree"),
-        )
-    _fail_other_trees(monkeypatch)
-    refused = _fails(_drive([*REBUILD, "--job", job.job_id]))
+    job = _enqueued("rebuild", {"tree": None, "actor": "a-person"}, (TREE_ID, "second_tree"))
+    routing._fail_other_trees(monkeypatch)
+    refused = routing._fails(routing._drive([*REBUILD, "--job", job.job_id]))
     with jobs.open_store() as store:
         stored = jobs.get(store, job.job_id).cause
     steps = list(refused["cause"]["remediation"]["steps"])
@@ -299,7 +267,7 @@ def test_a_rebuild_that_failed_part_way_names_what_the_finished_tree_found_as_st
 def test_the_rebuild_worker_reports_its_after_check(acknowledged, native, leftover):
     """The item report is the only way back from a worker to its resume (R-443)."""
     unread = _unread(acknowledged, native)
-    job_id, code, done = _queue_and_resume(REBUILD)
+    job_id, code, done = routing._queue_and_resume(REBUILD)
     assert code == int(ExitCode.OK), done
     (report,) = rebuild_verb.REBUILD_ARTIFACTS.committed(acknowledged, job_id)
     assert report["tree_id"] == TREE_ID
@@ -316,9 +284,8 @@ def test_the_rebuild_worker_reports_its_after_check(acknowledged, native, leftov
 
 def test_converge_and_the_writes_share_one_wording(filed):
     """The sentence a person reads after a playlist not compared is the same everywhere."""
-    unread = filed
     (check,) = converge_cli.converge(_ConvergeCtx())["data"]["checks"]
-    assert f"not-compared:{unread}" in check["detail"], check
+    assert f"not-compared:{filed}" in check["detail"], check
     assert check["status"] == converge_cli.NOT_COMPARED, check
     assert check["detail"].endswith(rebuild.UNIDENTIFIED), check
 
@@ -343,8 +310,7 @@ def test_the_message_names_every_playlist_uncapped_and_sorted():
     assert rebuild.unidentified_warnings([]) == ()
     (warning,) = rebuild.unidentified_warnings(["F/P"])
     assert warning == {
-        "code": "playlist-not-compared",
-        "message": rebuild.unidentified_message(["F/P"]),
+        "code": "playlist-not-compared", "message": rebuild.unidentified_message(["F/P"])
     }
 
 
@@ -371,4 +337,3 @@ def test_every_item_report_of_a_job_is_read_back():
     assert steps == (warning["message"],)
     # A report an older build wrote, with no such key, adds nothing and breaks nothing.
     assert rebuild.after_messages([{"tree_id": "old", "left_behind": []}], listed_in="x") == ((), ())
-
