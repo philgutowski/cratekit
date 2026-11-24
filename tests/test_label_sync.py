@@ -787,21 +787,17 @@ def test_a_word_outside_the_set_is_asked_again_and_the_answers_before_it_are_sav
     assert "answer" not in record(installed)["labels"]["beta-works"]
 
 
-def test_a_pick_outside_the_numbers_is_asked_again(installed, monkeypatch):
+@pytest.mark.parametrize("wrong, then, taken", [
+    pytest.param("9", "1 3", ["r3", "r1"], id="outside-the-numbers"),
+    # A superscript two is a digit to ``str.isdigit`` and not a number to ``int``.
+    pytest.param("²", "2", ["r2"], id="a-digit-that-is-not-a-number"),
+])
+def test_a_pick_outside_the_numbers_is_asked_again(installed, monkeypatch, wrong, then, taken):
     three_new(monkeypatch)
-    terminal = script(monkeypatch, "pick", "9", "1 3")
+    terminal = script(monkeypatch, "pick", wrong, then)
     walked()
-    assert "9 is not a release number between 1 and 3" in terminal.shown
-    assert record(installed)["answers"][0]["taken"] == ["r3", "r1"]
-
-
-def test_a_pick_of_a_digit_that_is_not_a_number_is_asked_again(installed, monkeypatch):
-    """A superscript two is a digit to ``str.isdigit`` and not a number to ``int``."""
-    three_new(monkeypatch)
-    terminal = script(monkeypatch, "pick", "²", "2")
-    walked()
-    assert "² is not a release number between 1 and 3" in terminal.shown
-    assert record(installed)["answers"][0]["taken"] == ["r2"]
+    assert f"{wrong} is not a release number between 1 and 3" in terminal.shown
+    assert record(installed)["answers"][0]["taken"] == taken
 
 
 def test_the_prompt_goes_through_the_one_allowlisted_reader_and_the_verb_reads_no_stdin():
@@ -1173,22 +1169,22 @@ def test_next_label_whose_listing_fails_reports_the_failure_in_one_check(
     assert record(installed)["labels"] == {}
 
 
-@pytest.mark.parametrize("name", ["", "   "])
-def test_next_label_with_an_empty_name_is_refused_as_no_name_given(installed, monkeypatch, name):
-    fake = two_labels(monkeypatch)
-    envelope = refused_with("review-selection-invalid", "--next", "--label", name)
-    assert "an empty name names none" in envelope["cause"]["message"]
-    assert fake.asked_for == []
-    assert record(installed)["labels"] == {}
-
-
-@pytest.mark.parametrize("name", ["Nobody Works", "nobody-works"])
-def test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing(
-    installed, monkeypatch, name
+@pytest.mark.parametrize("name, reason, said", [
+    pytest.param("", "review-selection-invalid", "an empty name names none", id="empty"),
+    pytest.param("   ", "review-selection-invalid", "an empty name names none", id="blank"),
+    pytest.param(
+        "Nobody Works", "label-unknown", "no favourite label is named 'Nobody Works'", id="by-name"
+    ),
+    pytest.param(
+        "nobody-works", "label-unknown", "no favourite label is named 'nobody-works'", id="by-id"
+    ),
+])
+def test_next_label_for_no_label_followed_is_refused_before_any_listing(
+    installed, monkeypatch, name, reason, said
 ):
     fake = two_labels(monkeypatch)
-    envelope = refused_with("label-unknown", "--next", "--label", name)
-    assert f"no favourite label is named {name!r}" in envelope["cause"]["message"]
+    envelope = refused_with(reason, "--next", "--label", name)
+    assert said in envelope["cause"]["message"]
     assert fake.asked_for == []
     assert record(installed)["labels"] == {}
 

@@ -169,10 +169,16 @@ def test_every_answer_points_back_into_a_group_that_still_stands(installed, monk
     )
 
 
-def test_a_stop_on_the_last_label_of_its_genre_points_into_no_group(installed, monkeypatch):
+@pytest.mark.parametrize("asked, word, label", [
+    pytest.param(("--genre", "Rominimal"), "stop", "Beta Works", id="stop-on-the-last-label"),
+    pytest.param(("--label", "Gamma Works"), "not-now", "Gamma Works", id="label-of-no-genre"),
+])
+def test_an_answer_that_leaves_no_group_standing_points_into_no_group(
+    installed, monkeypatch, asked, word, label
+):
     grouped(monkeypatch)
-    next_ok("--genre", "Rominimal")
-    code, envelope = sync("--answer", "stop", "--label", "Beta Works")
+    next_ok(*asked)
+    code, envelope = sync("--answer", word, "--label", label)
     assert code == int(ExitCode.OK), envelope
     (said,) = checks(envelope, "next")
     assert said["detail"] == "the next question: crate label sync --next"
@@ -193,15 +199,6 @@ def test_the_resume_hint_quotes_a_genre_for_the_shell(installed, monkeypatch):
     assert run_line["detail"].endswith(
         "run label sync --genre 'Rock'\"'\"'n Roll' again to go on"
     )
-
-
-def test_an_answer_for_a_label_of_no_genre_points_into_no_group(installed, monkeypatch):
-    grouped(monkeypatch)
-    next_ok("--label", "Gamma Works")
-    code, envelope = sync("--answer", "not-now", "--label", "Gamma Works")
-    assert code == int(ExitCode.OK), envelope
-    (said,) = checks(envelope, "next")
-    assert said["detail"] == "the next question: crate label sync --next"
 
 
 def walked_with(*argv: str) -> list[str]:
