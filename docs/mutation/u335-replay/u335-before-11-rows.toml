@@ -1,0 +1,2595 @@
+name = "u335-before-11"
+pass_kind = "replay"
+
+[[rows]]
+id = "u260.F1_fetch_never_answers_from_memory"
+source = { table = "u260.json", id = "F1_fetch_never_answers_from_memory" }
+description = "remembering: never look the address up, so every file asks the host again, the behaviour before the unit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''
+            data = held.get(url)
+            if data is not None:
+                held.move_to_end(url)
+                return data
+        data = fetch_image(url)'''
+new = '''
+            data = None
+            if data is not None:
+                held.move_to_end(url)
+                return data
+        data = fetch_image(url)'''
+
+[[rows]]
+id = "u260.F5_binder_builds_per_call"
+source = { table = "u260.json", id = "F5_binder_builds_per_call" }
+description = "for_images: build a fresh remembering fetch on every call, so the worker's per item binder call forgets every picture"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''
+    if not _images:
+        _images.append(remembering(default_image_fetch(), admit=art.decodes))
+    return _images[0]'''
+new = '    return remembering(default_image_fetch(), admit=art.decodes)'
+
+[[rows]]
+id = "u281.W2_searcher_ignores_the_handed_count"
+source = { table = "u281.json", id = "W2_searcher_ignores_the_handed_count" }
+description = "catalogue_searcher: build its own count whatever it is handed, so a worker's per file searcher starts again every file"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '    counted = Refusals() if refusals is None else refusals'
+new = '    counted = Refusals()'
+
+[[rows]]
+id = "u281.W5_run_never_changes"
+source = { table = "u281.json", id = "W5_run_never_changes" }
+description = "for_run: keep the first run's count for every later run, so the next sweep never asks a stopped catalogue"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '    if not _run_refusals or _run_refusals[0][0] != run:'
+new = '    if not _run_refusals:'
+
+[[rows]]
+id = "u282.D2_shop_decline_gives_way"
+source = { table = "u282.json", id = "D2_shop_decline_gives_way" }
+description = "search: a record shop's decline gives way too, so an explicit Beatport first walk asks Discogs after Beatport's unmapped genre"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '            if resolved.genre is None and source not in _SEARCHES:'
+new = '            if resolved.genre is None:'
+
+[[rows]]
+id = "u282.P1_no_picture_question"
+source = { table = "u282.json", id = "P1_no_picture_question" }
+description = "_pictured: no picture question is carried, so a file Discogs tagged gets no cover (merge blocker 5)"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '''
+    if not later:
+        return lent'''
+new = '''
+    if True:
+        return lent'''
+
+[[rows]]
+id = "u282.P3_answer_not_folded"
+source = { table = "u282.json", id = "P3_answer_not_folded" }
+description = "_pictured: the picture's answer is not folded into the record, so Beatport stays not-asked after it was asked"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '            answers = [entry if said.source == source else said for said in answers]'
+new = '            answers = [said for said in answers]'
+
+[[rows]]
+id = "u282.P5_match_names_no_picture"
+source = { table = "u282.json", id = "P5_match_names_no_picture" }
+description = "_pictured: a matched row's cover is not taken"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '''
+                    art_url=outcome.art_url,
+                    art_source=source,'''
+new = '''
+                    art_url="",
+                    art_source="",'''
+
+[[rows]]
+id = "u282.R1_rejection_raised_at_once"
+source = { table = "u282.json", id = "R1_rejection_raised_at_once" }
+description = "search: a rejected token is raised at once, so Beatport is never asked (round one's BLOCKING)"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '''
+                    rejected = refusal
+                    passed.append'''
+new = '''
+                    raise refusal
+                    passed.append'''
+
+[[rows]]
+id = "u282.R4_rejection_reads_as_no_token"
+source = { table = "u282.json", id = "R4_rejection_reads_as_no_token" }
+description = "search: a rejected token is recorded with the no token note, so the sweep counts it as never recorded"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '                        NotAsked(DISCOGS, f"{DISCOGS_TOKEN_REFUSED}{refusal.cause.message}")'
+new = '                        NotAsked(DISCOGS, DISCOGS_NO_TOKEN)'
+
+[[rows]]
+id = "u284.S1_sweep_keeps_no_record"
+source = { table = "u284.json", id = "S1_sweep_keeps_no_record" }
+description = "searchers.for_run: the sweep's run count keeps no record, so no date is ever known"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '        _run_refusals[:] = [(run, Refusals(record=True))]'
+new = '        _run_refusals[:] = [(run, Refusals())]'
+
+[[rows]]
+id = "u284.S5_refusal_said_as_outage"
+source = { table = "u284.json", id = "S5_refusal_said_as_outage" }
+description = "searchers._decide: a refusal by every catalogue raises the outage refusal, network step first and no token step"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''
+    if len(blocked) == len(outcomes):
+        raise _refused_by_all'''
+new = '''
+    if False:
+        raise _refused_by_all'''
+
+[[rows]]
+id = "u284.S7_token_step_dropped"
+source = { table = "u284.json", id = "S7_token_step_dropped" }
+description = "searchers._refused_by_all: no token step when Discogs went unasked"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''
+    if unasked:
+        steps.append(
+            f"record a Discogs token'''
+new = '''
+    if False:
+        steps.append(
+            f"record a Discogs token'''
+
+[[rows]]
+id = "u284.S8_refusal_not_retryable"
+source = { table = "u284.json", id = "S8_refusal_not_retryable" }
+description = "searchers._refused_by_all: the refusal is not retryable, so a resumed sweep cannot ask again"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''
+        retryable=True,
+        origin=("tagging", "searchers"),
+        detail={
+            "sources": [outcome.source for outcome in outcomes],
+            "answers": [outcome.answer.value for outcome in outcomes],
+            "notes": [outcome.note for outcome in outcomes],
+            REFUSED_DETAIL: since,'''
+new = '''
+        retryable=False,
+        origin=("tagging", "searchers"),
+        detail={
+            "sources": [outcome.source for outcome in outcomes],
+            "answers": [outcome.answer.value for outcome in outcomes],
+            "notes": [outcome.note for outcome in outcomes],
+            REFUSED_DETAIL: since,'''
+
+[[rows]]
+id = "u284.S9_rejected_token_names_any_shop"
+source = { table = "u284.json", id = "S9_rejected_token_names_any_shop" }
+description = "searchers._beside_refusals: a rejected token names the shops as refusing whatever they answered"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '    if not outcomes or any(outcome.answer is not Answer.BLOCKED for outcome in outcomes):'
+new = '    if not outcomes:'
+
+[[rows]]
+id = "u289.S1_question_unused"
+source = { table = "u289.json", id = "S1_question_unused" }
+description = "catalogue_searcher: ask every source the file's own text, the head included, as main did"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '        hit = answer(asked.artist, title, asked.title)'
+new = '        hit = answer(asked.artist, title, title)'
+
+[[rows]]
+id = "u289.S2_asked_not_carried"
+source = { table = "u289.json", id = "S2_asked_not_carried" }
+description = "catalogue_searcher: the hit does not carry the question, so the record names nothing"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '        return None if hit is None else replace(hit, asked=asked)'
+new = '        return hit'
+
+[[rows]]
+id = "u289.S5_shop_asked_head"
+source = { table = "u289.json", id = "S5_shop_asked_head" }
+description = "shop: the record shops are sent no question, so their free text carries the head"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track'
+new = '            artist, title, fetch=touch, pacer=pacer, declared=declared'
+
+[[rows]]
+id = "u289.S6_picture_asked_head"
+source = { table = "u289.json", id = "S6_picture_asked_head" }
+description = "_pictured: the picture's question to a record shop after a Discogs genre carries the head"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+        for source in later:
+            outcome = shop(source, artist, title, track)'''
+new = '''
+        for source in later:
+            outcome = shop(source, artist, title, title)'''
+
+[[rows]]
+id = "u306.S1_shop_query"
+source = { table = "u306.json", id = "S1_shop_query" }
+description = "searchers.catalogue_searcher: hand the shops a query builder that does not escape, so every Beatport, Traxsource and Bandcamp URL carries raw spaces and ampersands"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track, query=_query'
+new = '            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track, query=lambda *parts: " ".join(parts)'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R13_query_unescaped"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R13_query_unescaped" }
+description = "An unescaped query truncates at the first ampersand, so a different search is reported as this track's miss"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py"]
+old = '    return quote_plus(f"{artist} {title}".strip())'
+new = '    return f"{artist} {title}".strip()'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R5_bare_alias_lookup"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R5_bare_alias_lookup" }
+description = "The defect the document review found: hand roll the resolution out of tagging_alias instead of routing.suggest_tag, which loses the sub display and every declared refusal"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py"]
+old = '''
+    suggestion = routing.suggest_tag(declared, outcome.source_genre)
+    tag = suggestion.tag
+    if suggestion.declined or not tag or declared.is_too_coarse_as_source(tag):
+        tag = None'''
+new = '''
+    hit = declared.tagging_alias(outcome.source_genre.casefold())
+    tag = declared.bucket(hit[0]).display if hit is not None else None'''
+
+[[rows]]
+id = "u85-b.B9_image_fetch_paced"
+source = { table = "u85-b.json", id = "B9_image_fetch_paced" }
+description = "The image fetch skips the pace wait, so a folder opens with a burst of picture requests"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py"]
+old = '''
+    def fetch_image(url: str) -> bytes | None:
+        pacer.wait()
+'''
+new = '''
+    def fetch_image(url: str) -> bytes | None:
+'''
+
+[[rows]]
+id = "r1950.S01_apply_read_back_unchecked"
+source = { table = "r1950.json", id = "S01_apply_read_back_unchecked" }
+description = "second.apply: drop the read back compare, so a write that did not take is counted read back and the verb reports a clean run"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '        if after is None or after != (item.genre, item.wanted):'
+new = '        if after is None:'
+
+[[rows]]
+id = "r1950.S03_removed_membership_chosen"
+source = { table = "r1950.json", id = "S03_removed_membership_chosen" }
+description = "playlist_members: count a removed membership, so a track rekordbox took out of the playlist is written"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''
+                for song in db.get_playlist_songs(PlaylistID=str(found[0].ID))
+                if not rb_writer.membership_removed(song)
+'''
+new = '''
+                for song in db.get_playlist_songs(PlaylistID=str(found[0].ID))
+'''
+
+[[rows]]
+id = "r1950.S04_removed_node_in_tree"
+source = { table = "r1950.json", id = "S04_removed_node_in_tree" }
+description = "playlist_members: read removed playlists as the tree, so a deleted playlist's tracks are chosen"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '    nodes = {str(node.ID): node for node in db.get_playlist() if not rb_writer.node_removed(node)}'
+new = '    nodes = {str(node.ID): node for node in db.get_playlist()}'
+
+[[rows]]
+id = "r1950.S05_two_nodes_first_taken"
+source = { table = "r1950.json", id = "S05_two_nodes_first_taken" }
+description = "playlist_members: drop the refusal of two playlists at one path, so the first is chosen and rows nobody named are written"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''
+    if len(found) > 1:
+        raise _no_playlist(path, f"{len(found)} nodes answer to it")'''
+new = '''
+    if False:
+        raise _no_playlist(path, f"{len(found)} nodes answer to it")'''
+
+[[rows]]
+id = "r1950.S06_parent_cycle_unguarded"
+source = { table = "r1950.json", id = "S06_parent_cycle_unguarded" }
+description = "playlist_members: drop the parent cycle guard, so a cycle in the tree recurses until Python stops it"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '        if above is None or parent in seen:'
+new = '        if above is None:'
+
+[[rows]]
+id = "r1950.S07_plan_genre_unchecked"
+source = { table = "r1950.json", id = "S07_plan_genre_unchecked" }
+description = "second.plan: drop its own genre check, so a direct caller plans a second genre that files nowhere"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second_guards.py", "tests/test_tag_second.py"]
+old = '''
+    if wanted:
+        assert_genre_files(declared, wanted)'''
+new = '''
+    if False:
+        assert_genre_files(declared, wanted)'''
+
+[[rows]]
+id = "u340.R21_verb_same_folder"
+source = { table = "u340.json", id = "R21_verb_same_folder" }
+description = "tag second _reason: drop the same folder outcome, so a second genre naming the file's own folder is written"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second.py"]
+old = '''
+    if routing.second_bucket(declared, file_genre, wanted) is None:
+        return SAME_FOLDER'''
+new = '''
+    if False:
+        return SAME_FOLDER'''
+
+[[rows]]
+id = "u340.R23_verb_moved"
+source = { table = "u340.json", id = "R23_verb_moved" }
+description = "tag second apply: write a file that changed since the plan"
+file = "src/cratekit/tagging/second.py"
+surface = "user"
+tests = ["tests/test_tag_second.py"]
+old = '        if now is None or now != (item.genre, item.current):'
+new = '        if now is None:'
+
+[[rows]]
+id = "u281.S1_beatport_reads_no_refusal"
+source = { table = "u281.json", id = "S1_beatport_reads_no_refusal" }
+description = "_search_beatport: drop the shared refusal check, so a 403 is unreachable and a 200 challenge a parse break, as before the card"
+file = "src/cratekit/tagging/shops.py"
+surface = "user"
+moved = "Anchored where u306-replay-after-a.json replayed it: the same text, now in src/cratekit/tagging/shops.py, was in src/cratekit/tagging/searchers.py"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py"]
+old = '''
+    tracks = None if page.text is None else _beatport_tracks(page.text)
+    if tracks is None:
+        refused = unread_outcome(BEATPORT, page)
+        if refused is not None:
+            return refused
+        return SourceOutcome('''
+new = '''
+    if page.text is None:
+        return SourceOutcome(BEATPORT, Answer.UNREACHABLE, note=page.note)
+    tracks = _beatport_tracks(page.text)
+    if tracks is None:
+        return SourceOutcome('''
+
+[[rows]]
+id = "u114.M10_file_has_genre"
+source = { table = "u114.json", id = "M10_file_has_genre" }
+description = "A row whose file carries a genre is offered a suggestion instead of being left to tag rows"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        if word:
+            counts[FILE_HAS_GENRE] += 1
+            # IT VOTES WITH ITS FILE'S WORD. The row lags its file, which is
+            # what ``tag rows`` repairs, and the file is the newer of the two.
+            live[track.content_id].genre = word
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "u114.M11_file_word_votes"
+source = { table = "u114.json", id = "M11_file_word_votes" }
+description = "A row whose file carries a genre its row lacks no longer votes with the file's word"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+            live[track.content_id].genre = word
+'''
+new = ''
+
+[[rows]]
+id = "u114.M12_below_band"
+source = { table = "u114.json", id = "M12_below_band" }
+description = "The band threshold is ignored and every suggestion with a band is written"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        elif not _at_or_above(earned, band):'
+new = '        elif not _at_or_above(earned, LOW):'
+
+[[rows]]
+id = "u114.M13_band_order"
+source = { table = "u114.json", id = "M13_band_order" }
+description = "The band comparison is reversed, so a weaker band passes a stronger threshold"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    return BANDS.index(band) <= BANDS.index(least)'
+new = '    return BANDS.index(band) >= BANDS.index(least)'
+
+[[rows]]
+id = "u114.M14_genre_unknown"
+source = { table = "u114.json", id = "M14_genre_unknown" }
+description = "A genre with no lookup row is planned as a write with an empty identifier"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+                replace(item, action=LEAVE, reason=GENRE_UNKNOWN)
+                if genre_id is None
+                else replace(item, genre_id=genre_id)'''
+new = '                replace(item, genre_id=genre_id or "")'
+
+[[rows]]
+id = "u114.M15_file_moved"
+source = { table = "u114.json", id = "M15_file_moved" }
+description = "A file that carries a genre by the time the write reaches it is written over"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if word or outcome != rows.FILE_BLANK:'
+new = '        if outcome == rows.FILE_UNREADABLE:'
+
+[[rows]]
+id = "u114.M16_file_read_back"
+source = { table = "u114.json", id = "M16_file_read_back" }
+description = "A file is not read back after the write, so its row is written whatever the file holds"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        if rows._file_word(target)[0] != item.genre:
+            wrong.append(item.content_id)
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "u114.M17_rows_follow_files"
+source = { table = "u114.json", id = "M17_rows_follow_files" }
+description = "Every planned row is written, the ones whose file did not take the genre included"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        if item.content_id in wanted
+'''
+new = ''
+
+[[rows]]
+id = "u114.M1_suggestable_routes_only"
+source = { table = "u114.json", id = "M1_suggestable_routes_only" }
+description = "suggestable accepts any word adoption routes, a keyword or catch all placement included, so Dance is suggested"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    return disposition is adopt_scan.Disposition.ROUTE and declared.named_folder(word) is not None'
+new = '    return disposition is adopt_scan.Disposition.ROUTE'
+
+[[rows]]
+id = "u114.M24_retry_unread"
+source = { table = "u114.json", id = "M24_retry_unread" }
+description = "A catalogue that could not be read is asked again, the behaviour before the review"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if first.said != DECLINED or first.source_genre:'
+new = '        if first.said == MATCHED or first.source_genre:'
+
+[[rows]]
+id = "u114.M25_settled_not_asked"
+source = { table = "u114.json", id = "M25_settled_not_asked" }
+description = "A row held out or picked is looked up anyway"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if catalogue is not None and not settled_by_person:'
+new = '        if catalogue is not None:'
+
+[[rows]]
+id = "u114.M4_split"
+source = { table = "u114.json", id = "M4_split" }
+description = "A two way tie at the top is no longer a split and the first tied genre becomes the default"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    if len(tied) > 1:'
+new = '    if len(tied) > 2:'
+
+[[rows]]
+id = "u114.M6_folder_weight"
+source = { table = "u114.json", id = "M6_folder_weight" }
+description = "A folder neighbour votes at the artist's weight"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        weights[other] = FOLDER_WEIGHT'
+new = '        weights[other] = ARTIST_WEIGHT'
+
+[[rows]]
+id = "u114.M7_votes_once"
+source = { table = "u114.json", id = "M7_votes_once" }
+description = "A neighbour by the artist in the same folder votes twice, its weights added"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        weights[other] = max(weights.get(other, 0), ARTIST_WEIGHT)'
+new = '        weights[other] = weights.get(other, 0) + ARTIST_WEIGHT'
+
+[[rows]]
+id = "u114.M9_catalogue_declared"
+source = { table = "u114.json", id = "M9_catalogue_declared" }
+description = "A catalogue answer is a vote whether or not the taxonomy declares it"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        and suggestable(declared, asked.genre)
+'''
+new = ''
+
+[[rows]]
+id = "u244.M03_kept_passed_over_reasked"
+source = { table = "u244.json", id = "M03_kept_passed_over_reasked" }
+description = "KeptCatalogue.answer: keep the day's answer that passed over Discogs after a token is recorded, round two's B2"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if kept is not None and not self._askable_now(kept):'
+new = '        if kept is not None:'
+
+[[rows]]
+id = "u306.C2_kept_ignores_unasked"
+source = { table = "u306.json", id = "C2_kept_ignores_unasked" }
+description = "What P5 does hold: KeptCatalogue never asks again a kept row that passed over a catalogue, so a token recorded later is never used the same day"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py"]
+old = '        return not set(kept.passed_over) <= self._unasked'
+new = '        return False'
+
+[[rows]]
+id = "u322.M01_stop_counts_partly_read"
+source = { table = "u322.json", id = "M01_stop_counts_partly_read" }
+description = "KeptCatalogue.answer: a partly read row no longer resets the run, the card's defect: a Discogs miss beside a refusing Beatport stops the walk at the third row"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '            if answer.said != UNREAD or answer.partly_read:'
+new = '            if answer.said != UNREAD:'
+
+[[rows]]
+id = "u322.M02_stop_counts_passed_over"
+source = { table = "u322.json", id = "M02_stop_counts_passed_over" }
+description = "KeptCatalogue.answer: a row unread only by a catalogue nobody asked counts toward the stop, against U244"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''
+            elif not answer.passed_over:
+                self._unread_running += 1'''
+new = '''
+            else:
+                self._unread_running += 1'''
+
+[[rows]]
+id = "u322.M05_not_sent_read_as_sent"
+source = { table = "u322.json", id = "M05_not_sent_read_as_sent" }
+description = "_word: a refusal never sent is recorded as one sent, so the counts call Beatport asked on every row"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '    if answer == searchers.Answer.BLOCKED.value and note.startswith(searchers.NOT_SENT):'
+new = '    if False:'
+
+[[rows]]
+id = "u322.M06_refused_row_drops_words"
+source = { table = "u322.json", id = "M06_refused_row_drops_words" }
+description = "_asked_from: a row a catalogue refused beside one that answered carries no words, so it counts toward the stop"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            return Asked(UNREAD, note=f"unread: {', '.join(refused)}", answers=words)'''
+new = '''            return Asked(UNREAD, note=f"unread: {', '.join(refused)}")'''
+
+[[rows]]
+id = "u322.M08_credential_counts"
+source = { table = "u322.json", id = "M08_credential_counts" }
+description = "catalogue_lookup: a token Discogs refused is read as every catalogue refusing, so a Beatport that answers stops the walk at row three"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '            if exc.cause.reason == searchers.CREDENTIAL_REASON:'
+new = '            if False:'
+
+[[rows]]
+id = "u322.M14_token_rows_said_no_token"
+source = { table = "u322.json", id = "M14_token_rows_said_no_token" }
+description = "sort_unread: a row passed over for a refused token is said as no token recorded"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '        elif TOKEN_UNUSABLE in asked.note:'
+new = '        elif False:'
+
+[[rows]]
+id = "u322.M15_counts_not_sent_as_asked"
+source = { table = "u322.json", id = "M15_counts_not_sent_as_asked" }
+description = "catalogue_counts: a row a catalogue was passed over on counts as asked"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '            if word in _ANSWERED or word in searchers.UNREAD_ANSWERS:'
+new = '            if word in _ANSWERED or word in (*searchers.UNREAD_ANSWERS, NOT_SENT):'
+
+[[rows]]
+id = "u322.M16_counts_stopped_zero"
+source = { table = "u322.json", id = "M16_counts_stopped_zero" }
+description = "catalogue_counts: the rows the walk stopped before are not counted"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '        "stopped": sum(asked.note == STOPPED_NOTE for asked in listed),'
+new = '        "stopped": 0,'
+
+[[rows]]
+id = "u114.M19_write_intent"
+source = { table = "u114.json", id = "M19_write_intent" }
+description = "The apply opens the database without write intent, so a running rekordbox is not refused by the opener"
+file = "src/cratekit/tagging/suggest_cli.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'
+new = '    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg)'
+
+[[rows]]
+id = "u114.M20_pick_declared"
+source = { table = "u114.json", id = "M20_pick_declared" }
+description = "A --set genre the taxonomy does not declare is accepted"
+file = "src/cratekit/tagging/suggest_cli.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if not suggest.suggestable(declared, genre):'
+new = '        if not genre.strip():'
+
+[[rows]]
+id = "r650-a.C1_summary_counts_nothing"
+source = { table = "r650-a.json", id = "C1_summary_counts_nothing" }
+description = "The report stops counting the strings, leaving the map empty on a folder that has them"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+            if report.get("off_taxonomy") and source_genre:
+                off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1'''
+new = ''
+
+[[rows]]
+id = "r650-a.C3_summary_drops_the_key"
+source = { table = "r650-a.json", id = "C3_summary_drops_the_key" }
+description = "The payload stops carrying the map at all"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        "off_taxonomy": off_taxonomy,'
+new = ''
+
+[[rows]]
+id = "r650-a.D3_unresolved_is_fed_by_declines"
+source = { table = "r650-a.json", id = "D3_unresolved_is_fed_by_declines" }
+description = "Existing: the unresolved map is filled from unmapped-genre and from nothing else"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        if reason == tag_engine.UNMAPPED_GENRE and source_genre:'
+new = '        if source_genre:'
+
+[[rows]]
+id = "r791-b.C3_summary_counts_answers"
+source = { table = "r791-b.json", id = "C3_summary_counts_answers" }
+description = "_summary: count no answers"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "Anchored where u306-replay-after-d.json replayed it: the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '                counted[word] += 1'
+new = '                counted[word] += 0'
+
+[[rows]]
+id = "r791-b.C8_one_file"
+source = { table = "r791-b.json", id = "C8_one_file" }
+description = "_files: say 1 files were"
+file = "src/cratekit/tagging/summary.py"
+surface = "maintainer"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    return "1 file was" if count == 1 else f"{count} files were"'
+new = '    return f"{count} files were"'
+
+[[rows]]
+id = "r791-b.C9_unread_skip_zero_filled"
+source = { table = "r791-b.json", id = "C9_unread_skip_zero_filled" }
+description = "_summary: count only the three skip reasons that predate R-791"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "Anchored where u306-replay-after-d.json replayed it: the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    skipped = dict.fromkeys(tag_engine.SKIP_REASONS, 0)'
+new = '    skipped = dict.fromkeys(tag_engine.SKIP_REASONS[:3], 0)'
+
+[[rows]]
+id = "u240.M18_way_inverted"
+source = { table = "u240.json", id = "M18_way_inverted" }
+description = "_way: a label's genre reported as a catalogue's"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '    if str(report.get("source") or "") == tag_engine.LABEL_GENRE:'
+new = '    if str(report.get("source") or "") != tag_engine.LABEL_GENRE:'
+
+[[rows]]
+id = "u240.M19_one_name_ambiguous"
+source = { table = "u240.json", id = "M19_one_name_ambiguous" }
+description = "_count_ambiguous: count a line naming one label as ambiguous"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '    if len(names) > 1:'
+new = '    if len(names) > 0:'
+
+[[rows]]
+id = "u240.M22_failed_items_left_out"
+source = { table = "u240.json", id = "M22_failed_items_left_out" }
+description = "_summary: items with no report are not listed"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '        if item_id in reported:'
+new = '        if True:'
+
+[[rows]]
+id = "u281.C2_challenge_never_named"
+source = { table = "u281.json", id = "C2_challenge_never_named" }
+description = "_summary: never count a Cloudflare challenge, so the warning cannot name one"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+                if searchers.CLOUDFLARE_CHALLENGE in note:
+                    challenged[source] += 1'''
+new = '''
+                if False:
+                    challenged[source] += 1'''
+
+[[rows]]
+id = "u281.C3_unsent_never_counted"
+source = { table = "u281.json", id = "C3_unsent_never_counted" }
+description = "_summary: never count a file a catalogue was not sent"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "Anchored where u306-replay-after-c.json replayed it: the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+                if note.startswith(searchers.NOT_SENT):
+                    not_sent[source] += 1'''
+new = '''
+                if False:
+                    not_sent[source] += 1'''
+
+[[rows]]
+id = "u282.C1_refused_token_not_counted"
+source = { table = "u282.json", id = "C1_refused_token_not_counted" }
+description = "_summary: a refused token's not-asked is never counted, so the sweep says nothing about it (round two's BLOCKING)"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "Anchored where u306-replay-after-c2.json replayed it: the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tag_suggest.py"]
+old = '                discogs_refused += 1'
+new = '                discogs_refused += 0'
+
+[[rows]]
+id = "u284-composite.C3x_unread_discogs_and_outage_named"
+source = { table = "u284-composite.json", id = "C3x_unread_discogs_and_outage_named" }
+description = "tagging.cli._refused_out: the composite for C3's zero, both the Discogs was read guard and the every other catalogue refused guard removed, so any file left with no genre is named as one the catalogues refused"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''
+    if said.get(searchers.DISCOGS) not in (searchers.Answer.MISS.value, searchers.Answer.MATCHED.value):
+        return ()
+    others = [
+        source
+        for source in searchers.SOURCES
+        if source != searchers.DISCOGS and source in said and said[source] != searchers.NOT_ASKED
+    ]
+    if not others or any(said[source] != searchers.Answer.BLOCKED.value for source in others):
+        return ()'''
+new = '''
+    others = [
+        source
+        for source in searchers.SOURCES
+        if source != searchers.DISCOGS and source in said and said[source] != searchers.NOT_ASKED
+    ]
+    if not others:
+        return ()'''
+
+[[rows]]
+id = "u284.C1_tagged_file_named_refused"
+source = { table = "u284.json", id = "C1_tagged_file_named_refused" }
+description = "tagging.cli._refused_out: a file with a genre written is named among those left with none"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''
+    if reason not in (tag_engine.SOURCES_UNREAD, tag_engine.UNMAPPED_GENRE):
+        return ()'''
+new = '''
+    if False:
+        return ()'''
+
+[[rows]]
+id = "u284.C2_outage_named_refused"
+source = { table = "u284.json", id = "C2_outage_named_refused" }
+description = "tagging.cli._refused_out: a file another catalogue was down for is named as refused"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '    if not others or any(said[source] != searchers.Answer.BLOCKED.value for source in others):'
+new = '    if not others:'
+
+[[rows]]
+id = "u284.C4_stop_never_collected"
+source = { table = "u284.json", id = "C4_stop_never_collected" }
+description = "tagging.cli._summary: no failed file is read as one every catalogue refused"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '        if cause is not None and isinstance((cause.detail or {}).get(searchers.REFUSED_DETAIL), dict):'
+new = '        if False:'
+
+[[rows]]
+id = "u284.C6_token_unsaid"
+source = { table = "u284.json", id = "C6_token_unsaid" }
+description = "tagging.cli._refusal_stop: Discogs unasked is never said and its token step never given"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''
+    if unasked:
+        why = '''
+new = '''
+    if False:
+        why = '''
+
+[[rows]]
+id = "u284.C7_rejected_token_told_to_wait"
+source = { table = "u284.json", id = "C7_rejected_token_told_to_wait" }
+description = "tagging.cli._refusal_stop: a stop over a rejected token says waiting mends it"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '    if unasked != searchers.DISCOGS_TOKEN_REFUSED:'
+new = '    if True:'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R23_summary_from_the_queue"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R23_summary_from_the_queue" }
+description = "The report counts what was queued rather than what ran, so a half finished sweep reports every file as handled"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "Anchored where u306-replay-after-c.json replayed it: the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    for report in artifacts.committed(cfg, job_id):
+        reason = str(report.get("skipped") or "")
+        source_genre = str(report.get("source_genre") or "")'''
+new = '''
+    for report in []:
+        reason = str(report.get("skipped") or "")
+        source_genre = str(report.get("source_genre") or "")'''
+
+[[rows]]
+id = "u84-b.C2_summary_zero_filled"
+source = { table = "u84-b.json", id = "C2_summary_zero_filled" }
+description = "The summary lists only the statuses it saw, so none repaired and not counted read the same"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        "art_repair": art_repair,'
+new = '        "art_repair": {key: value for key, value in art_repair.items() if value},'
+
+[[rows]]
+id = "u84-b.C3_old_reports_uncounted"
+source = { table = "u84-b.json", id = "C3_old_reports_uncounted" }
+description = "A report committed before the repair existed is counted as ok, a status nobody measured"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        status = str(report.get("art_repair") or "")'
+new = '        status = str(report.get("art_repair") or art.REPAIR_OK)'
+
+[[rows]]
+id = "u85-a.A16_summary_counts_art"
+source = { table = "u85-a.json", id = "A16_summary_counts_art" }
+description = "The job summary never counts an art status"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '            art_fetch[fetched] += 1'
+new = '            pass'
+
+[[rows]]
+id = "r1724.N11_tag_one_raw_stem"
+source = { table = "r1724.json", id = "N11_tag_one_raw_stem" }
+description = "tag_one: hand the searcher the raw stem, so the match reads mix)_pn and the Obiman release is missed"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '    title = title_tag or titles.name_title(path.stem)'
+new = '    title = title_tag or path.stem'
+
+[[rows]]
+id = "r289-a.A1_appledouble_gone"
+source = { table = "r289-a.json", id = "A1_appledouble_gone" }
+description = "Drop the AppleDouble skip, so a sidecar is walked as a track"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        and not path.name.startswith(APPLEDOUBLE_PREFIX)'
+new = '        and True'
+
+[[rows]]
+id = "r289-a.A2_appledouble_one_dot"
+source = { table = "r289-a.json", id = "A2_appledouble_one_dot" }
+description = "Widen the sidecar prefix to a bare dot, the defect the review caught"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = 'APPLEDOUBLE_PREFIX = "._"'
+new = 'APPLEDOUBLE_PREFIX = "."'
+
+[[rows]]
+id = "r289-a.A3_staging_dirs_gone"
+source = { table = "r289-a.json", id = "A3_staging_dirs_gone" }
+description = "Drop the staging tree skip, so a partial download is queued as a track"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        and not SKIPPED_DIRNAMES.intersection(path.relative_to(root).parts[:-1])'
+new = '        and True'
+
+[[rows]]
+id = "r289-a.A4_staging_dirs_acquire_only"
+source = { table = "r289-a.json", id = "A4_staging_dirs_acquire_only" }
+description = "Forget the master staging tree, keeping the acquisition one"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+SKIPPED_DIRNAMES: frozenset[str] = frozenset(
+    {".cratekit-acquire-staging", ".cratekit-master-staging"}
+)'''
+new = 'SKIPPED_DIRNAMES: frozenset[str] = frozenset({".cratekit-acquire-staging"})'
+
+[[rows]]
+id = "r289-a.A5_staging_dirs_absolute"
+source = { table = "r289-a.json", id = "A5_staging_dirs_absolute" }
+description = "Match the staging names on the absolute path, not relative to the root"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        and not SKIPPED_DIRNAMES.intersection(path.relative_to(root).parts[:-1])'
+new = '        and not SKIPPED_DIRNAMES.intersection(path.parts)'
+
+[[rows]]
+id = "r650-a.B3_engine_drops_the_flag_on_the_write"
+source = { table = "r650-a.json", id = "B3_engine_drops_the_flag_on_the_write" }
+description = "The one branch that wrote a word stops recording where the word came from"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        off_taxonomy = hit.off_taxonomy'
+new = '        off_taxonomy = False'
+
+[[rows]]
+id = "r650-a.B4_engine_leaks_the_flag_onto_a_skip"
+source = { table = "r650-a.json", id = "B4_engine_leaks_the_flag_onto_a_skip" }
+description = "The flag is read off the hit for every file, so a has-genre skip claims a word this run did not write"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    written: str | None = None
+    off_taxonomy = False'''
+new = '''
+    written: str | None = None
+    off_taxonomy = bool(hit and hit.off_taxonomy)'''
+
+[[rows]]
+id = "r791-b.T1_sources_unread_disposition"
+source = { table = "r791-b.json", id = "T1_sources_unread_disposition" }
+description = "tag_one: a decline naming unread sources is reported no-hit"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py"]
+old = '        elif hit.unread:'
+new = '        elif False:'
+
+[[rows]]
+id = "r791-b.T2_art_names_unread"
+source = { table = "r791-b.json", id = "T2_art_names_unread" }
+description = "_art_embedded: the picture decline never names the unread sources"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py"]
+old = '        unread = hit.unread if hit is not None else ()'
+new = '        unread = ()'
+
+[[rows]]
+id = "r796-b.O9_no_isrc_is_not_no_hit"
+source = { table = "r796-b.json", id = "O9_no_isrc_is_not_no_hit" }
+description = "tag_one: drop the no-isrc skip reason, so a file the general catalogue could not be asked about is no-hit (AE4)"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '        elif any(said.answer == NO_ISRC for said in hit.answers):'
+new = '        elif False:'
+
+[[rows]]
+id = "u240.M1_two_names_take_the_first"
+source = { table = "u240.json", id = "M1_two_names_take_the_first" }
+description = "_by_label: a line naming two registered labels gives the file the first one's genre"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '    if len(named) != 1 or not named[0].genre:'
+new = '    if not named or not named[0].genre:'
+
+[[rows]]
+id = "u240.M2_no_genre_label_named"
+source = { table = "u240.json", id = "M2_no_genre_label_named" }
+description = "_by_label: a line naming one label with no genre is not recorded on the file"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '        return _Labelled(None, own, copyright_labels=tuple(found.label for found in named))'
+new = '        return _Labelled(None, own, copyright_labels=())'
+
+[[rows]]
+id = "u240.M3_tag_no_longer_outranks_the_line"
+source = { table = "u240.json", id = "M3_tag_no_longer_outranks_the_line" }
+description = "_by_label: a file's own label tag no longer comes first, so the line or --label decides a tagged file"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''
+    if own:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u240.M4_folder_label_no_longer_outranks_the_line"
+source = { table = "u240.json", id = "M4_folder_label_no_longer_outranks_the_line" }
+description = "_by_label: --label no longer comes before the copyright line"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''
+    if typed:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u240.M5_wrong_field_read"
+source = { table = "u240.json", id = "M5_wrong_field_read" }
+description = "_by_label: the label tag read where the copyright line should be"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '        line = held["copyright"] or ""'
+new = '        line = held["label"] or ""'
+
+[[rows]]
+id = "u240.M6_named_by_lost"
+source = { table = "u240.json", id = "M6_named_by_lost" }
+description = "tag_one: the record says nothing of how the label was named"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '            "label_from": tier.named_by,'
+new = '            "label_from": "",'
+
+[[rows]]
+id = "u240.M7_line_labels_dropped_from_result"
+source = { table = "u240.json", id = "M7_line_labels_dropped_from_result" }
+description = "tag_one: the labels an unsettled line named never reach the result"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '        copyright_labels=tier.copyright_labels,'
+new = '        copyright_labels=(),'
+
+[[rows]]
+id = "u240.M8_failed_files_line_dropped"
+source = { table = "u240.json", id = "M8_failed_files_line_dropped" }
+description = "tag_one: a failed file's refusal no longer carries its line's labels"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '        if needs_genre and tier.copyright_labels and type(exc) is CratekitError:'
+new = '        if False:'
+
+[[rows]]
+id = "u240.M9_park_flattened"
+source = { table = "u240.json", id = "M9_park_flattened" }
+description = "tag_one: a searcher's park on an unsettled line is rebuilt as a plain refusal"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '        if needs_genre and tier.copyright_labels and type(exc) is CratekitError:'
+new = '        if needs_genre and tier.copyright_labels:'
+
+[[rows]]
+id = "u260.E1_engine_encodes_per_file"
+source = { table = "u260.json", id = "E1_engine_encodes_per_file" }
+description = "_art_embedded: call the plain encoder again, so every file encodes the same bytes"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        cdj = art.to_cdj_jpeg_remembered(data)'
+new = '        cdj = art.to_cdj_jpeg(data)'
+
+[[rows]]
+id = "u282.T1_question_asked_with_a_picture"
+source = { table = "u282.json", id = "T1_question_asked_with_a_picture" }
+description = "tag_one: the picture's question is asked whatever the file holds, so a file with a picture spends a Beatport request"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '    if settled is None and hit is not None and hit.ask_picture is not None:'
+new = '    if hit is not None and hit.ask_picture is not None:'
+
+[[rows]]
+id = "u282.T2_question_never_asked"
+source = { table = "u282.json", id = "T2_question_never_asked" }
+description = "tag_one: the picture's question is never asked (merge blocker 5)"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '    if settled is None and hit is not None and hit.ask_picture is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u289.T1_title_tag_split"
+source = { table = "u289.json", id = "T1_title_tag_split" }
+description = "tag_one: a file with a title tag and no artist tag is split by its name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '    named = titles.by_name(path.stem) if not artist and not title_tag else None'
+new = '    named = titles.by_name(path.stem) if not artist else None'
+
+[[rows]]
+id = "u289.T2_split_artist_dropped"
+source = { table = "u289.json", id = "T2_split_artist_dropped" }
+description = "tag_one: the name's artist is read and never handed to the searcher"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if named is not None:
+        artist = named.artist'''
+new = '''
+    if False:
+        artist = named.artist'''
+
+[[rows]]
+id = "u289.T3_record_read_from_title"
+source = { table = "u289.json", id = "T3_record_read_from_title" }
+description = "tag_one: the record says how the title was read for a file asked by its name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '        if named is not None and named.read in (titles.Read.BY_NAME, titles.Read.NAME_AMBIGUOUS):'
+new = '        if False:'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R14_walk_unsorted"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R14_walk_unsorted" }
+description = "The walk stops sorting, so an enqueue and a later walk disagree about ordinal order and one file's report is filed under another's name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        for path in sorted(root.rglob("*"))'
+new = '        for path in root.rglob("*")'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R15_walk_not_recursive"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R15_walk_not_recursive" }
+description = "The walk stops recursing, so a folder of subfolders queues nothing and reports the honest zero over a library"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        for path in sorted(root.rglob("*"))'
+new = '        for path in sorted(root.glob("*"))'
+
+[[rows]]
+id = "u85-a.A11_failed_write_is_error"
+source = { table = "u85-a.json", id = "A11_failed_write_is_error" }
+description = "A write the file refused is reported embedded"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '    if not written:'
+new = '    if False:'
+
+[[rows]]
+id = "u85-a.A1_search_skipped_only_with_both"
+source = { table = "u85-a.json", id = "A1_search_skipped_only_with_both" }
+description = "A tagged file skips the search whatever its art, so a tagged file with no picture is never given one"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = 'if existing and settled is not None:'
+new = 'if existing:'
+
+[[rows]]
+id = "u85-a.A2_any_picture_settles"
+source = { table = "u85-a.json", id = "A2_any_picture_settles" }
+description = "A file carrying a picture is treated as needing one, so art it already has is re-downloaded over"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    if pictures:
+        return {"art_fetch": ART_PRESENT'''
+new = '''
+    if False:
+        return {"art_fetch": ART_PRESENT'''
+
+[[rows]]
+id = "u85-a.A5_no_url_guard"
+source = { table = "u85-a.json", id = "A5_no_url_guard" }
+description = "A hit naming no picture is still fetched, with an empty URL"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_published_genre.py"]
+old = '    if not hit.art_url:'
+new = '    if False:'
+
+[[rows]]
+id = "u85-a.A6_no_fetch_guard"
+source = { table = "u85-a.json", id = "A6_no_fetch_guard" }
+description = "No fetch supplied calls None and reports the TypeError as a fetch failure"
+file = "src/cratekit/tagging/tag.py"
+surface = "maintainer"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '    if fetch_image is None:'
+new = '    if False:'
+
+[[rows]]
+id = "u85-a.A7_fetch_raise_is_a_decline"
+source = { table = "u85-a.json", id = "A7_fetch_raise_is_a_decline" }
+description = "A fetch that raises fails the item instead of reporting art unavailable"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    except Exception as exc:  # noqa: BLE001
+        return result(ART_UNAVAILABLE, f"the picture at {url} could not be fetched: {exc}")'''
+new = '''
+    except ZeroDivisionError as exc:  # noqa: BLE001
+        return result(ART_UNAVAILABLE, f"the picture at {url} could not be fetched: {exc}")'''
+
+[[rows]]
+id = "u85-a.A9_not_a_picture_is_a_decline"
+source = { table = "u85-a.json", id = "A9_not_a_picture_is_a_decline" }
+description = "Bytes that are not an image fail the item instead of reporting art unavailable"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_queued_resume_contract.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    except art.ArtError as exc:
+        return result(ART_UNAVAILABLE, f"what'''
+new = '''
+    except ZeroDivisionError as exc:
+        return result(ART_UNAVAILABLE, f"what'''
+
+[[rows]]
+id = "r1724.N6_tail_never_dropped"
+source = { table = "r1724.json", id = "N6_tail_never_dropped" }
+description = "name_title: return the stem whatever it ends with, main's reading"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''
+        return stem
+    return DASH.join(parts)'''
+new = '''
+        return stem
+    return stem'''
+
+[[rows]]
+id = "r1724.N7_tail_word"
+source = { table = "r1724.json", id = "N7_tail_word" }
+description = "NAME_TAIL: the tail without its underscore, so Sunrise Mood PN loses a word"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = 'NAME_TAIL = "_PN"'
+new = 'NAME_TAIL = "PN"'
+
+[[rows]]
+id = "r1724.S1_u289_head_needs_a_key"
+source = { table = "r1724.json", id = "S1_u289_head_needs_a_key" }
+description = "sample, U289: _past_head reads any leading head, a tempo alone included"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''
+    if not body or not _a_head(words(DASH.join(parts[:body]))):
+        return None'''
+new = '''
+    if not body:
+        return None'''
+
+[[rows]]
+id = "r1724.S2_u289_version_part"
+source = { table = "r1724.json", id = "S2_u289_version_part" }
+description = "sample, U289: by_name splits a name whose second part ends in a version"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''
+            and not _ends_in_version(folded_title)
+'''
+new = ''
+
+[[rows]]
+id = "u280-pinned.M06_marker_read_anywhere"
+source = { table = "u280-pinned.json", id = "M06_marker_read_anywhere" }
+description = "read_title: a square bracketed group is read past at any part, not only where the naming verb writes its marker"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    found = _MARKER.match(text) if marker else None
+'''
+new = '''
+    found = _MARKER.match(text)
+'''
+
+[[rows]]
+id = "u280-pinned.M11_ambiguity_featured_credits"
+source = { table = "u280-pinned.json", id = "M11_ambiguity_featured_credits" }
+description = "_only_a_list_reads: a part naming the artist only as featured counts among several credits"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if len(credits) > 1 and not all(_credits_before_featuring(parts[index], names) for index in credits):
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u280-pinned.M29_marker_number_from_all_words"
+source = { table = "u280-pinned.json", id = "M29_marker_number_from_all_words" }
+description = "read_title: past the marker a track number is decided from all remaining words, \"[MP3] 01 - Artist - (Intro)\" (round one's BLOCKING F1, as a row)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+            numbered=_numbered(words(text[found.end() :].split(DASH)[0])),
+'''
+new = '''
+            numbered=_numbered(words(text[found.end() :])),
+'''
+
+[[rows]]
+id = "u280.M01_ambiguous_read_as_titled"
+source = { table = "u280.json", id = "M01_ambiguous_read_as_titled" }
+description = "matches: an ambiguous name is matched as a titled one, by its whole name only, so no row writing its split confirms it"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if file.outcome is Outcome.AMBIGUOUS:
+        return bool(file.splits & row.splits) or _any_same(whole, row.titles)
+'''
+new = '''
+    if file.outcome is Outcome.AMBIGUOUS:
+        return _any_same(whole, row.titles)
+'''
+
+[[rows]]
+id = "u280.M04_bare_meets_bare"
+source = { table = "u280.json", id = "M04_bare_meets_bare" }
+description = "Title.same: two bare names meet, \"(Love) Is The Message\" meets \"(Hate) Is The Message\""
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+            self.names & other.names or self.names & other.bare or self.bare & other.names
+'''
+new = '''
+            self.names & other.names or self.names & other.bare or self.bare & other.names or self.bare & other.bare
+'''
+
+[[rows]]
+id = "u280.M05_marker_not_read_past"
+source = { table = "u280.json", id = "M05_marker_not_read_past" }
+description = "read_title: the naming verb's marker is never read past, \"[MP3] (Not Just) Knee Deep\" misses its row"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    found = _MARKER.match(text) if marker else None
+'''
+new = '''
+    found = None
+'''
+
+[[rows]]
+id = "u280.M07_version_alone_after_title"
+source = { table = "u280.json", id = "M07_version_alone_after_title" }
+description = "read_title: a title read after the artist's credit or a track number may be version words alone"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+        return not (after_title and _version_alone(found))
+'''
+new = '''
+        return True
+'''
+
+[[rows]]
+id = "u280.M09_ambiguity_ignores_feature"
+source = { table = "u280.json", id = "M09_ambiguity_ignores_feature" }
+description = "_only_a_list_reads: a feature credit after the version hides the shape again (R-1651's first shape)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    cut = _before_featuring(parts[first])
+'''
+new = '''
+    cut = parts[first]
+'''
+
+[[rows]]
+id = "u280.M10_ambiguity_one_credit_only"
+source = { table = "u280.json", id = "M10_ambiguity_one_credit_only" }
+description = "_only_a_list_reads: more than one credit hides the shape again (R-1651's second shape)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if first >= layout.end or layout.numbered or not credits:
+'''
+new = '''
+    if first >= layout.end or layout.numbered or len(credits) != 1:
+'''
+
+[[rows]]
+id = "u280.M12_ambiguity_version_alone"
+source = { table = "u280.json", id = "M12_ambiguity_version_alone" }
+description = "_only_a_list_reads: X of version words alone is ambiguous too, \"Artist - Original Mix\" no longer the self titled track"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if _version_alone(words(title_core(cut)[0])) or not _ends_in_version(cut):
+'''
+new = '''
+    if not _ends_in_version(cut):
+'''
+
+[[rows]]
+id = "u280.M17_featured_part_never"
+source = { table = "u280.json", id = "M17_featured_part_never" }
+description = "_featured_first_part: a first part naming the artist only as featured is never read as a title"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if head != 0 or head == layout.title or head not in layout.credits:
+'''
+new = '''
+    if True:
+'''
+
+[[rows]]
+id = "u280.M18_featured_part_own_credit"
+source = { table = "u280.json", id = "M18_featured_part_own_credit" }
+description = "_featured_first_part: the artist's own credit is read as a title too, \"Artist feat. Tide\" as \"artist\""
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if _credits_before_featuring(parts[head], names):
+        return None
+'''
+new = ''
+
+[[rows]]
+id = "u280.M19_tempo_never_title"
+source = { table = "u280.json", id = "M19_tempo_never_title" }
+description = "_tempo_as_title: a tempo alone before a version alone is never read as a title"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if layout.body != 1 or naming.is_camelot(words(parts[0])[0]):
+'''
+new = '''
+    if True:
+'''
+
+[[rows]]
+id = "u280.M22_whole_name_shed"
+source = { table = "u280.json", id = "M22_whole_name_shed" }
+description = "read_file: the whole name is shed across its dashes again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    whole = read_title(text, shed=False, numbered=_numbered(words(parts[0])))
+'''
+new = '''
+    whole = read_title(text, shed=True, numbered=_numbered(words(parts[0])))
+'''
+
+[[rows]]
+id = "u280.M24_track_number_past_marker"
+source = { table = "u280.json", id = "M24_track_number_past_marker" }
+description = "_a_track_number: a lone track number is not read past a marker, \"[MP3] 01 - Ame - Title\" is titled \"01\""
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    return _LONE_TRACK_NUMBER.fullmatch(_LEADING_GROUPS.sub("", part).strip()) is not None
+'''
+new = '''
+    return _LONE_TRACK_NUMBER.fullmatch(part.strip()) is not None
+'''
+
+[[rows]]
+id = "u280.M26_brackets_shed_across_a_dash"
+source = { table = "u280.json", id = "M26_brackets_shed_across_a_dash" }
+description = "own_core: a last part of brackets alone is shed across the dash again, \"Artist - (Intro)\" read as \"artist\" (round one's F2)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if DASH in text and not identifies(without_trailing_groups(text.split(DASH)[-1])):
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u280.M27_leading_groups_across_a_dash"
+source = { table = "u280.json", id = "M27_leading_groups_across_a_dash" }
+description = "read_title: the groups a stretch opens with are shed when they are its whole first part, \"(Intro) - Original Mix\" read as \"original mix\" (F2)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+        if lead is not None and identifies(core.split(DASH)[0][lead.end() :]):
+'''
+new = '''
+        if lead is not None:
+'''
+
+[[rows]]
+id = "u280.M28_any_number_read_past"
+source = { table = "u280.json", id = "M28_any_number_read_past" }
+description = "read_title: any first word flagged as a number is read past before brackets, \"007 (Intro)\" as \"(Intro)\" (round two's BLOCKING, as a row)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+        elif _a_track_number(found[0]):
+'''
+new = '''
+        else:
+'''
+
+[[rows]]
+id = "u280.M30_featured_after_a_head"
+source = { table = "u280.json", id = "M30_featured_after_a_head" }
+description = "_featured_first_part: fires after a head too, \"08A - 124 - Artist feat. Tide - Title\" tagged \"Tide\" (round one's F3)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''
+    if head != 0 or head == layout.title or head not in layout.credits:
+'''
+new = '''
+    if head == layout.title or head not in layout.credits:
+'''
+
+[[rows]]
+id = "u289.N2_head_alone_ambiguous"
+source = { table = "u289.json", id = "N2_head_alone_ambiguous" }
+description = "by_name: a head alone name is recorded ambiguous rather than head alone"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if unsplit.read is Read.HEAD_ALONE:
+        return unsplit'''
+new = '''
+    if False:
+        return unsplit'''
+
+[[rows]]
+id = "u289.N3_three_parts_split"
+source = { table = "u289.json", id = "N3_three_parts_split" }
+description = "by_name: a name of three or more parts is split at its first dash"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if len(rest) == 2:
+        artist, title = (part.strip() for part in rest)'''
+new = '''
+    if len(rest) >= 2:
+        artist, title = rest[0].strip(), DASH.join(rest[1:]).strip()'''
+
+[[rows]]
+id = "u289.N4_version_title_split"
+source = { table = "u289.json", id = "N4_version_title_split" }
+description = "by_name: a second part ending in a version is split, Artist - Original Mix"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '            and not _ends_in_version(folded_title)'
+new = '            and True'
+
+[[rows]]
+id = "u289.N5_numbered_title_split"
+source = { table = "u289.json", id = "N5_numbered_title_split" }
+description = "by_name: a second part opening with a track number is split, Album - 01 Title"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '            and not _opens_with_a_track_number(folded_title)'
+new = '            and True'
+
+[[rows]]
+id = "u289.N6_track_number_artist_split"
+source = { table = "u289.json", id = "N6_track_number_artist_split" }
+description = "by_name: a lone track number is taken as the artist"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '            and not _a_track_number(folded_artist)'
+new = '            and True'
+
+[[rows]]
+id = "u289.N7_numbered_artist_split"
+source = { table = "u289.json", id = "N7_numbered_artist_split" }
+description = "by_name: a first part opening with a track number is taken as the artist"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '            and not _numbered(words(folded_artist))'
+new = '            and True'
+
+[[rows]]
+id = "u289.Q2_head_alone_two_parts"
+source = { table = "u289.json", id = "Q2_head_alone_two_parts" }
+description = "_past_head: drop the head alone check, so a title 08A - 124 is asked as 124"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if len(parts) <= 2 and _a_head(words(DASH.join(parts))):
+        return []'''
+new = '''
+    if False:
+        return []'''
+
+[[rows]]
+id = "u289.Q3_marker_kept"
+source = { table = "u289.json", id = "Q3_marker_kept" }
+description = "_past_head: keep the marker after the head, so [MP3] rides into the question"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if marker is not None:
+        rest[0] = rest[0][marker.end() :]'''
+new = '''
+    if False:
+        rest[0] = rest[0][marker.end() :]'''
+
+[[rows]]
+id = "u289.Q4_artist_part_kept"
+source = { table = "u289.json", id = "Q4_artist_part_kept" }
+description = "question: never read the artist's own part off, so an untagged split asks Artist - Title as its track"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '    if len(rest) > 1 and _same_name(rest[0], artist) and identifies(DASH.join(rest[1:])):'
+new = '    if False:'
+
+[[rows]]
+id = "u289.Q5_artist_part_needs_title"
+source = { table = "u289.json", id = "Q5_artist_part_needs_title" }
+description = "question: read the artist's part off even when no title follows it"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '    if len(rest) > 1 and _same_name(rest[0], artist) and identifies(DASH.join(rest[1:])):'
+new = '    if len(rest) > 1 and _same_name(rest[0], artist):'
+
+[[rows]]
+id = "u289.Q6_same_name_any_overlap"
+source = { table = "u289.json", id = "Q6_same_name_any_overlap" }
+description = "_same_name: any shared first word reads a part as the artist's own"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '    return bool(mine) and mine == tuple(_folded(word) for word in words(normalized(artist)))'
+new = '    return bool(mine) and mine[:1] == tuple(_folded(word) for word in words(normalized(artist)))[:1]'
+
+[[rows]]
+id = "u289.Q7_empty_title_asked"
+source = { table = "u289.json", id = "Q7_empty_title_asked" }
+description = "question: ask an empty title past the head rather than the text as written"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if not identifies(title):
+        return Question(artist, value, Read.HEAD_ALONE)'''
+new = '''
+    if False:
+        return Question(artist, value, Read.HEAD_ALONE)'''
+
+[[rows]]
+id = "u289.Q8_headless_read_past"
+source = { table = "u289.json", id = "Q8_headless_read_past" }
+description = "question: a text with no head is asked stripped and NFC normalized instead of byte for byte"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if rest is None:
+        return Question(artist, value, Read.AS_WRITTEN)'''
+new = '''
+    if rest is None:
+        return Question(artist, value.strip(), Read.AS_WRITTEN)'''
+
+[[rows]]
+id = "u318.T09_ends_in_version_word"
+source = { table = "u318.json", id = "T09_ends_in_version_word" }
+description = "_naming_words: drop the last word test, so (Part 1) or (Tim Green Vocal) is a version"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '    if not found or not _a_kind_word(found, len(found) - 1) or found[0] in _CREDITS:'
+new = '    if not found or found[0] in _CREDITS:'
+
+[[rows]]
+id = "u324-pinned.F20_initial_prefix_dropped_pinned"
+source = { table = "u324-pinned.json", id = "F20_initial_prefix_dropped_pinned" }
+description = "_runs_in: an initial stands for any word, not only one it opens"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        return mine == theirs or (initial(index) and theirs.startswith(mine))'
+new = '        return mine == theirs or initial(index)'
+
+[[rows]]
+id = "u324.F14_o_as_oe"
+source = { table = "u324.json", id = "F14_o_as_oe" }
+description = "_PLAIN_SPELLINGS: read ø as oe, the Danish transliteration, so Trentemoller no longer meets Trentemøller"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+        "ø": "o",
+'''
+new = '''
+        "ø": "oe",
+'''
+
+[[rows]]
+id = "u324.F18_written_length_initial"
+source = { table = "u324.json", id = "F18_written_length_initial" }
+description = "_runs_in: judge an initial by its written length, round one's NIT 4, so Ĳ. becomes an initial main never read"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        return written is not None and len(_unaccented(written[index])) == 1'
+new = '        return written is not None and len(written[index]) == 1'
+
+[[rows]]
+id = "u324.F19_no_initials"
+source = { table = "u324.json", id = "F19_no_initials" }
+description = "_names_the_artist: pass no written words, so no initial stands for a word"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '    return len(folded) > 1 and any(_runs_in(folded, name, written=written) for name in names)'
+new = '    return len(folded) > 1 and any(_runs_in(folded, name) for name in names)'
+
+[[rows]]
+id = "u118-d.T2_named_word"
+source = { table = "u118-d.json", id = "T2_named_word" }
+description = "Hip-hop & Rap is no longer a Hip-Hop word"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_routing_parity.py"]
+old = '''
+  "Hip-hop & Rap",
+'''
+new = ''
+
+[[rows]]
+id = "u133-b.T1_keyword_back"
+source = { table = "u133-b.json", id = "T1_keyword_back" }
+description = "The jazz keyword rule sends a partial match to NonElectronic again, as before U133"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy_upgrade.py"]
+old = '''
+keyword = "jazz"
+bucket = "jazz"
+'''
+new = '''
+keyword = "jazz"
+bucket = "non_electronic"
+'''
+
+[[rows]]
+id = "u133-b.T2_alias_gone"
+source = { table = "u133-b.json", id = "T2_alias_gone" }
+description = "Jazz loses its routing alias, so a track tagged Jazz reaches it only by the keyword"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_vocabulary.py", "tests/test_taxonomy_upgrade.py"]
+old = '''
+aliases = [
+  "Jazz",
+]
+'''
+new = '''
+aliases = []
+'''
+
+[[rows]]
+id = "u133-b.T5_former_display"
+source = { table = "u133-b.json", id = "T5_former_display" }
+description = "The former place names a playlist the library does not hold, so the move finds nothing to leave"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''
+sub = "jazz"
+display = "Jazz"
+'''
+new = '''
+sub = "jazz"
+display = "Jazz Archive"
+'''
+
+[[rows]]
+id = "u133-b.T7_former_gone"
+source = { table = "u133-b.json", id = "T7_former_gone" }
+description = "Jazz declares no former place, so its tracks are filed into a band while they still sit in the old playlist"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''
+[[bucket.formerly]]
+id = "non_electronic_jazz"
+bucket = "non_electronic"
+sub = "jazz"
+display = "Jazz"
+'''
+new = ''
+
+[[rows]]
+id = "u133-b.T9_energy_off"
+source = { table = "u133-b.json", id = "T9_energy_off" }
+description = "Jazz has no energy split"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''
+  "jazz",
+]
+rates = false
+'''
+new = '''
+  "jazz",
+]
+rates = false
+energy = { enabled = false }
+'''
+
+[[rows]]
+id = "u88-b.X6_template_bound"
+source = { table = "u88-b.json", id = "X6_template_bound" }
+description = "the shipped template: a bound of twenty two minutes instead of twenty"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_routing_workers.py"]
+old = 'over_seconds = 1200'
+new = 'over_seconds = 1320'
+
+[[rows]]
+id = "sitting3.G8_queue_skips_readiness"
+source = { table = "sitting3.json", id = "G8_queue_skips_readiness" }
+description = "File the job whatever is missing, so a restamp scores nothing and reports ok"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''
+    if scoring.loader_bound():
+        return
+    missing = scoring.missing_requirement()
+    if missing is None:
+        return
+'''
+new = '''
+    if scoring.loader_bound():
+        return
+    missing = scoring.missing_requirement()
+    if True:
+        return
+'''
+
+[[rows]]
+id = "u181.C3_unscored_flag_ignored"
+source = { table = "u181.json", id = "C3_unscored_flag_ignored" }
+description = "analyze vocals: ignore --unscored, so the whole folder is queued"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py", "tests/test_sync_land.py"]
+old = '    unscored = bool(getattr(ctx.args, "unscored", False))'
+new = '    unscored = False'
+
+[[rows]]
+id = "u25.G6_always_rewrite"
+source = { table = "u25.json", id = "G6_always_rewrite" }
+description = "Rewrite vocal tags even when the values did not move"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''
+    if (previous_level, previous_gender, previous_conf) != (level, gender, conf):
+        _write_or_refuse(
+'''
+new = '''
+    if True or (previous_level, previous_gender, previous_conf) != (level, gender, conf):
+        _write_or_refuse(
+'''
+
+[[rows]]
+id = "u331.S12_vocal_module_imported_before_the_bound_loader"
+source = { table = "u331.json", id = "S12_vocal_module_imported_before_the_bound_loader" }
+description = "vocals/cli._bind_defaults: import the default loader's module before asking whether one is bound, so a machine where it cannot load cannot score through a bound one"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py", "tests/test_analysis.py"]
+old = '''
+    if scoring.loader_bound():
+        return
+    from cratekit.analysis import vocal
+'''
+new = '''
+    from cratekit.analysis import vocal
+
+    if scoring.loader_bound():
+        return
+'''
+
+[[rows]]
+id = "u343.M12_unscored_reads_the_name_alone"
+source = { table = "u343.json", id = "M12_unscored_reads_the_name_alone" }
+description = "vocals _unscored: select by the head on the name, so a file the run marked with no score is never rescored"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '        if analysis_cli.already_measured(path, cfg) and tags.read_vox_from_file(path) is None:'
+new = '        if analysis_cli.run.has_head(path.name, template=analysis_cli._template(cfg)) and tags.read_vox_from_file(path) is None:'
+
+[[rows]]
+id = "r745-a.E10_text_not_cleaned"
+source = { table = "r745-a.json", id = "E10_text_not_cleaned" }
+description = "clean_text: write a control character as it is held"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    return _NOT_ATTRIBUTE_TEXT.sub(" ", value)'
+new = '    return value'
+
+[[rows]]
+id = "r745-a.E11_any_path_encoded"
+source = { table = "r745-a.json", id = "E11_any_path_encoded" }
+description = "is_file_path: encode anything that is not already a location, a streamed reference included"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    return recorded.startswith("/") and not locations.looks_like_location(recorded)'
+new = '    return bool(recorded) and not locations.looks_like_location(recorded)'
+
+[[rows]]
+id = "r745-a.E12_three_stars_moved"
+source = { table = "r745-a.json", id = "E12_three_stars_moved" }
+description = "STAR_BYTES: spell three stars 150, a nearby value that is not the export byte"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    {0: 0, 1: 51, 2: 102, 3: 153, 4: 204, 5: 255}'
+new = '    {0: 0, 1: 51, 2: 102, 3: 150, 4: 204, 5: 255}'
+
+[[rows]]
+id = "r745-a.E13_siblings_by_identifier"
+source = { table = "r745-a.json", id = "E13_siblings_by_identifier" }
+description = "_children: order siblings by identifier, ignoring the stored sequence"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '        siblings.sort(key=lambda node: (node.seq, _ordinal(node.node_id), node.node_id))'
+new = '        siblings.sort(key=lambda node: (_ordinal(node.node_id), node.node_id))'
+
+[[rows]]
+id = "r745-a.E1_tombstone_row_written"
+source = { table = "r745-a.json", id = "E1_tombstone_row_written" }
+description = "read_tracks: write a tombstoned collection row as a live one"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''
+        if trees.soft_delete_marker(row):
+            continue
+        track_id = str(row.ID)'''
+new = '        track_id = str(row.ID)'
+
+[[rows]]
+id = "r745-a.E3_tombstone_playlist_written"
+source = { table = "r745-a.json", id = "E3_tombstone_playlist_written" }
+description = "read_nodes: write a tombstoned playlist as a live one"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''
+        if trees.soft_delete_marker(row):
+            continue
+        node_id = str(row.ID)'''
+new = '        node_id = str(row.ID)'
+
+[[rows]]
+id = "r745-a.E4_dangling_member_written"
+source = { table = "r745-a.json", id = "E4_dangling_member_written" }
+description = "_render_node: write every stored member, whether or not the collection holds it"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '        keys = [member for member in node.members if member in live]'
+new = '        keys = list(node.members)'
+
+[[rows]]
+id = "r745-a.E5_empty_folder_self_closed"
+source = { table = "r745-a.json", id = "E5_empty_folder_self_closed" }
+description = "_render_node: self close a folder with no children, as rekordbox does"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    return rbxml.folder_open(name, len(body), indent) + "".join(body) + rbxml.node_close(indent)'
+new = '''
+    if not body:
+        return rbxml.folder_open(name, 0, indent).replace(">\\r\\n", "/>\\r\\n")
+    return rbxml.folder_open(name, len(body), indent) + "".join(body) + rbxml.node_close(indent)'''
+
+[[rows]]
+id = "r745-a.E6_tempo_constant_moved"
+source = { table = "r745-a.json", id = "E6_tempo_constant_moved" }
+description = "track_element: write a real tempo in place of the gridless constant"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py", "tests/test_no_beatgrid_ever.py"]
+old = 'AverageBpm="0.00"'
+new = 'AverageBpm="98.76"'
+
+[[rows]]
+id = "r745-a.E7_identifier_not_held_to_digits"
+source = { table = "r745-a.json", id = "E7_identifier_not_held_to_digits" }
+description = "refuse_unusable_id: accept any identifier"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''
+    if identifier.isascii() and identifier.isdigit():
+        return'''
+new = '''
+    if True:
+        return'''
+
+[[rows]]
+id = "r745-a.E8_duplicate_identifier_written"
+source = { table = "r745-a.json", id = "E8_duplicate_identifier_written" }
+description = "render: write one identifier twice"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '        if track.track_id in seen:'
+new = '        if False:'
+
+[[rows]]
+id = "r745-a.E9_smart_playlist_written"
+source = { table = "r745-a.json", id = "E9_smart_playlist_written" }
+description = "_writable: write a smart playlist, as a node of a kind no reader classifies as a playlist"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    return [node for node in nodes if node.attribute in (PLAYLIST_ATTRIBUTE, FOLDER_ATTRIBUTE)]'
+new = '''
+    return [
+        node
+        for node in nodes
+        if node.attribute in (PLAYLIST_ATTRIBUTE, FOLDER_ATTRIBUTE, SMART_ATTRIBUTE)
+    ]'''
+
+[[rows]]
+id = "r745-b.E14_members_as_they_arrive"
+source = { table = "r745-b.json", id = "E14_members_as_they_arrive" }
+description = "read_nodes: keep members in the order the rows arrive, not the stored order"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = 'sorted(members.get(node_id, ()))'
+new = 'members.get(node_id, ())'
+
+[[rows]]
+id = "r745-b.E15_unreadable_kind_is_a_playlist"
+source = { table = "r745-b.json", id = "E15_unreadable_kind_is_a_playlist" }
+description = "_attribute: answer the playlist code for a kind that cannot be parsed"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return UNREADABLE_ATTRIBUTE'''
+new = '''
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0'''
+
+[[rows]]
+id = "r745-b.E16_lookups_not_primed"
+source = { table = "r745-b.json", id = "E16_lookups_not_primed" }
+description = "read_tracks: read no lookup table ahead of the rows"
+file = "src/cratekit/write/collection_export.py"
+surface = "maintainer"
+tests = ["tests/test_export_collection.py"]
+old = '    held = _prime_lookups(db)'
+new = '    held = []'
+
+[[rows]]
+id = "r745-b.E17_provenance_read_anywhere"
+source = { table = "r745-b.json", id = "E17_provenance_read_anywhere" }
+description = "provenance_of: read the line anywhere in the file, not only ahead of the document element"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    head = content[: max(0, content.find(b"<DJ_PLAYLISTS"))]'
+new = '    head = content'
+
+[[rows]]
+id = "r745-c.E2_tombstone_membership_written"
+source = { table = "r745-c.json", id = "E2_tombstone_membership_written" }
+description = "read_nodes: keep a tombstoned membership row. Measured again after the test its zero bought"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''
+        if trees.soft_delete_marker(song):
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "r773-a.M10_unmapped_rows_not_collected"
+source = { table = "r773-a.json", id = "M10_unmapped_rows_not_collected" }
+description = "render: collect no row under no rule, the prefix still counted"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '            unmapped.append(track.track_id)'
+new = '            pass'
+
+[[rows]]
+id = "r773-a.M11_prefixes_least_rows_first"
+source = { table = "r773-a.json", id = "M11_prefixes_least_rows_first" }
+description = "render: order the prefixes with the fewest rows first"
+file = "src/cratekit/write/collection_export.py"
+surface = "maintainer"
+tests = ["tests/test_export_collection.py"]
+old = '            unmapped_prefixes=tuple(prefixes.most_common()),'
+new = '            unmapped_prefixes=tuple(reversed(prefixes.most_common())),'
+
+[[rows]]
+id = "r773-a.M1_read_back_not_asked"
+source = { table = "r773-a.json", id = "M1_read_back_not_asked" }
+description = "mounted_location: rewrite a row wherever a rule sends it, without asking whether the place reads back as itself"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '        if read_back.path == resolved.path:'
+new = '        if True:'
+
+[[rows]]
+id = "r773-a.M2_unmapped_not_told_apart"
+source = { table = "r773-a.json", id = "M2_unmapped_not_told_apart" }
+description = "mounted_location: answer a row under no rule as recorded, so nothing counts it"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '        return Mounted(recorded, Mounting.UNDER_NO_RULE, prefix=resolved.prefix)'
+new = '        return Mounted(recorded, Mounting.AS_RECORDED)'
+
+[[rows]]
+id = "r773-a.M3_placed_row_written_as_recorded"
+source = { table = "r773-a.json", id = "M3_placed_row_written_as_recorded" }
+description = "mounted_location: count a placed row and hand back the recorded spelling, which is the finding itself"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '            return Mounted(resolved.path, Mounting.PLACED)'
+new = '            return Mounted(recorded, Mounting.PLACED)'
+
+[[rows]]
+id = "r773-a.M4_emitter_handed_the_rows_as_read"
+source = { table = "r773-a.json", id = "M4_emitter_handed_the_rows_as_read" }
+description = "render: emit the rows as read and not the rows as placed"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '        + "".join(track_element(track) for track in placed)'
+new = '        + "".join(track_element(track) for track in tracks)'
+
+[[rows]]
+id = "r773-a.M5_another_host_not_caught"
+source = { table = "r773-a.json", id = "M5_another_host_not_caught" }
+description = "mounted_location: catch a different error, so a location naming another host ends the export"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''
+    except locations.LocationDecodeError:
+        return Mounted(recorded, Mounting.AS_RECORDED)'''
+new = '''
+    except KeyError:
+        return Mounted(recorded, Mounting.AS_RECORDED)'''
+
+[[rows]]
+id = "r773-a.M6_left_row_counted_as_under_no_rule"
+source = { table = "r773-a.json", id = "M6_left_row_counted_as_under_no_rule" }
+description = "mounted_location: answer a row left to its rule as under no rule, which is where doctor and the export disagreed"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '        return Mounted(recorded, Mounting.LEFT_TO_ITS_RULE)'
+new = '        return Mounted(recorded, Mounting.UNDER_NO_RULE)'
+
+[[rows]]
+id = "r773-a.M7_prefixes_not_carried"
+source = { table = "r773-a.json", id = "M7_prefixes_not_carried" }
+description = "render: carry no leading prefix for the rows under no rule"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '            unmapped_prefixes=tuple(prefixes.most_common()),'
+new = '            unmapped_prefixes=(),'
+
+[[rows]]
+id = "r773-a.M8_placed_rows_not_counted"
+source = { table = "r773-a.json", id = "M8_placed_rows_not_counted" }
+description = "render: count no placed row"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '            remapped += 1'
+new = '            remapped += 0'
+
+[[rows]]
+id = "r773-a.M9_left_rows_not_collected"
+source = { table = "r773-a.json", id = "M9_left_rows_not_collected" }
+description = "render: collect no row left to its rule"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '            left.append(track.track_id)'
+new = '            pass'
+
+[[rows]]
+id = "r773-a.S1_streamed_row_encoded_as_a_file"
+source = { table = "r773-a.json", id = "S1_streamed_row_encoded_as_a_file" }
+description = "is_file_path, existing: take any value that is not a location as a path, a streamed track and an empty one included"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    return recorded.startswith("/") and not locations.looks_like_location(recorded)'
+new = '    return not locations.looks_like_location(recorded)'
+
+[[rows]]
+id = "r773-a.S2_tombstoned_row_written"
+source = { table = "r773-a.json", id = "S2_tombstoned_row_written" }
+description = "read_tracks, existing: write a tombstoned collection row"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '''
+        if trees.soft_delete_marker(row):
+            continue
+        track_id = str(row.ID)'''
+new = '''
+        if False:
+            continue
+        track_id = str(row.ID)'''
+
+[[rows]]
+id = "r773-a.S3_not_a_file_count_inverted"
+source = { table = "r773-a.json", id = "S3_not_a_file_count_inverted" }
+description = "render, existing: count the rows that do name a file as the ones that do not"
+file = "src/cratekit/write/collection_export.py"
+surface = "user"
+tests = ["tests/test_export_collection.py"]
+old = '    unlocated = tuple(track.track_id for track in tracks if not is_located(track.location))'
+new = '    unlocated = tuple(track.track_id for track in tracks if is_located(track.location))'
+
+[[rows]]
+id = "r1949.E1_missing_never"
+source = { table = "r1949.json", id = "E1_missing_never" }
+description = "check: never report a declared track the playlist lacks, so a short tree reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        if content_id not in held:'
+new = '        if False:'
+
+[[rows]]
+id = "r1949.N10_no_classes"
+source = { table = "r1949.json", id = "N10_no_classes" }
+description = "declared_names: leave every sub class out, so a cleared track left in with vox alone reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        subs = set(competing) | {genre.id for genre in bucket.genre_subs} | classes'
+new = '        subs = set(competing) | {genre.id for genre in bucket.genre_subs}'
+
+[[rows]]
+id = "r1949.N11_no_bands"
+source = { table = "r1949.json", id = "N11_no_bands" }
+description = "declared_names: leave the competing places out, so the band the residual names is never compared"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        subs = set(competing) | {genre.id for genre in bucket.genre_subs} | classes'
+new = '        subs = {genre.id for genre in bucket.genre_subs} | classes'
+
+[[rows]]
+id = "r1949.N12_undeclared_pair_raises"
+source = { table = "r1949.json", id = "N12_undeclared_pair_raises" }
+description = "declared_names: let a former or split place's KeyError escape, so every check refuses"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''
+            except KeyError:
+                continue
+            found.setdefault'''
+new = '''
+            except ValueError:
+                continue
+            found.setdefault'''
+
+[[rows]]
+id = "r1949.N14_namesake_names_swapped"
+source = { table = "r1949.json", id = "N14_namesake_names_swapped" }
+description = "namesakes: name the destination by its playlist and folder swapped, so a leftover names a folder nobody has"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        out.append(Destination(*place, node.folder_display, node.playlist_display, node))'
+new = '        out.append(Destination(*place, node.playlist_display, node.folder_display, node))'
+
+[[rows]]
+id = "r1949.N15_vocal_half_dropped"
+source = { table = "r1949.json", id = "N15_vocal_half_dropped" }
+description = "_uncompared_subs: drop the vocal half, so with vox reads left behind and differing on an uncalibrated run"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''
+    if VOCAL_DIMENSION in tuple(not_compared):
+        skipped |='''
+new = '''
+    if False:
+        skipped |='''
+
+[[rows]]
+id = "r1949.N16_favorites_half_dropped"
+source = { table = "r1949.json", id = "N16_favorites_half_dropped" }
+description = "_uncompared_subs: drop the favourites half, so a Favorites playlist is compared when its source was not read"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''
+    skipped = _uncompared_playlist_subs(declared, not_compared)
+    if VOCAL'''
+new = '''
+    skipped = set()
+    if VOCAL'''
+
+[[rows]]
+id = "r1949.N1_no_namesakes"
+source = { table = "r1949.json", id = "N1_no_namesakes" }
+description = "check: compare only resolved destinations again, so a playlist nothing derives into is foreign and converge says matching over a cleared second genre (the residual itself)"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''
+            *namesakes(declared, nodes, destinations, not_compared, record),
+'''
+new = ''
+
+[[rows]]
+id = "r1949.N2_removed_compared"
+source = { table = "r1949.json", id = "N2_removed_compared" }
+description = "namesakes: compare a playlist rekordbox removed through its names, so a removed playlist reads differing"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        if node.removed or (node.folder_id, node.playlist_id) in resolved:'
+new = '        if (node.folder_id, node.playlist_id) in resolved:'
+
+[[rows]]
+id = "r1949.N3_resolved_compared_again"
+source = { table = "r1949.json", id = "N3_resolved_compared_again" }
+description = "namesakes: compare a node a record already resolved again under the names it now bears, so a renamed recorded playlist overwrites its own destination"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        if node.removed or (node.folder_id, node.playlist_id) in resolved:'
+new = '        if node.removed:'
+
+[[rows]]
+id = "r1949.N4_covered_compared"
+source = { table = "r1949.json", id = "N4_covered_compared" }
+description = "namesakes: compare a second node bearing a destination's names that this run derived or a record names, so a namesake beside a renamed folder reads unexpected"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        if place is None or place in covered or place[1] in skipped:'
+new = '        if place is None or place[1] in skipped:'
+
+[[rows]]
+id = "r1949.N5_uncompared_dimension_compared"
+source = { table = "r1949.json", id = "N5_uncompared_dimension_compared" }
+description = "namesakes: compare a playlist whose dimension this run did not compare, so a with vox playlist on an uncalibrated run reads differing"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        if place is None or place in covered or place[1] in skipped:'
+new = '        if place is None or place in covered:'
+
+[[rows]]
+id = "r1949.N6_folder_by_display_only"
+source = { table = "r1949.json", id = "N6_folder_by_display_only" }
+description = "namesakes: read a recorded folder by its display name, so a cleared second genre under a folder renamed in rekordbox reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '            folder = recorded_folder.get(node.folder_id, folder)'
+new = '            folder = folder'
+
+[[rows]]
+id = "r1949.N8_manual_class_compared"
+source = { table = "r1949.json", id = "N8_manual_class_compared" }
+description = "declared_names: keep the manual classes, so a hand kept Candy playlist reads differing (round one's blocker)"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        if entry.policy is not taxonomy.SubPolicy.MANUAL'
+new = '        if True'
+
+[[rows]]
+id = "r1949.N9_no_genre_subs"
+source = { table = "r1949.json", id = "N9_no_genre_subs" }
+description = "declared_names: leave the genre subs out, so a cleared second genre's genre sub playlist reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '        subs = set(competing) | {genre.id for genre in bucket.genre_subs} | classes'
+new = '        subs = set(competing) | classes'
