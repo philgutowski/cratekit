@@ -29,6 +29,7 @@ from tests.test_routing_workers import (
     RESORT,
     RESORT_GATE,
     TREE_ID,
+    _approved_adds,
     _drive,
     _drive_once,
     _enqueue_resort,
@@ -112,7 +113,7 @@ def test_the_resort_gate_names_a_playlist_not_compared_beside_its_left_behind_co
     unread = _unread(acknowledged, native)
     shown = _offered()
     assert shown["left behind"] == 1, shown
-    (said,) = shown["not compared"]
+    (said,) = shown["playlists not compared"]
     assert unread in said, said
     assert said.endswith(rebuild.UNIDENTIFIED), said
     assert "1 playlist(s)" in said, said
@@ -124,7 +125,7 @@ def test_the_resort_gate_over_nothing_unread_says_nothing_of_it(acknowledged, na
     """The same tree, every playlist read: no such fact, so the fact means something."""
     shown = _offered()
     assert shown["left behind"] == 1, shown
-    assert shown["not compared"] == [], shown
+    assert shown["playlists not compared"] == [], shown
 
 
 def test_the_resumes_gate_shows_the_playlist_the_plan_could_not_read(
@@ -136,9 +137,37 @@ def test_the_resumes_gate_shows_the_playlist_the_plan_could_not_read(
     with jobs.open_store() as store:
         facts = jobs.get(store, job_id).payload[routing_cli.RESORT_FACTS_KEY]
     assert facts["unidentified"] == [unread], facts
-    assert routing_cli._resort_facts([], facts)["not compared"] == [
+    assert routing_cli._resort_facts([], facts)["playlists not compared"] == [
         rebuild.unidentified_message([unread])
     ]
+
+
+def test_a_job_an_older_build_froze_says_its_plan_did_not_record_them(
+    acknowledged, native, leftover
+):
+    """Round one's blocker: facts frozen with no list showed an empty one, a clean report."""
+    _unread(acknowledged, native)
+    # The facts the base froze over this library: no ``unidentified`` key at all.
+    facts = {"left_alone": [], "left_behind": 1, "not_derived": ["vocal"], "trees": [TREE_ID]}
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="route.resort",
+            payload={
+                routing_cli.RESORT_ADDS_KEY: _approved_adds(),
+                routing_cli.RESORT_FACTS_KEY: facts,
+            },
+            cfg=config.load(),
+            item_ids=(TREE_ID,),
+        )
+    code, refused = _drive_once([*RESORT, "--job", job.job_id])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["playlists not compared"] == [routing_cli.UNRECORDED_UNREAD], shown
+    # A plan that recorded the list and found nothing shows nothing.
+    assert routing_cli._resort_facts([], {**facts, "unidentified": []})[
+        "playlists not compared"
+    ] == []
 
 
 def test_every_envelope_after_the_gate_names_it(acknowledged, native, leftover):
@@ -233,6 +262,31 @@ def test_a_rebuild_over_nothing_unread_or_left_says_nothing_of_either(acknowledg
     _, code, done = _queue_and_resume(REBUILD)
     assert code == int(ExitCode.OK), done
     assert _named(done) == [] and _left(done) == []
+
+
+def test_a_rebuild_that_failed_part_way_names_what_the_finished_tree_found_as_steps(
+    acknowledged, native, leftover, monkeypatch
+):
+    """The rebuild's other exit, new with R-2020: a refusal carries the sentences as steps."""
+    unread = _unread(acknowledged, native)
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="rebuild",
+            payload={"tree": None, "actor": "a-person"},
+            cfg=config.load(),
+            item_ids=(TREE_ID, "second_tree"),
+        )
+    _fail_other_trees(monkeypatch)
+    refused = _fails(_drive([*REBUILD, "--job", job.job_id]))
+    with jobs.open_store() as store:
+        stored = jobs.get(store, job.job_id).cause
+    steps = list(refused["cause"]["remediation"]["steps"])
+    assert steps[: len(stored.remediation.steps)] == list(stored.remediation.steps)
+    left, named = steps[len(stored.remediation.steps) :]
+    assert ARRIVED in left and "1 membership" in left, left
+    assert named == rebuild.unidentified_message([unread])
+    assert refused["cause"]["reason"] == stored.reason
 
 
 def test_the_rebuild_worker_reports_its_after_check(acknowledged, native, leftover):

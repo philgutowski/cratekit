@@ -1485,8 +1485,8 @@ longer files, or give the folder back its genre's name where no other folder
 bears that name (a `rebuild` or `adopt apply` after the rename makes a folder
 of that name again) and it is compared. It is not a difference, so a
 `rebuild` still clears a tree's flag over it. So no left behind count includes
-a track in one: `route resort`'s gate names every such playlist under `not
-compared` beside its `left behind` count, and a driven `route resort` or
+a track in one: `route resort`'s gate names every such playlist under `playlists
+not compared` beside its `left behind` count, and a driven `route resort` or
 `rebuild` carries a `playlist-not-compared` warning naming each one, in the
 words `converge` uses. A Candy playlist, which a person
 fills by hand, is never compared this way.

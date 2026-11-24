@@ -674,19 +674,33 @@ def _resort_pin(payload: dict[str, Any]) -> dict[str, str] | None:
     return {RESORT_DATABASE_KEY: str(opened)} if opened else None
 
 
+#: What the resume's gate shows of a plan frozen by a build that did not record
+#: the playlists its check could not compare (R-2020), never an empty list.
+UNRECORDED_UNREAD = (
+    "the plan this job was queued from did not record the playlists its check "
+    "could not compare, so the left behind count may leave some out; the drive "
+    "names any it finds, and a new resort's gate names them before it is queued"
+)
+
+
 def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str, Any]:
     """What the gate shows in front of the adds, counted off them (R-691's rule).
 
     The trees, the count, the memberships the additive resort leaves where
     they are, and every playlist the check could not compare, which that count
-    cannot include (R-2020). A job frozen before R-2020 shows none.
+    cannot include (R-2020). Facts frozen by a build before R-2020 carry no
+    such list, and say so rather than show an empty one.
     """
-    unread = rebuild.unidentified_message(facts.get("unidentified") or ())
+    if "unidentified" in facts:
+        unread = rebuild.unidentified_message(facts["unidentified"] or ())
+        playlists = [] if unread is None else [unread]
+    else:
+        playlists = [UNRECORDED_UNREAD]
     return {
         "trees": sorted({row["tree"] for row in adds}) or list(facts.get("trees") or ()),
         "adds": len(adds),
         "left behind": int(facts.get("left_behind") or 0),
-        "not compared": [] if unread is None else [unread],
+        "playlists not compared": playlists,
         "not derived": list(facts.get("not_derived") or ()),
         "left alone": list(facts.get("left_alone") or ()),
     }
@@ -709,7 +723,9 @@ def route_resort(ctx) -> Envelope:
     routed = _routed_trees(entries, declared)
     warnings = _passed_over(entries, declared)
     adds: list[dict[str, str]] = []
-    facts: dict[str, Any] = {"trees": list(routed)}
+    # The list is recorded even when empty, since a job without it is one an
+    # older build froze, which the resume's gate says (R-2020).
+    facts: dict[str, Any] = {"trees": list(routed), "unidentified": []}
     opened: str | None = None
     if routed:
         threshold = metadata_cli.load_vocal_threshold(cfg)

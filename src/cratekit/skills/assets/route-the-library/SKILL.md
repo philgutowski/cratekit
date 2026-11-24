@@ -209,7 +209,8 @@ warning names the first twenty, counts the rest, and ends with the directory
 the whole list is written in. A playlist the check could not tie to one
 destination (under a folder renamed in rekordbox, or beside a folder a write
 made again) is not in that count, so the gate shows every such playlist under
-`not compared` beside `left behind`, and the driven resort carries a
+`playlists not compared` beside `left behind` (a job queued by an older build
+says its plan did not record them), and the driven resort carries a
 `playlist-not-compared` warning naming each one. A resort that failed part way
 says both as steps on its refusal. `crate converge` says whether a tree still
 differs.

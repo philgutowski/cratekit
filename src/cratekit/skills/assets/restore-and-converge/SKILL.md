@@ -284,8 +284,9 @@ recorded is filed again under the genre's name, beside it, and the rebuild
 still clears the flag; the driven rebuild's `playlist-not-compared` warning,
 and converge after it, name the playlists it could not tie to one destination
 as not compared, for a person to look through in rekordbox. The rebuild adds
-and never removes, so its `membership-left-behind` warning names each
-membership the declaration no longer places, as the resort's does.
+and never removes, so its `membership-left-behind` warning names the first
+twenty memberships the declaration no longer places, counts the rest, and
+ends with the directory the whole list is written in, as the resort's does.
 
 A tree still on the XML bridge is refused rather than rebuilt, because the
 membership written would be overwritten by the next import. Cut it over first.
