@@ -33,8 +33,13 @@ the two trees, and writes row files and tables.
 from __future__ import annotations
 
 import argparse
+import copy
+import json
+import subprocess
 import sys
+import tomllib
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -215,6 +220,190 @@ def cmd_rows(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# join: the two tables `killset.py check` reads for the whole survey
+# ---------------------------------------------------------------------------
+
+#: Survey rows not owed a kill, each with the reason, kept beside this script.
+EXCLUDED = HERE / "excluded.toml"
+
+
+def read_excluded() -> dict[tuple[str, str], str]:
+    data = tomllib.loads(EXCLUDED.read_text(encoding="utf-8")) if EXCLUDED.exists() else {}
+    found: dict[tuple[str, str], str] = {}
+    for entry in data.get("excluded", []):
+        key = (entry["table"], entry["id"])
+        if key in found:
+            raise SystemExit(f"{EXCLUDED.name} names {key} twice")
+        reason = str(entry.get("reason") or "").strip()
+        if not reason:
+            raise SystemExit(f"{EXCLUDED.name}: {key} gives no reason")
+        found[key] = reason
+    return found
+
+
+def text_of(row: dict) -> tuple:
+    return (row.get("file"), row.get("old"), row.get("new"))
+
+
+def vouched_reason(row: K.Recorded, measured: list[tuple], pick: dict) -> str:
+    """A reason for a row measured at another text than its survey text, from the
+    chain of replays that carried it there, or none when the chain breaks.
+
+    The chain starts at the survey's text and the tests that killed it there.
+    Each killed replay at a text already in the chain adds its killers, since
+    one exact text occurring once is one guard however its tests were renamed.
+    A replay at a new text joins the chain only on the rule `check` holds a move
+    to: a test the chain already holds killed it there, or a person wrote its
+    `moved` reason. The reason names each move and the test or reason that
+    carried it.
+    """
+    texts = {(row.anchor.file, row.anchor.old, row.anchor.new)}
+    killers = set(row.killers)
+    steps: list[str] = []
+    for when, table, _side, replayed, _ in measured:
+        if not K.killed(replayed):
+            continue
+        text = text_of(replayed)
+        mine = K.killer_names(replayed)
+        if text not in texts:
+            own = str(replayed.get("moved") or "").strip()
+            shared = sorted(killers & mine)
+            if shared:
+                steps.append(f"{table} ({when}) at {text[0]}, killed by {shared[0]}")
+            elif own and not own.startswith(K.AUTOMATIC_MOVE):
+                steps.append(f"{table} ({when}) at {text[0]}, whose reason is: {own}")
+            else:
+                continue
+            texts.add(text)
+        killers |= mine
+    if text_of(pick) not in texts:
+        return ""
+    return (
+        "The survey's guard, carried by its replays, each move by a test that had killed "
+        "it at the text before or by a reason a person wrote: " + "; ".join(steps) + "."
+    )
+
+
+def git_head() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "--short=8", "HEAD"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def table_head(name: str, note: str) -> dict:
+    return {
+        "name": name,
+        "pass_kind": K.REPLAY,
+        "head": git_head(),
+        "when": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "valid": True,
+        "invalid_reason": "",
+        "note": note,
+    }
+
+
+def recorded_row(source: tuple[str, str]) -> dict:
+    table = K.load_table(TABLES / source[0]) or {"rows": []}
+    for row in table["rows"]:
+        if isinstance(row, dict) and str(row.get("id")) == source[1]:
+            return row
+    raise SystemExit(f"{source[0]} holds no row {source[1]}")
+
+
+def cmd_join(args) -> int:
+    seen = Measurements()
+    survey = survey_rows(args.survey_root)
+    excluded = read_excluded()
+    known = {row.source for row in survey}
+    stray = sorted(set(excluded) - known)
+    if stray:
+        raise SystemExit(f"{EXCLUDED.name} names rows the survey does not hold: {stray}")
+    before_rows, after_rows, mapped, left_out, unheld = [], {}, [], [], []
+    for row in survey:
+        if row.source in excluded:
+            left_out.append(
+                {
+                    "source": {"table": row.table, "id": row.id},
+                    "id": K.row_id(row.source),
+                    "file": row.anchor.file,
+                    "reason": excluded[row.source],
+                }
+            )
+            continue
+        was = copy.deepcopy(recorded_row(row.source))
+        was["id"] = K.row_id(row.source)
+        was["source"] = {"table": row.table, "id": row.id}
+        before_rows.append(was)
+        measured, how = seen.of(row)
+        after = [one for one in measured if one[2] == "after"]
+        if after:
+            pick = copy.deepcopy(after[-1][3])
+            pick["id"] = K.row_id(row.source)
+            pick["source"] = {"table": row.table, "id": row.id}
+            pick["measured_in"] = after[-1][1]
+            if how == "text":
+                pick["matched_by"] = "its file and text, as U315 matched it"
+            if text_of(pick) != text_of(was) and K.unvouched_move(row.killers, pick):
+                reason = vouched_reason(row, measured, pick)
+                if reason:
+                    pick["moved"] = reason
+            after_rows[row.source] = pick
+        held_by_map = seen.mapped.get(row.source)
+        if held_by_map and not (after and K.killed(after[-1][3])):
+            path, table, entry = held_by_map[-1]
+            mapped.append(copy.deepcopy(entry))
+            target = next(
+                (
+                    one
+                    for one in table["rows"]
+                    if isinstance(one, dict) and one.get("id") == entry.get("to")
+                ),
+                None,
+            )
+            if target is not None:
+                key = K.source_of(target) or ("", str(target.get("id")))
+                if key not in after_rows:
+                    kept = copy.deepcopy(target)
+                    kept["measured_in"] = str(path.relative_to(REPO_ROOT))
+                    after_rows[key] = kept
+        if not after and not held_by_map:
+            unheld.append(row)
+    if unheld and args.draft:
+        drop = {row.source for row in unheld}
+        before_rows = [one for one in before_rows if K.source_of(one) not in drop]
+    elif unheld:
+        for row in unheld:
+            print(f"NO MEASUREMENT {row.anchor.file}  {row.table}  {row.id}")
+        raise SystemExit(f"{len(unheld)} survey rows owed a kill have no measurement after")
+    note = (
+        f"The survey of U290 at ff8e5ec: {len(survey)} live killed rows, "
+        f"{len(before_rows)} owed a kill and {len(left_out)} left out, each named under "
+        "excluded with its reason. Each row as its own table recorded it."
+    )
+    before = table_head("survey-before", note)
+    before["rows"] = before_rows
+    before["excluded"] = left_out
+    after_table = table_head(
+        "survey-after",
+        "The newest after measurement of each survey row owed a kill, from every replay "
+        "table under docs/mutation (U290's cards and this card's batches), each naming "
+        "the table it was measured in, with every mapping those tables made.",
+    )
+    after_table["rows"] = list(after_rows.values())
+    after_table["mapped"] = mapped
+    for name, table in (("survey-before.json", before), ("survey-after.json", after_table)):
+        (args.out_dir / name).write_text(json.dumps(table, indent=1) + "\n", encoding="utf-8")
+    print(
+        f"{len(before_rows)} owed, {len(left_out)} left out, {len(after_rows)} after rows, {len(mapped)} mapped"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--survey-root", type=Path, required=True)
@@ -224,6 +413,12 @@ def build_parser() -> argparse.ArgumentParser:
     rows.add_argument("--out-dir", type=Path, default=HERE)
     rows.add_argument("--batches", type=int, default=3)
     rows.set_defaults(run=cmd_rows)
+    joined = verbs.add_parser("join")
+    joined.add_argument("--out-dir", type=Path, default=HERE)
+    joined.add_argument(
+        "--draft", action="store_true", help="leave out rows with no measurement, to read the rest"
+    )
+    joined.set_defaults(run=cmd_join)
     return parser
 
 
