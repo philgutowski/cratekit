@@ -1,0 +1,3071 @@
+name = "u334-replay-before-1"
+pass_kind = "replay"
+
+[[rows]]
+id = "u173.M10_gate_abort"
+source = { table = "u173.json", id = "M10_gate_abort" }
+description = "skill step 7: the clear's gate answered abort, so the analysed rows are never cleared"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = 'inbox.analyzed.approve apply'
+new = 'inbox.analyzed.approve abort'
+
+[[rows]]
+id = "u173.M12_job_verb"
+source = { table = "u173.json", id = "M12_job_verb" }
+description = "skill step 1.1: a verb the parser does not know, the lint's rule g"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = 'crate job list --state running'
+new = 'crate jobs list --state running'
+
+[[rows]]
+id = "u173.M13_output_flag_after_verb"
+source = { table = "u173.json", id = "M13_output_flag_after_verb" }
+description = "skill step 1.5: the global --output flag after the verb, where the parser refuses it"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '       crate --output json analyze check'
+new = '       crate analyze check --output json'
+
+[[rows]]
+id = "u173.M14_scope_value"
+source = { table = "u173.json", id = "M14_scope_value" }
+description = "skill step 1.5: the scope it must read named inbox, a value the check never writes"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = 'Read `data.summary.scope` first. It must read `analyze`'
+new = 'Read `data.summary.scope` first. It must read `inbox`'
+
+[[rows]]
+id = "u173.M15_postcheck_scope_dropped"
+source = { table = "u173.json", id = "M15_postcheck_scope_dropped" }
+description = "skill step 7: the post check stops confirming its scope, so a verdict over other rows is read as the visit's"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '`data.summary.scope` must still read `analyze`.'
+new = '`data.summary.scope` names the rows it read.'
+
+[[rows]]
+id = "u173.M1_mode_dynamic"
+source = { table = "u173.json", id = "M1_mode_dynamic" }
+description = "skill table: Analysis Mode Normal to Dynamic, the setting sitting 47 ran on by mistake"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '| Analysis Mode | Normal |'
+new = '| Analysis Mode | Dynamic |'
+
+[[rows]]
+id = "u173.M2_vocal_on"
+source = { table = "u173.json", id = "M2_vocal_on" }
+description = "skill table: Vocal off to on, against the brief's standard"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '| Vocal | off |'
+new = '| Vocal | on |'
+
+[[rows]]
+id = "u173.M3_key_off"
+source = { table = "u173.json", id = "M3_key_off" }
+description = "skill table: KEY on to off, the other setting sitting 47 met wrong"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '| KEY | on |'
+new = '| KEY | off |'
+
+[[rows]]
+id = "u173.M4_precision_row_dropped"
+source = { table = "u173.json", id = "M4_precision_row_dropped" }
+description = "skill table: the High precision row left out, so the dialog's remembered value stands"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''
+| High precision | off |
+'''
+new = ''
+
+[[rows]]
+id = "u173.M5_wrong_playlist"
+source = { table = "u173.json", id = "M5_wrong_playlist" }
+description = "skill step 2: select a playlist named Analyse rather than the one every landing fills"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '`Analyze` directly under it.'
+new = '`Analyse` directly under it.'
+
+[[rows]]
+id = "u173.M6_agent_name"
+source = { table = "u173.json", id = "M6_agent_name" }
+description = "skill step 6: wait on a process name the agent does not run under, so the agent is never seen"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''
+    pgrep -x rekordboxAgent
+'''
+new = '''
+    pgrep -x rekordbox-agent
+'''
+
+[[rows]]
+id = "u173.M7_waiting_code"
+source = { table = "u173.json", id = "M7_waiting_code" }
+description = "skill step 7: waiting read as exit 30, so a 12 matches no branch"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '- **12, waiting.**'
+new = '- **30, waiting.**'
+
+[[rows]]
+id = "u173.M8_suspect_code"
+source = { table = "u173.json", id = "M8_suspect_code" }
+description = "skill step 7: suspect read as exit 12, so a suspect visit reads as rows still waiting"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '- **27, suspect.**'
+new = '- **12, suspect.**'
+
+[[rows]]
+id = "u173.M9_precheck_code"
+source = { table = "u173.json", id = "M9_precheck_code" }
+description = "skill step 1.5: the pre check goes on at exit 0, the code for nothing waiting"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = 'It must exit 12 with'
+new = 'It must exit 0 with'
+
+[[rows]]
+id = "u319.M1_ok_on_a_suspect_check"
+source = { table = "u319.json", id = "M1_ok_on_a_suspect_check" }
+description = "skill: OK the dialog on a check that exited 27, whose rows Auto Analysis leaves alone"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '   - **Every field equal, and the check in step 1.5 exited 12**: write the'
+new = '   - **Every field equal, and the check in step 1.5 exited 12 or 27**: write the'
+
+[[rows]]
+id = "u319.M3_radar_value"
+source = { table = "u319.json", id = "M3_radar_value" }
+description = "skill: a field beyond the table read against another value than sitting 101's"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '   (BPM range 78 to 155, Cloud Analysis off, Radar Analysis on); any other'
+new = '   (BPM range 78 to 155, Cloud Analysis on, Radar Analysis on); any other'
+
+[[rows]]
+id = "u319.M4_auto_wait_counts_the_batch"
+source = { table = "u319.json", id = "M4_auto_wait_counts_the_batch" }
+description = "skill: the Auto Analysis wait counts the batch, which stalls on every analysed row left in the playlist"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''
+     step 4 says, with `expected` the `data.summary.not_analysed` count from
+     step 1.5, not the batch. Then go to step 5.'''
+new = '''
+     step 4 says, with `expected` the batch from step 1.5. Then go to
+     step 5.'''
+
+[[rows]]
+id = "u319.M5_cancel_becomes_ok"
+source = { table = "u319.json", id = "M5_cancel_becomes_ok" }
+description = "skill: a dialog whose fields differ is answered OK, analysing on other fields"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = 'Cancel, never OK, and touch no field of the dialog. Then wait thirty'
+new = 'OK, and touch no field of the dialog. Then wait thirty'
+
+[[rows]]
+id = "u319.M6_restart_at_step_two"
+source = { table = "u319.json", id = "M6_restart_at_step_two" }
+description = "skill: a wrong run restarts at step 2 on a stale check"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = 'and start again from step 1.5, so the check is read again before step 2:'
+new = 'and start again from step 2, with the check as it was read before:'
+
+[[rows]]
+id = "u319.M7_key_column_unread"
+source = { table = "u319.json", id = "M7_key_column_unread" }
+description = "skill: done clears rows whose Key column is empty, an Auto run with KEY off"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''
+  read it here: `data.summary.key_filled` must equal
+  `data.summary.analysed`.'''
+new = '''
+  read it here: `data.summary.key_filled` may be below
+  `data.summary.analysed`.'''
+
+[[rows]]
+id = "u158.M4_shallow_checkout"
+source = { table = "u158.json", id = "M4_shallow_checkout" }
+description = "ci.yml: drop the full history checkout, so the range is the tip alone"
+file = ".github/workflows/ci.yml"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '''
+        with:
+          fetch-depth: 0
+'''
+new = ''
+
+[[rows]]
+id = "u158.M5_head_not_passed"
+source = { table = "u158.json", id = "M5_head_not_passed" }
+description = "ci.yml: judge a pull request's range without its head, so its merge's close is unread"
+file = ".github/workflows/ci.yml"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '            python scripts/board.py closing --since "$PR_BASE" --pull-request-head "$PR_HEAD_REF"'
+new = '            python scripts/board.py closing --since "$PR_BASE"'
+
+[[rows]]
+id = "u158.M6_pull_request_from_previous_tip"
+source = { table = "u158.json", id = "M6_pull_request_from_previous_tip" }
+description = "ci.yml: judge a pull request from the event's previous tip rather than its base"
+file = ".github/workflows/ci.yml"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '            python scripts/board.py closing --since "$PR_BASE" --pull-request-head "$PR_HEAD_REF"'
+new = '            python scripts/board.py closing --since "$PUSHED_FROM" --pull-request-head "$PR_HEAD_REF"'
+
+[[rows]]
+id = "u158.M7_no_base_refuses"
+source = { table = "u158.json", id = "M7_no_base_refuses" }
+description = "ci.yml: a pull request event with no base sha fails the step instead of saying why"
+file = ".github/workflows/ci.yml"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '''
+              echo "pull request event carries no base sha; nothing to judge"
+              exit 0'''
+new = '''
+              echo "pull request event carries no base sha; nothing to judge"
+              exit 1'''
+
+[[rows]]
+id = "u158.M8_zero_tip_judged"
+source = { table = "u158.json", id = "M8_zero_tip_judged" }
+description = "ci.yml: a created ref's all zero previous tip is handed to the check as a range"
+file = ".github/workflows/ci.yml"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '            ""|0000000000000000000000000000000000000000)'
+new = '            "")'
+
+[[rows]]
+id = "u251.W2_dist_load"
+source = { table = "u251.json", id = "W2_dist_load" }
+description = "pyproject addopts: name --dist load in its place, the default written out"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_suite_distribution.py", "tests/test_mutation_driver.py", "tests/test_cloud_battery.py"]
+old = 'addopts = "-q -n auto --dist worksteal"'
+new = 'addopts = "-q -n auto --dist load"'
+
+[[rows]]
+id = "u269.M1_lxml_declared_again"
+source = { table = "u269.json", id = "M1_lxml_declared_again" }
+description = "pyproject.toml: declare lxml in the slim core again, which nothing under src imports"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''
+    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+'''
+new = '''
+    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+    "lxml>=5.0",           # rekordbox XML parsing
+'''
+
+[[rows]]
+id = "u269.M2_unused_dependency_by_another_import_name"
+source = { table = "u269.json", id = "M2_unused_dependency_by_another_import_name" }
+description = "pyproject.toml: declare python-dateutil in the core, installed here and imported as dateutil, which nothing under src imports"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''
+    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+'''
+new = '''
+    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+    "python-dateutil>=2.8",
+'''
+
+[[rows]]
+id = "u269.M4_comment_names_the_missing_file"
+source = { table = "u269.json", id = "M4_comment_names_the_missing_file" }
+description = "pyproject.toml: the slim core comment names tests/test_slim_core.py again, a file that does not exist"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''
+# tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency
+# fails the build'''
+new = '''
+# tests/test_slim_core.py
+# fails the build'''
+
+[[rows]]
+id = "u269.M5_comment_names_a_missing_function"
+source = { table = "u269.json", id = "M5_comment_names_a_missing_function" }
+description = "pyproject.toml: the slim core comment names a test function test_packaging.py does not define"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''
+# tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency
+# fails the build'''
+new = '''
+# tests/test_packaging.py::test_slim_core_is_slim
+# fails the build'''
+
+[[rows]]
+id = "u269.M6_heavy_dependency_in_the_core"
+source = { table = "u269.json", id = "M6_heavy_dependency_in_the_core" }
+description = "pyproject.toml: declare numpy in the slim core, the existing slim core guard's case"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''
+    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+'''
+new = '''
+    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+    "numpy>=1.24",
+'''
+
+[[rows]]
+id = "u269.M8_comment_names_a_missing_doc"
+source = { table = "u269.json", id = "M8_comment_names_a_missing_doc" }
+description = "pyproject.toml: the slim core comment names docs/dependencies.md, which does not exist, the round one widening of the path guard to docs and vendor"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''
+# fails the build if one appears. Every line here is also imported somewhere
+# under src/cratekit, which'''
+new = '''
+# fails the build if one appears (docs/dependencies.md). Every line here is
+# also imported somewhere under src/cratekit, which'''
+
+[[rows]]
+id = "u124-b19.B19_audit_reads_folder"
+source = { table = "u124-b19.json", id = "B19_audit_reads_folder" }
+description = "audit stops counting a malformed residual file as a contradiction, rerun after the audit test landed"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '        clashes = clashes + malformed'
+new = '        clashes = clashes'
+
+[[rows]]
+id = "u124.B10_validate_first"
+source = { table = "u124.json", id = "B10_validate_first" }
+description = "a malformed file is skipped instead of stopping the landing, so the good ones land"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if problems:
+        raise ValueError("; ".join(problems))
+    if not parsed:'''
+new = '    if not parsed:'
+
+[[rows]]
+id = "u124.B11_relanded_title"
+source = { table = "u124.json", id = "B11_relanded_title" }
+description = "a title the ledger already holds is numbered again"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if again:
+        raise ValueError("; ".join(again))'''
+new = ''
+
+[[rows]]
+id = "u124.B12_highest_not_count"
+source = { table = "u124.json", id = "B12_highest_not_count" }
+description = "the next number is the ledger's count plus one rather than its highest plus one"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    number = max(titles, default=0)'
+new = '    number = len(titles)'
+
+[[rows]]
+id = "u124.B13_separator"
+source = { table = "u124.json", id = "B13_separator" }
+description = "landed entries lose the separator line"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        text = text.rstrip("\n") + "\n\n---\n\n"'
+new = '        text = text.rstrip("\n") + "\n\n"'
+
+[[rows]]
+id = "u124.B14_files_deleted"
+source = { table = "u124.json", id = "B14_files_deleted" }
+description = "a landed file is left in the folder"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    for path, _, _ in parsed:
+        path.unlink()'''
+new = '''
+    for path, _, _ in parsed:
+        pass'''
+
+[[rows]]
+id = "u124.B15_closing_reads_folder"
+source = { table = "u124.json", id = "B15_closing_reads_folder" }
+description = "closing stops reading the residual folder"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '''
+    malformed = residual_file_problems()
+    if not problems and not malformed:'''
+new = '''
+    malformed = []
+    if not problems and not malformed:'''
+
+[[rows]]
+id = "u124.B17_land_on_main_only"
+source = { table = "u124.json", id = "B17_land_on_main_only" }
+description = "residuals --land runs on any branch"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if branch != "main":
+        print(
+            f"board: residuals are numbered on main'''
+new = '''
+    if branch == "never":
+        print(
+            f"board: residuals are numbered on main'''
+
+[[rows]]
+id = "u124.B18_behind_origin"
+source = { table = "u124.json", id = "B18_behind_origin" }
+description = "residuals --land numbers on a main behind origin/main"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):'
+new = '    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0") and False:'
+
+[[rows]]
+id = "u124.B1_untracked_filter"
+source = { table = "u124.json", id = "B1_untracked_filter" }
+description = "residual_files returns every file, git's index ignored, so an untracked draft is judged and landed"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if listed.returncode != 0:
+        return paths
+'''
+new = '''
+    if listed.returncode == 0 or listed.returncode != 0:
+        return paths
+'''
+
+[[rows]]
+id = "u124.B2_readme_excluded"
+source = { table = "u124.json", id = "B2_readme_excluded" }
+description = "the README is read as a residual file"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")'
+new = '    paths = sorted(p for p in folder.glob("*.md"))'
+
+[[rows]]
+id = "u124.B3_name_order"
+source = { table = "u124.json", id = "B3_name_order" }
+description = "files land in folder listing order rather than name order"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")'
+new = '    paths = sorted((p for p in folder.glob("*.md") if p.name != "README.md"), reverse=True)'
+
+[[rows]]
+id = "u124.B4_fence_open"
+source = { table = "u124.json", id = "B4_fence_open" }
+description = "a file with no opening fence is not refused"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if not lines or lines[0] != "---":
+        raise ValueError("does not open with a frontmatter fence")'''
+new = '''
+    if not lines:
+        raise ValueError("does not open with a frontmatter fence")'''
+
+[[rows]]
+id = "u124.B5_unknown_key"
+source = { table = "u124.json", id = "B5_unknown_key" }
+description = "an unknown frontmatter key is accepted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL:'
+new = '        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL and False:'
+
+[[rows]]
+id = "u124.B6_required_keys"
+source = { table = "u124.json", id = "B6_required_keys" }
+description = "a missing title or found line is accepted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+        if not meta.get(key):
+            raise ValueError(f"frontmatter has no {key}")'''
+new = '''
+        if key not in meta and False:
+            raise ValueError(f"frontmatter has no {key}")'''
+
+[[rows]]
+id = "u124.B7_issue_values"
+source = { table = "u124.json", id = "B7_issue_values" }
+description = "issue takes any value"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        if key in meta and meta[key] not in allowed:'
+new = '        if key in meta and meta[key] not in allowed and False:'
+
+[[rows]]
+id = "u124.B8_numbered_title"
+source = { table = "u124.json", id = "B8_numbered_title" }
+description = "the number shape widened back to any leading R number"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    if re.match(r"R-\d+\.", meta["title"]):'
+new = '    if re.match(r"R-\d+", meta["title"]):'
+
+[[rows]]
+id = "u124.B9_empty_body"
+source = { table = "u124.json", id = "B9_empty_body" }
+description = "a file with frontmatter and no body is accepted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if not body.strip():
+        raise ValueError("has frontmatter and no body")'''
+new = '''
+    if body is None:
+        raise ValueError("has frontmatter and no body")'''
+
+[[rows]]
+id = "u158.M1_card_not_judged"
+source = { table = "u158.json", id = "M1_card_not_judged" }
+description = "cmd_closing: never judge the card a pull request's head names, so an owed unit merges"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '        if card is not None:'
+new = '        if False:'
+
+[[rows]]
+id = "u158.M2_any_branch_names_a_card"
+source = { table = "u158.json", id = "M2_any_branch_names_a_card" }
+description = "pull_request_card: read a card off any owner/N-slug branch, not only a cloud one"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = 'CLOUD_BRANCH_RE = re.compile(r"^cloud/(\d+)-")'
+new = 'CLOUD_BRANCH_RE = re.compile(r"^\w+/(\d+)-")'
+
+[[rows]]
+id = "u158.M3_implied_close_not_a_reference"
+source = { table = "u158.json", id = "M3_implied_close_not_a_reference" }
+description = "cmd_closing: write the implied trailer without its hash, so it closes nothing"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '            problems += unresolved_closes(f"Closes #{card}", raw=False)'
+new = '            problems += unresolved_closes(f"Closes {card}", raw=False)'
+
+[[rows]]
+id = "u313.B2_landed_twice"
+source = { table = "u313.json", id = "B2_landed_twice" }
+description = "land_residuals: number a file whose title the ledger already holds, so a file that came back through a conflict lands twice"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_board_residual_search.py"]
+old = '        if meta["title"] in held'
+new = '        if meta["title"] in held and False'
+
+[[rows]]
+id = "u313.B5_owed_unit_closes"
+source = { table = "u313.json", id = "B5_owed_unit_closes" }
+description = "unresolved_closes: pass a unit a register still owes a module, so a closing trailer closes it early"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '        if not modules:'
+new = '        if modules or not modules:'
+
+[[rows]]
+id = "u313.B6_refusal_exit_code"
+source = { table = "u313.json", id = "B6_refusal_exit_code" }
+description = "_refuse: print the refusal and return 0, so a refused residuals command reads as done"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_board_residual_search.py"]
+old = '''
+    print(f"board: {message}", file=sys.stderr)
+    return code'''
+new = '''
+    print(f"board: {message}", file=sys.stderr)
+    return 0'''
+
+[[rows]]
+id = "u314.L1_archives_unread"
+source = { table = "u314.json", id = "L1_archives_unread" }
+description = "ledger_files: read the working file alone, so search, the highest number and the title check never see an archive"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py", "tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '    return sorted((ledger.parent / "ledger").glob("*.md"), key=first) + [ledger]'
+new = '    return [ledger]'
+
+[[rows]]
+id = "u314.L2_landing_never_archives"
+source = { table = "u314.json", id = "L2_landing_never_archives" }
+description = "land_residuals: append without archiving, so the working file grows past the limit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_board_residual_search.py"]
+old = '''
+    ledger.write_text(text)
+    archive_ledger(ledger)'''
+new = '    ledger.write_text(text)'
+
+[[rows]]
+id = "u314.L3_archive_header_undercounted"
+source = { table = "u314.json", id = "L3_archive_header_undercounted" }
+description = "archive_ledger: count a two line header where four are written, so an archive can pass the limit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        while last < count - 1 and 4 + len(body(first, last + 1)) <= LEDGER_LIMIT:'
+new = '        while last < count - 1 and 2 + len(body(first, last + 1)) <= LEDGER_LIMIT:'
+
+[[rows]]
+id = "u314.L5_duplicate_heading_passes"
+source = { table = "u314.json", id = "L5_duplicate_heading_passes" }
+description = "ledger_problems: never report a heading held by two files"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '            if number in where:'
+new = '            if False:'
+
+[[rows]]
+id = "u314.L6_misnamed_archive_passes"
+source = { table = "u314.json", id = "L6_misnamed_archive_passes" }
+description = "ledger_problems: never compare an archive's name with the range it holds"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        if path != ledger and (not numbers or path.name != _archive_name(numbers[0], numbers[-1])):'
+new = '        if path != ledger and not numbers:'
+
+[[rows]]
+id = "u314.L7_removed_heading_reversed"
+source = { table = "u314.json", id = "L7_removed_heading_reversed" }
+description = "ledger_problems: look for headings added since the revision rather than removed, so a removed heading passes"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    missing = [f"R-{n}" for n in sorted(set(before) - set(now))]'
+new = '    missing = [f"R-{n}" for n in sorted(set(now) - set(before))]'
+
+[[rows]]
+id = "u314.L8_unchanged_ignored"
+source = { table = "u314.json", id = "L8_unchanged_ignored" }
+description = "ledger_problems: never report an entry that differs from the revision, so the move's byte comparison passes anything"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    if unchanged and changed:'
+new = '    if False:'
+
+[[rows]]
+id = "u314.L9_archives_at_rev_unread"
+source = { table = "u314.json", id = "L9_archives_at_rev_unread" }
+description = "_ledger_at: read only the working file at the revision, so a heading removed from an archive passes the check against it"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    for name in [*(n for n in listed.stdout.split() if n.endswith(".md")), ledger.name]:'
+new = '    for name in [ledger.name]:'
+
+[[rows]]
+id = "u328.B1_board_reads_the_registry_alone"
+source = { table = "u328.json", id = "B1_board_reads_the_registry_alone" }
+description = "planned_units: read cli/registry.py and none of its parts, so a planned_in marker in a part owes nothing and a closing trailer passes"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry*.py"))'
+new = '    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry.py"))'
+
+[[rows]]
+id = "u328.B2_board_reads_the_parts_alone"
+source = { table = "u328.json", id = "B2_board_reads_the_parts_alone" }
+description = "planned_units: read the registry_*.py parts and not cli/registry.py, so its own markers and the constants it defines are lost"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry*.py"))'
+new = '    parts = sorted((ROOT / "src" / "cratekit" / "cli").glob("registry_*.py"))'
+
+[[rows]]
+id = "u330.A4_path_keys_not_skipped"
+source = { table = "u330.json", id = "A4_path_keys_not_skipped" }
+description = "_near_misses: stop skipping path: keys, so a filesystem key is read as a dotted module"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_repair_rows.py"]
+old = '    for module in (m for m in modules if not m.startswith("path:")):'
+new = '    for module in modules:'
+
+[[rows]]
+id = "u330.A6_non_units_mapped"
+source = { table = "u330.json", id = "A6_non_units_mapped" }
+description = "units_by_issue_number: map every titled issue, not only units, so a residual titled U-like shadows a unit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '        match = re.match(r"U(\d+)\b", node["title"]) if node["unit"] else None'
+new = '        match = re.match(r"U(\d+)\b", node["title"])'
+
+[[rows]]
+id = "u59.B1_per_message_split"
+source = { table = "u59.json", id = "B1_per_message_split" }
+description = "Concatenate the range again, manufacturing a trailer across two commits"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '            ["git", "log", "--format=%B%x00", f"{args.since}..HEAD"],'
+new = '            ["git", "log", "--format=%B", f"{args.since}..HEAD"],'
+
+[[rows]]
+id = "u59.B2_raw_true_on_range"
+source = { table = "u59.json", id = "B2_raw_true_on_range" }
+description = "Strip comments on the CI path, which can only delete a real trailer"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '                problems += unresolved_closes(message, raw=False)'
+new = '                problems += unresolved_closes(message, raw=True)'
+
+[[rows]]
+id = "u59.B3_unit_mapping_ignored"
+source = { table = "u59.json", id = "B3_unit_mapping_ignored" }
+description = "Ignore the supplied issue-to-unit map, restoring the number conflation"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '        uid = reference if units is None else units.get(reference)'
+new = '        uid = reference'
+
+[[rows]]
+id = "u59.B4_guess_caveat_dropped"
+source = { table = "u59.json", id = "B4_guess_caveat_dropped" }
+description = "Stop saying the unit number was guessed, so the reader trusts it"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '        if units is None and reference == uid:'
+new = '        if False:'
+
+[[rows]]
+id = "u59.B6_duplicate_unit_kept"
+source = { table = "u59.json", id = "B6_duplicate_unit_kept" }
+description = "Let a duplicated unit number resolve to whichever issue was seen last"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '    return {unit: number for unit, number in seen.items() if unit not in duplicated}'
+new = '    return seen'
+
+[[rows]]
+id = "u59.B8_missing_file_raises"
+source = { table = "u59.json", id = "B8_missing_file_raises" }
+description = "Let a missing message file raise instead of refusing with a sentence"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '        if not path.is_file():'
+new = '        if False:'
+
+[[rows]]
+id = "u81-round-2.B5_owed_argument_ignored"
+source = { table = "u81-round-2.json", id = "B5_owed_argument_ignored" }
+description = "Ignore a supplied register and always read the live one"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '''
+    owed = owed_by_unit() if owed is None else owed
+    issues_by_unit = units_by_issue_number(graph)'''
+new = '''
+    owed = owed_by_unit()
+    issues_by_unit = units_by_issue_number(graph)'''
+
+[[rows]]
+id = "u81-round-3.B5_audit_drops_the_detector"
+source = { table = "u81-round-3.json", id = "B5_audit_drops_the_detector" }
+description = "Have the audit find no contradictions at all, keeping its drift report"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '    clashes = contradictions(graph)'
+new = '    clashes = []'
+
+[[rows]]
+id = "u81-round-3.B5_audit_exit_code"
+source = { table = "u81-round-3.json", id = "B5_audit_exit_code" }
+description = "Report a contradiction as exit 1, the code that sends a session to sync"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '    return 2 if clashes else 1'
+new = '    return 1'
+
+[[rows]]
+id = "u81-round-3.B5_owed_default_dropped"
+source = { table = "u81-round-3.json", id = "B5_owed_default_dropped" }
+description = "Collapse the no-register default into a falsy test, so an empty register reads as none"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '''
+    owed = owed_by_unit() if owed is None else owed
+    issues_by_unit = units_by_issue_number(graph)'''
+new = '''
+    owed = owed or {}
+    issues_by_unit = units_by_issue_number(graph)'''
+
+[[rows]]
+id = "u81.B5_composite"
+source = { table = "u81.json", id = "B5_composite" }
+description = "What B5 does hold: report a contradiction over an OPEN issue as well"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_mutation_driver.py", "tests/test_pool_sizing.py", "tests/test_restore.py"]
+old = '        if node and node["unit"] and node["closed"]:'
+new = '        if node and node["unit"]:'
+
+[[rows]]
+id = "u81.B5_contradictions_by_number"
+source = { table = "u81.json", id = "B5_contradictions_by_number" }
+description = "Index the graph by unit number again in contradictions()"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '''
+        number = issues_by_unit.get(uid)
+        node = graph.get(number) if number is not None else None'''
+new = '        node = graph.get(uid)'
+
+[[rows]]
+id = "u81.B5_residual_repoint_dropped"
+source = { table = "u81.json", id = "B5_residual_repoint_dropped" }
+description = "Return only the register contradictions, dropping the repointed residuals"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '    return found + repointed_residuals(graph)'
+new = '    return found'
+
+[[rows]]
+id = "u271-measured.B7_boot_unrecorded"
+source = { table = "u271-measured.json", id = "B7_boot_unrecorded" }
+description = "record_run: record no boot id, which the driver then reads as another machine"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '        "boot_id": boot_id(),'
+new = '        "boot_id": "",'
+
+[[rows]]
+id = "u271-measured.B8_ran_uncounted"
+source = { table = "u271-measured.json", id = "B8_ran_uncounted" }
+description = "the reporting plugin: count no test as having reported"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '    _RAN.add(report.nodeid)'
+new = '    pass'
+
+[[rows]]
+id = "r1917.D1_root_listing_blind"
+source = { table = "r1917.json", id = "D1_root_listing_blind" }
+description = "top_level_entries lists nothing, so every entry added under the filesystem root goes unseen"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    return tuple(sorted(found))'
+new = '    return ()'
+
+[[rows]]
+id = "r1917.D2_root_check_skipped"
+source = { table = "r1917.json", id = "D2_root_check_skipped" }
+description = "check_state_guard never compares the root listing, so a child that leaves a folder at the root is not stopped"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+    if now_top == guard.top_entries:
+        return'''
+new = '''
+    if True:
+        return'''
+
+[[rows]]
+id = "r1917.D3_kind_not_read"
+source = { table = "r1917.json", id = "D3_kind_not_read" }
+description = "Every root entry reads as a folder, so a folder replaced by a file of the same name is not a change"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '                found.append(f"{entry.name}\t{kind}")'
+new = '                found.append(f"{entry.name}\tdir")'
+
+[[rows]]
+id = "r1917.D4_stand_in_ignored"
+source = { table = "r1917.json", id = "D4_stand_in_ignored" }
+description = "take_state_guard lists the real root whatever top it is given, so a stand in is never watched"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    top = FILESYSTEM_ROOT if top is None else top'
+new = '    top = FILESYSTEM_ROOT'
+
+[[rows]]
+id = "r1917.D5_unreadable_root_accepted"
+source = { table = "r1917.json", id = "D5_unreadable_root_accepted" }
+description = "A root that cannot be listed is accepted, so two unreadable listings read as unchanged after every child"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if entries and entries[0].startswith(UNREADABLE):'
+new = '    if False:'
+
+[[rows]]
+id = "r1917.D6_removed_unnamed"
+source = { table = "r1917.json", id = "D6_removed_unnamed" }
+description = "A removed root entry is left out of the stop's message, so the halt does not say what went"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        + [f"removed {name}" for name in sorted(before.keys() - after.keys())]'
+new = ''
+
+[[rows]]
+id = "r343-composites.C2_no_timestamps_no_hash"
+source = { table = "r343-composites.json", id = "C2_no_timestamps_no_hash" }
+description = "composite for G8 in r343.md: drop mtime, ctime and the content hash together, leaving path, size and inode; a same size rewrite must now pass unseen, so the test that rewrites in place is the death"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+                f"\t{info.st_mtime_ns}\t{info.st_ctime_ns}"
+            )
+            if info.st_size <= SMALL_FILE_BYTES and not os.path.islink(path):'''
+new = '''
+                ""
+            )
+            if False:'''
+
+[[rows]]
+id = "r343-composites.C3_path_only"
+source = { table = "r343-composites.json", id = "C3_path_only" }
+description = "composite for G3 in r343.md: drop size, inode, timestamps and the hash, leaving the path alone; only a new or removed entry is seen"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+                f"{relative}\t{info.st_size}\t{info.st_ino}"
+                f"\t{info.st_mtime_ns}\t{info.st_ctime_ns}"
+            )
+            if info.st_size <= SMALL_FILE_BYTES and not os.path.islink(path):'''
+new = '''
+                f"{relative}"
+            )
+            if False:'''
+
+[[rows]]
+id = "r343.G10_guard_not_checked_on_timeout"
+source = { table = "r343.json", id = "G10_guard_not_checked_on_timeout" }
+description = "the check leaves the finally, so a child that leaks and then hangs is filed as a timeout"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        finally:
+            # In a finally, so a child that leaks and then hangs past the'''
+new = '''
+        except subprocess.TimeoutExpired:
+            raise
+        else:
+            # In a finally, so a child that leaks and then hangs past the'''
+
+[[rows]]
+id = "r343.G1_guard_never_fires"
+source = { table = "r343.json", id = "G1_guard_never_fires" }
+description = "check_state_guard treats every digest as unchanged"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        if now == before:
+            continue'''
+new = '''
+        if True:
+            continue'''
+
+[[rows]]
+id = "r343.G4_existence_not_fingerprinted"
+source = { table = "r343.json", id = "G4_existence_not_fingerprinted" }
+description = "a child that creates the real directory is not a change"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '    entries: list[str] = [f"exists={root.is_dir()}"]'
+new = '    entries: list[str] = ["exists=True"]'
+
+[[rows]]
+id = "r343.G5_row_loop_swallows_the_leak"
+source = { table = "r343.json", id = "G5_row_loop_swallows_the_leak" }
+description = "the row loop's StateLeak handler stops re-raising, so the blanket handler files it as an error row and the batch continues"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+            # spending children against a machine it had just damaged.
+            raise'''
+new = '''
+            # spending children against a machine it had just damaged.
+            pass'''
+
+[[rows]]
+id = "r343.G6_run_pytest_skips_the_check"
+source = { table = "r343.json", id = "G6_run_pytest_skips_the_check" }
+description = "run_pytest never calls check_state_guard"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+            if guard is not None:
+                check_state_guard(guard, label=label)'''
+new = '''
+            if False:
+                check_state_guard(guard, label=label)'''
+
+[[rows]]
+id = "r343.G7_label_not_carried"
+source = { table = "r343.json", id = "G7_label_not_carried" }
+description = "every leak is reported as a generic child run rather than the row or phase that caused it"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '            check_state_guard(guard, label=label)'
+new = '            check_state_guard(guard, label="a child run")'
+
+[[rows]]
+id = "r343.G9_directories_not_fingerprinted"
+source = { table = "r343.json", id = "G9_directories_not_fingerprinted" }
+description = "a directory created inside the real root is not an entry"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        for name in dirnames:
+            entries.append(f"{(here / name).relative_to(root).as_posix()}\tdir")'''
+new = '''
+        for name in ():
+            entries.append(f"{(here / name).relative_to(root).as_posix()}\tdir")'''
+
+[[rows]]
+id = "r343.R1_config_override_ignored"
+source = { table = "r343.json", id = "R1_config_override_ignored" }
+description = "installation_state_roots resolves through platformdirs even when CRATEKIT_CONFIG_DIR is set, so the suite would guard the real machine's directory"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        if config_override
+        else Path(platformdirs.user_config_dir(APP_NAME)),'''
+new = '''
+        if False
+        else Path(platformdirs.user_config_dir(APP_NAME)),'''
+
+[[rows]]
+id = "r343.R2_roots_not_deduplicated"
+source = { table = "r343.json", id = "R2_roots_not_deduplicated" }
+description = "a config and state directory that agree are walked twice"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    return tuple(dict.fromkeys(roots))'
+new = '    return tuple(roots)'
+
+[[rows]]
+id = "r343.S1_no_home_redirect"
+source = { table = "r343.json", id = "S1_no_home_redirect" }
+description = "the child keeps the caller's HOME, so platformdirs resolves the real config directory"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '    "HOME": "home",'
+new = '    "HOME_UNSET": "home",'
+
+[[rows]]
+id = "r343.S2_no_config_dir_override"
+source = { table = "r343.json", id = "S2_no_config_dir_override" }
+description = "the child keeps the caller's CRATEKIT_CONFIG_DIR"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '    "CRATEKIT_CONFIG_DIR": f"config/{APP_NAME}",'
+new = '    "CRATEKIT_CONFIG_DIR_UNSET": f"config/{APP_NAME}",'
+
+[[rows]]
+id = "r343.S3_no_state_dir_override"
+source = { table = "r343.json", id = "S3_no_state_dir_override" }
+description = "the child keeps the caller's CRATEKIT_STATE_DIR"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '    "CRATEKIT_STATE_DIR": f"state/{APP_NAME}",'
+new = '    "CRATEKIT_STATE_DIR_UNSET": f"state/{APP_NAME}",'
+
+[[rows]]
+id = "r343.S4_no_xdg_config_redirect"
+source = { table = "r343.json", id = "S4_no_xdg_config_redirect" }
+description = "the child keeps the caller's XDG_CONFIG_HOME; platformdirs ignores XDG on macOS, so this row measures the Linux half of the redirect from a Mac"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '    "XDG_CONFIG_HOME": "config",'
+new = '    "XDG_CONFIG_HOME_UNSET": "config",'
+
+[[rows]]
+id = "u200.M10_driver_unreadable_read_as_complete"
+source = { table = "u200.json", id = "M10_driver_unreadable_read_as_complete" }
+description = "refuse_a_shallow_clone: refuse only an answer of true, so a repository git cannot read passes"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if done.returncode != 0 or answer != "false":'
+new = '    if answer == "true":'
+
+[[rows]]
+id = "u200.M9_driver_skips_shallow_check"
+source = { table = "u200.json", id = "M9_driver_skips_shallow_check" }
+description = "main: subtract known failures without checking the clone is complete"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+            refuse_a_shallow_clone(args.repo_root)
+'''
+new = '''
+            pass
+'''
+
+[[rows]]
+id = "u251.W5_count_summed_over_workers"
+source = { table = "u251.json", id = "W5_count_summed_over_workers" }
+description = "mutate plugin: add each worker's collection to the count rather than take one, so a parallel run reports every worker's copy"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    _STATE["collected"] = len(ids)'
+new = '    _STATE["collected"] += len(ids)'
+
+[[rows]]
+id = "u268.W10_driver_reads_cut_baseline"
+source = { table = "u268.json", id = "W10_driver_reads_cut_baseline" }
+description = "read_known_failures: accept a header that ends history full, a baseline written before U268"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    whole = f" {KNOWN_FAILURES_FULL_HISTORY} {KNOWN_FAILURES_WHOLE_IDS}"'
+new = '    whole = f" {KNOWN_FAILURES_FULL_HISTORY}"'
+
+[[rows]]
+id = "u271-measured.D10_empty_count_read"
+source = { table = "u271-measured.json", id = "D10_empty_count_read" }
+description = "read_battery_verdict: accept a record that collected nothing"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = 'record["collected"] > 0,'
+new = 'record["collected"] >= 0,'
+
+[[rows]]
+id = "u271-measured.D11_verdict_disagreement_read"
+source = { table = "u271-measured.json", id = "D11_verdict_disagreement_read" }
+description = "read_battery_verdict: drop the check that the verdict agrees with the ids it lists"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if green != (record["verdict"] == "clean"):'
+new = '    if False:'
+
+[[rows]]
+id = "u271-measured.D12_red_record_read_green"
+source = { table = "u271-measured.json", id = "D12_red_record_read_green" }
+description = "read_battery_verdict: build the read baseline with no failures, so a red verdict reads green"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        failed=tuple(beyond),'
+new = '        failed=(),'
+
+[[rows]]
+id = "u271-measured.D13_no_known_file_layer"
+source = { table = "u271-measured.json", id = "D13_no_known_file_layer" }
+description = "read_battery_verdict: drop the refusal of a run with no known failures file, the layer before the digest key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if not known_digest:'
+new = '    if False:'
+
+[[rows]]
+id = "u271-measured.D14_read_named_measured"
+source = { table = "u271-measured.json", id = "D14_read_named_measured" }
+description = "measure_batch: record a read baseline as measured, so the table names the wrong one"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        header["baseline_source"] = "read"'
+new = '        header["baseline_source"] = "measured"'
+
+[[rows]]
+id = "u271-measured.D15_early_stop_read"
+source = { table = "u271-measured.json", id = "D15_early_stop_read" }
+description = "read_battery_verdict: drop the check that every collected test reported, so a run stopped early reads complete"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = 'record["ran"] == record["collected"],'
+new = 'record["ran"] <= record["collected"],'
+
+[[rows]]
+id = "u271-measured.D16_edited_run_read"
+source = { table = "u271-measured.json", id = "D16_edited_run_read" }
+description = "read_battery_verdict: drop the refusal of a run that inherited PYTEST_ADDOPTS"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '            record.get("pytest_addopts") == "",'
+new = '            True,'
+
+[[rows]]
+id = "u271-measured.D1_commit_unchecked"
+source = { table = "u271-measured.json", id = "D1_commit_unchecked" }
+description = "read_battery_verdict: drop the commit key, so a verdict for another commit is read"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '            bool(commit) and recorded == commit,'
+new = '            True,'
+
+[[rows]]
+id = "u271-measured.D2_run_cleanliness_unchecked"
+source = { table = "u271-measured.json", id = "D2_run_cleanliness_unchecked" }
+description = "read_battery_verdict: drop the key saying the tree was clean throughout the battery's run"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        (record.get("clean_tree") is True, "the tree was not clean throughout the battery's run"),'''
+new = '''        (True, "the tree was not clean throughout the battery's run"),'''
+
+[[rows]]
+id = "u271-measured.D3_tree_now_unchecked"
+source = { table = "u271-measured.json", id = "D3_tree_now_unchecked" }
+description = "read_battery_verdict: drop the check that this tree is clean now"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        (clean_now is True, "this tree has uncommitted or untracked changes"),'
+new = '        (True, "this tree has uncommitted or untracked changes"),'
+
+[[rows]]
+id = "u271-measured.D4_unreadable_status_read_as_clean"
+source = { table = "u271-measured.json", id = "D4_unreadable_status_read_as_clean" }
+description = "tree_state in the driver: drop the None for a status git could not read, so an empty failed status reads clean"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+    if not commit or status.returncode != 0:
+        return commit, None'''
+new = '''
+    if not commit:
+        return commit, None'''
+
+[[rows]]
+id = "u271-measured.D5_boot_unchecked"
+source = { table = "u271-measured.json", id = "D5_boot_unchecked" }
+description = "read_battery_verdict: key the machine on the host name alone, which every cloud container shares"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '            record.get("host") == socket.gethostname() and record.get("boot_id") == boot_id(),'
+new = '            record.get("host") == socket.gethostname(),'
+
+[[rows]]
+id = "u271-measured.D6_checkout_unchecked"
+source = { table = "u271-measured.json", id = "D6_checkout_unchecked" }
+description = "read_battery_verdict: drop the checkout key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        (record.get("root") == str(repo_root.resolve()), "it was measured in another checkout"),'
+new = '        (True, "it was measured in another checkout"),'
+
+[[rows]]
+id = "u271-measured.D7_interpreter_unchecked"
+source = { table = "u271-measured.json", id = "D7_interpreter_unchecked" }
+description = "read_battery_verdict: drop the interpreter key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        (record.get("python") == sys.executable, "it was measured with another interpreter"),'
+new = '        (True, "it was measured with another interpreter"),'
+
+[[rows]]
+id = "u271-measured.D8_known_file_unchecked"
+source = { table = "u271-measured.json", id = "D8_known_file_unchecked" }
+description = "read_battery_verdict: drop the known failures file's digest key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '            record.get("known_failures_sha256") == known_digest,'
+new = '            True,'
+
+[[rows]]
+id = "u271-measured.D9_interrupted_run_read"
+source = { table = "u271-measured.json", id = "D9_interrupted_run_read" }
+description = "read_battery_verdict: accept pytest's exit 2, an interrupted run"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = 'record["exit_code"] in {0, 1},'
+new = 'record["exit_code"] in {0, 1, 2},'
+
+[[rows]]
+id = "u273.D1_driver_placeless_read"
+source = { table = "u273.json", id = "D1_driver_placeless_read" }
+description = "read_known_failures: read a known failures file that names no place"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+    if place not in BATTERY.PLACES:
+        raise DriverRefusal('''
+new = '''
+    if False:
+        raise DriverRefusal('''
+
+[[rows]]
+id = "u273.D2_driver_tmpdir_inherited"
+source = { table = "u273.json", id = "D2_driver_tmpdir_inherited" }
+description = "run_pytest: do not point the child's TMPDIR at the known failures' place"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+            env["TMPDIR"] = str(temp)
+'''
+new = ''
+
+[[rows]]
+id = "u273.D3_driver_no_rerun"
+source = { table = "u273.json", id = "D3_driver_no_rerun" }
+description = "run_pytest: never run the listed tests again on disk after a run in memory"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    rerun = [one for one in on_disk if runs_node(one, paths)] if place == BATTERY.MEMORY else []'
+new = '    rerun = []'
+
+[[rows]]
+id = "u273.D4_driver_reruns_every_subset"
+source = { table = "u273.json", id = "D4_driver_reruns_every_subset" }
+description = "runs_node: read every listed test as collected by any subset"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+    if not paths:
+        return True
+    for path in paths:'''
+new = '''
+    if True:
+        return True
+    for path in paths:'''
+
+[[rows]]
+id = "u273.D5_driver_place_unchecked_upfront"
+source = { table = "u273.json", id = "D5_driver_place_unchecked_upfront" }
+description = "main: skip the refusal of a place this machine cannot give before the batch starts"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+            refuse_a_place_this_machine_cannot_give(known)
+        except DriverRefusal as refusal:'''
+new = '''
+            pass
+        except DriverRefusal as refusal:'''
+
+[[rows]]
+id = "u273.D6_driver_errored_kept"
+source = { table = "u273.json", id = "D6_driver_errored_kept" }
+description = "run_pytest: keep a listed test's memory error beside its disk outcome"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        errored = tuple(i for i in errored if i not in rerun) + again.errored'
+new = '        errored = errored + again.errored'
+
+[[rows]]
+id = "u273.D7_driver_lost_place_runs_elsewhere"
+source = { table = "u273.json", id = "D7_driver_lost_place_runs_elsewhere" }
+description = "run_pytest: drop the refusal of a place lost after main's check, so the child runs in the inherited temporary directory"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        root, why = BATTERY.place_root(place)
+        if root is None:
+            raise DriverRefusal('''
+new = '''
+        root, why = BATTERY.place_root(place)
+        if False:
+            raise DriverRefusal('''
+
+[[rows]]
+id = "u273.D8_driver_disk_needed_without_rerun"
+source = { table = "u273.json", id = "D8_driver_disk_needed_without_rerun" }
+description = "refuse_a_place_this_machine_cannot_give: require the disk for every memory file, even one with nothing to run on disk"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if known.place == BATTERY.MEMORY and known.on_disk:'
+new = '    if known.place == BATTERY.MEMORY:'
+
+[[rows]]
+id = "u297.D1_replay_row_without_a_source"
+source = { table = "u297.json", id = "D1_replay_row_without_a_source" }
+description = "load_spec: accept a replay row that names no source, so an uncapped pass takes rows no table recorded"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+            if source is None:
+                raise DriverRefusal(
+                    f"row {row_id}: a replay row names where it came from and this one "'''
+new = '''
+            if False:
+                raise DriverRefusal(
+                    f"row {row_id}: a replay row names where it came from and this one "'''
+
+[[rows]]
+id = "u297.D2_cap_lifted_for_every_pass"
+source = { table = "u297.json", id = "D2_cap_lifted_for_every_pass" }
+description = "load_spec: read the cap as the row count for every pass kind, so a light pass of 26 rows and a full pass of 46 load"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '    cap = ROW_CAPS.get(pass_kind, len(rows))'
+new = '    cap = len(rows)'
+
+[[rows]]
+id = "u297.D3_mapped_to_no_row"
+source = { table = "u297.json", id = "D3_mapped_to_no_row" }
+description = "load_mapped: accept a mapping whose target is no row in the batch, so a lost kill is covered by nothing"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        if target not in ids:'
+new = '        if False:'
+
+[[rows]]
+id = "u297.D4_a_measured_row_loses_its_source"
+source = { table = "u297.json", id = "D4_a_measured_row_loses_its_source" }
+description = "measure_row: stop carrying a replay row's source and moved reason into its result, so check has nothing to match the row by"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py", "tests/test_killset.py"]
+old = '''
+        head_verified=head_verify,
+        **replay_fields(row),
+    )'''
+new = '''
+        head_verified=head_verify,
+    )'''
+
+[[rows]]
+id = "u297.D5_a_replay_resumed_from_anywhere"
+source = { table = "u297.json", id = "D5_a_replay_resumed_from_anywhere" }
+description = "measure_batch: let a replay reuse rows from any sidecar, another commit's or one measured before a tracked file changed"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '    stale = pass_kind == REPLAY and bool(replay_resume_refusal(repo_root, prior))'
+new = '    stale = False'
+
+[[rows]]
+id = "u297.D6_sources_taken_on_trust"
+source = { table = "u297.json", id = "D6_sources_taken_on_trust" }
+description = "main: skip the reading of each replay row's source against the table it names, so new rows ride past the caps under a table's name"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        if pass_kind == REPLAY:
+            refuse_unrecorded_sources(args.repo_root, rows, mapped)'''
+new = '''
+        if False:
+            refuse_unrecorded_sources(args.repo_root, rows, mapped)'''
+
+[[rows]]
+id = "u313.D10_shallow_clone_measured"
+source = { table = "u313.json", id = "D10_shallow_clone_measured" }
+description = "refuse_a_shallow_clone: accept any answer git gives, so a shallow clone subtracts known failures unread"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if done.returncode != 0 or answer != "false":'
+new = '    if done.returncode != 0:'
+
+[[rows]]
+id = "u313.D11_red_baseline_measured"
+source = { table = "u313.json", id = "D11_red_baseline_measured" }
+description = "measure_batch: measure rows against a baseline that is not green, so every row reads as a death"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if not full_baseline.is_green:'
+new = '    if False:'
+
+[[rows]]
+id = "u313.D12_header_unchecked"
+source = { table = "u313.json", id = "D12_header_unchecked" }
+description = "read_known_failures: accept any measured header, so a baseline without full history or whole ids is subtracted"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if not (measured and first.endswith(whole)):'
+new = '    if not measured:'
+
+[[rows]]
+id = "u313.D13_null_control_ignored"
+source = { table = "u313.json", id = "D13_null_control_ignored" }
+description = "measure_batch: read a null control that killed tests as valid, so a broken environment's deaths are reported as kills"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if control_result.deaths or control_result.status != "zero":'
+new = '    if control_result.status not in ("zero", "killed"):'
+
+[[rows]]
+id = "u313.D14_restore_failure_exit"
+source = { table = "u313.json", id = "D14_restore_failure_exit" }
+description = "STOPS: exit a failed restore with the refusal's code 2 instead of 3, so a caller reads a contaminated tree as a refused batch"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    RestoreVerificationError: ("RESTORE FAILED", 3),'
+new = '    RestoreVerificationError: ("RESTORE FAILED", 2),'
+
+[[rows]]
+id = "u313.D15_invalid_batch_exit"
+source = { table = "u313.json", id = "D15_invalid_batch_exit" }
+description = "main: exit 0 on an invalid batch instead of 4"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        print(f"INVALID BATCH: {batch.invalid_reason}", file=sys.stderr)
+        return 4'''
+new = '''
+        print(f"INVALID BATCH: {batch.invalid_reason}", file=sys.stderr)
+        return 0'''
+
+[[rows]]
+id = "u313.D1_quiet_flag_kept"
+source = { table = "u313.json", id = "D1_quiet_flag_kept" }
+description = "pytest_addopts: stop stripping -q from pyproject's addopts, so every run is -qq and loses the summary and the collect listing"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    return " ".join(token for token in tokens if token not in {"-q", "-qq", "--quiet"})'
+new = '    return " ".join(token for token in tokens if token not in {"-qq", "--quiet"})'
+
+[[rows]]
+id = "u313.D2_collect_drift_unread"
+source = { table = "u313.json", id = "D2_collect_drift_unread" }
+description = "measure_row: never read a changed collected count as drift, so a file that fails to collect reads as a zero or a kill"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    drift = final.collected != reference.collected'
+new = '    drift = False'
+
+[[rows]]
+id = "u313.D3_subset_zero_not_promoted"
+source = { table = "u313.json", id = "D3_subset_zero_not_promoted" }
+description = "measure_row: report a zero on a subset as a zero without promoting it to the full suite"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '            if subset is not None and result.deaths == 0 and not result.collect_errors and unbroken:'
+new = '            if False:'
+
+[[rows]]
+id = "u313.D4_bytecode_written"
+source = { table = "u313.json", id = "D4_bytecode_written" }
+description = "run_pytest: let the child write bytecode, so two mutations of one byte length a second apart can run stale bytecode"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    env["PYTHONDONTWRITEBYTECODE"] = "1"'
+new = '    env["PYTHONDONTWRITEBYTECODE"] = ""'
+
+[[rows]]
+id = "u313.D5_node_id_cut_at_space"
+source = { table = "u313.json", id = "D5_node_id_cut_at_space" }
+description = "the report plugin: keep each failing id only up to its first space, the cut ids the battery stored until U268"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '        bucket.append(report.nodeid)'
+new = '        bucket.append(report.nodeid.split(" ")[0])'
+
+[[rows]]
+id = "u313.D8_dirty_target_measured"
+source = { table = "u313.json", id = "D8_dirty_target_measured" }
+description = "measure_batch: measure a target with uncommitted changes without --allow-dirty, so a restore certifies the wrong bytes"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if dirty and not allow_dirty:'
+new = '    if False:'
+
+[[rows]]
+id = "u313.D6_restore_unverified"
+source = { table = "u313.json", id = "D6_restore_unverified" }
+description = "verify_restore: accept any bytes on disk after a restore, so a contaminated file certifies itself"
+file = "scripts/mutate_table.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '    if on_disk != committed:'
+new = '    if False:'
+
+[[rows]]
+id = "u313.D7_file_not_restored"
+source = { table = "u313.json", id = "D7_file_not_restored" }
+description = "mutated: leave the mutant on disk after the row instead of writing the snapshot back"
+file = "scripts/mutate_table.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        path.write_bytes(snapshot)
+        if head_verify:'''
+new = '        if head_verify:'
+
+[[rows]]
+id = "u313.D9_dirty_status_unread"
+source = { table = "u313.json", id = "D9_dirty_status_unread" }
+description = "dirty_targets: drop every line git status prints, so no target ever reads as dirty"
+file = "scripts/mutate_table.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''
+        if entry:
+            found.append(entry.split(" -> ")[-1])'''
+new = '''
+        if not entry:
+            found.append(entry.split(" -> ")[-1])'''
+
+[[rows]]
+id = "u296.M13_own_verbs_dangle"
+source = { table = "u296.json", id = "M13_own_verbs_dangle" }
+description = "dangling: count the switched off toggle's own verbs, so every gated verb reads as dangling"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''
+            if verb.toggle == toggle:
+                continue'''
+new = '''
+            if verb.toggle == "":
+                continue'''
+
+[[rows]]
+id = "u296.M16_prune_adds_lines"
+source = { table = "u296.json", id = "M16_prune_adds_lines" }
+description = "pruned: keep what is found or allowed, so prune writes newly found lines into an allowance"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_refactor_measure.py"]
+old = '    return found & allowed'
+new = '    return found | allowed'
+
+[[rows]]
+id = "u296.M18_vendored_tree_read"
+source = { table = "u296.json", id = "M18_vendored_tree_read" }
+description = "python_files: read the vendored tree, which is never refactored and never measured"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '        and f"/{VENDOR}/" not in f"/{path}"'
+new = '        and f"/{VENDOR}x/" not in f"/{path}"'
+
+[[rows]]
+id = "u296.M1_block_size"
+source = { table = "u296.json", id = "M1_block_size" }
+description = "BLOCK_LINES: a block needs seven logical lines, so a new copy of exactly six passes the duplication check"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_refactor_measure.py"]
+old = 'BLOCK_LINES = 6'
+new = 'BLOCK_LINES = 7'
+
+[[rows]]
+id = "u296.M8_interface_list_ignored"
+source = { table = "u296.json", id = "M8_interface_list_ignored" }
+description = "off_interface: treat every core module as off the list, so the named interface allows nothing"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''
+        if module in named:
+            continue'''
+new = '''
+        if module in ():
+            continue'''
+
+[[rows]]
+id = "u331.M01_use_as_written_dropped"
+source = { table = "u331.json", id = "M01_use_as_written_dropped" }
+description = "Tree._followed: drop the use as written, so a name that is a module reads only as the module it leads to, and an off interface import, a top level import of a toggleable package and a private name each read clean"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''
+            # The use as written stands: the module it names was reached too.
+            out.append(use)
+'''
+new = '''
+            # The use as written stands: the module it names was reached too.
+'''
+
+[[rows]]
+id = "u159.M1_off_main_cut"
+source = { table = "u159.json", id = "M1_off_main_cut" }
+description = "refusals: drop the refusal off main, so a release is cut from a branch"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '    if branch != "main":'
+new = '    if False:'
+
+[[rows]]
+id = "u159.M2_dirty_tree_cut"
+source = { table = "u159.json", id = "M2_dirty_tree_cut" }
+description = "refusals: drop the clean tree refusal, so uncommitted work rides into a release"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '    if git(runner, "status", "--porcelain"):'
+new = '    if False:'
+
+[[rows]]
+id = "u159.M3_behind_origin_cut"
+source = { table = "u159.json", id = "M3_behind_origin_cut" }
+description = "refusals: drop the origin/main equality, so a stale or unpushed main is released"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '    elif remote.stdout.strip() != head:'
+new = '    elif False:'
+
+[[rows]]
+id = "u159.M4_red_battery_cut"
+source = { table = "u159.json", id = "M4_red_battery_cut" }
+description = "verdict_problem: accept a red verdict"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '    if fields[1] != "clean":'
+new = '    if False:'
+
+[[rows]]
+id = "u159.M5_other_commit_verdict"
+source = { table = "u159.json", id = "M5_other_commit_verdict" }
+description = "verdict_problem: accept a verdict measured on another commit"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '    if len(fields) < 2 or fields[0] != head:'
+new = '    if len(fields) < 2:'
+
+[[rows]]
+id = "u159.M7_unit_is_patch"
+source = { table = "u159.json", id = "M7_unit_is_patch" }
+description = "classify: a unit asks for a patch, so new behaviour ships as a repair"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '        return "minor", "a unit, new verbs or behaviour"'
+new = '        return "patch", "a unit, new verbs or behaviour"'
+
+[[rows]]
+id = "u215.M10_main_sync_re_bare"
+source = { table = "u215.json", id = "M10_main_sync_re_bare" }
+description = "MAIN_SYNC_RE: drop the bare Merge origin/main alternative"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '    r"|(?:[\w.-]+/)?main)(?: into main)?$"'
+new = '    r")(?: into main)?$"'
+
+[[rows]]
+id = "u215.M11_version_at_since"
+source = { table = "u215.json", id = "M11_version_at_since" }
+description = "cmd_plan: read the base version from the checkout, not from --since, round one's second BLOCKING finding"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        current = version_at(runner, asked_since)
+'''
+new = '''
+        current = read_versions(ROOT)[0]
+'''
+
+[[rows]]
+id = "u215.M12_crossed_tag"
+source = { table = "u215.json", id = "M12_crossed_tag" }
+description = "cmd_plan: drop the refusal of a range crossing a version tag"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        tip_tag = refuse_a_crossed_tag(runner, asked_since, tip)
+'''
+new = '''
+        tip_tag = None
+'''
+
+[[rows]]
+id = "u215.M13_crossed_tag_tip_excluded"
+source = { table = "u215.json", id = "M13_crossed_tag_tip_excluded" }
+description = "refuse_a_crossed_tag: count the tag at the tip as crossed, so every rerun of a past release is refused"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        if git(runner, "rev-parse", f"{name}^{{commit}}") != tip_sha:
+'''
+new = '''
+        if True:
+'''
+
+[[rows]]
+id = "u215.M14_tip_needs_since"
+source = { table = "u215.json", id = "M14_tip_needs_since" }
+description = "cmd_plan: drop the refusal of --tip without --since"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+    if tip and not asked_since:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u215.M15_ref_names_a_commit"
+source = { table = "u215.json", id = "M15_ref_names_a_commit" }
+description = "gather: drop the check that --since and --tip name commits"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        if found.returncode != 0:
+            raise ReleaseError(f"{ref!r} names no commit here'''
+new = '''
+        if False:
+            raise ReleaseError(f"{ref!r} names no commit here'''
+
+[[rows]]
+id = "u215.M16_notes_empty_range"
+source = { table = "u215.json", id = "M16_notes_empty_range" }
+description = "cmd_plan: print notes over an empty range instead of refusing"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+    if getattr(args, "notes", False):
+        if bump is None:
+'''
+new = '''
+    if getattr(args, "notes", False):
+        if False:
+'''
+
+[[rows]]
+id = "u215.M18_reversed_range"
+source = { table = "u215.json", id = "M18_reversed_range" }
+description = "refuse_a_crossed_tag: drop the refusal of a --since that is not behind --tip, so a reversed range reads as empty"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+    if runner(["git", "merge-base", "--is-ancestor", since, tip]).returncode != 0:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u215.M19_claim_filter_lands"
+source = { table = "u215.json", id = "M19_claim_filter_lands" }
+description = "landings_since: claim only landing subject takers, so a second merge on the line under GitHub's default subject is listed again"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        claimed.update(sha for sha in taking if lands(sha))
+'''
+new = '''
+        claimed.update(sha for sha in taking if LANDING_RE.match(by_sha[sha][0]))
+'''
+
+[[rows]]
+id = "u215.M1_whole_range"
+source = { table = "u215.json", id = "M1_whole_range" }
+description = "landings_since: walk only the first parent line, the defect U215 repairs"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+    commits = range_commits(runner, since, tip)
+'''
+new = '''
+    commits = range_commits(runner, since, tip, first_parent=True)
+'''
+
+[[rows]]
+id = "u215.M2_main_sync_never_lands"
+source = { table = "u215.json", id = "M2_main_sync_never_lands" }
+description = "lands: drop the refusal of a merge of main into a local main, so a local pull is listed as a landing"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        if MAIN_SYNC_RE.match(subject):
+            return False
+'''
+new = '''
+        if False:
+            return False
+'''
+
+[[rows]]
+id = "u215.M3_off_line_landing_subject"
+source = { table = "u215.json", id = "M3_off_line_landing_subject" }
+description = "lands: list only first parent merges, so a unit merge behind a local pull is dropped"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        return sha in first_line or bool(LANDING_RE.match(subject))
+'''
+new = '''
+        return sha in first_line
+'''
+
+[[rows]]
+id = "u215.M4_off_line_any_merge"
+source = { table = "u215.json", id = "M4_off_line_any_merge" }
+description = "lands: list every off line merge, so branch syncs are counted as landings"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        return sha in first_line or bool(LANDING_RE.match(subject))
+'''
+new = '''
+        return True
+'''
+
+[[rows]]
+id = "u215.M5_head_in_range"
+source = { table = "u215.json", id = "M5_head_in_range" }
+description = "landings_since: consult the head's takers whether or not the head is in the range, round one's first BLOCKING finding"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+            if head_sha in by_sha
+            else []
+'''
+new = '''
+            if True
+            else []
+'''
+
+[[rows]]
+id = "u215.M6_landing_taker_first"
+source = { table = "u215.json", id = "M6_landing_taker_first" }
+description = "landings_since: invert the taker preference, so a branch sync is chosen over the landing merge"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+                key=lambda sha: (not lands(sha), order[sha]),
+'''
+new = '''
+                key=lambda sha: (lands(sha), order[sha]),
+'''
+
+[[rows]]
+id = "u215.M7_claim_every_landing_taker"
+source = { table = "u215.json", id = "M7_claim_every_landing_taker" }
+description = "landings_since: claim only the commit a pull request landed at, so a local merge of the same head is listed again"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        claimed.update(sha for sha in taking if lands(sha))
+'''
+new = '''
+        claimed.update(())
+'''
+
+[[rows]]
+id = "u215.M8_fast_forward_head"
+source = { table = "u215.json", id = "M8_fast_forward_head" }
+description = "landings_since: drop the fast forward fallback, so a pull request fast forwarded onto main is unlisted"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''
+        elif head_sha in by_sha:
+            landed_at = head_sha
+'''
+new = '''
+        elif False:
+            landed_at = head_sha
+'''
+
+[[rows]]
+id = "u215.M9_landing_re_residual"
+source = { table = "u215.json", id = "M9_landing_re_residual" }
+description = "LANDING_RE: drop the residual alternation, so merge(r-N) behind a local pull is dropped"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = 'LANDING_RE = re.compile(r"^merge\((?:u\d+|r-?\d+)[a-z0-9-]*\):", re.IGNORECASE)'
+new = 'LANDING_RE = re.compile(r"^merge\((?:u\d+)[a-z0-9-]*\):", re.IGNORECASE)'
+
+[[rows]]
+id = "u124.S1_head_fixed"
+source = { table = "u124.json", id = "S1_head_fixed" }
+description = "the scan stops comparing RESTART's head to the fixed reader's line"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '    if head != RESTART_HEAD:'
+new = '    if head != RESTART_HEAD and False:'
+
+[[rows]]
+id = "u124.S2_sections"
+source = { table = "u124.json", id = "S2_sections" }
+description = "the scan accepts any section heading"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '        if heading not in RESTART_SECTIONS:'
+new = '        if heading not in RESTART_SECTIONS and False:'
+
+[[rows]]
+id = "u124.S3_record_opener"
+source = { table = "u124.json", id = "S3_record_opener" }
+description = "the record opener narrowed back to units and residuals marked built or done, so a sitting passes"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '_UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+|A\d+|Sitting \d+)\b", re.M)'
+new = '_UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+)(?: with R-\d+)? (?:built|done)\b", re.M)'
+
+[[rows]]
+id = "u124.S4_wired"
+source = { table = "u124.json", id = "S4_wired" }
+description = "scan_tree stops calling restart_violations"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '''
+        findings += [f"{relative}: {p}" for p in restart_violations(relative, text)]
+'''
+new = ''
+
+[[rows]]
+id = "u124.S5_only_restart"
+source = { table = "u124.json", id = "S5_only_restart" }
+description = "the restart rule judges every file, so a fragment is refused"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '''
+    if relative_path != RESTART_FILE:
+        return []'''
+new = '''
+    if relative_path == "":
+        return []'''
+
+[[rows]]
+id = "u257.M2_gate_never_passes"
+source = { table = "u257.json", id = "M2_gate_never_passes" }
+description = "_keyword_gate_passes: return False always, so the two alternations never scan and every keyword credential is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''
+    for run in _SEPARATOR_RUN.finditer(text):
+        separator = run.start()'''
+new = '''
+    for run in ():
+        separator = run.start()'''
+
+[[rows]]
+id = "u257.M4_no_quote_landing"
+source = { table = "u257.json", id = "M4_no_quote_landing" }
+description = "_keyword_gate_passes: do not step back over a quote after the keyword, so the JSON form \"key\": \"value\" is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '        ends = (end, end - 1) if end > 0 and text[end - 1] in _QUOTES else (end,)'
+new = '        ends = (end,)'
+
+[[rows]]
+id = "u257.M5_no_whitespace_walk"
+source = { table = "u257.json", id = "M5_no_whitespace_walk" }
+description = "_keyword_gate_passes: do not walk back over whitespace, so key = \"value\" with a space before the separator is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '        while end > 0 and _SPACE.match(text, end - 1):'
+new = '        while False:'
+
+[[rows]]
+id = "u28-skills-independent.X1_placeholder_exemption"
+source = { table = "u28-skills-independent.json", id = "X1_placeholder_exemption" }
+description = "the portability scanner stops exempting a placeholder home segment, so a documented path shape is reported"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_portability.py"]
+old = '''
+    for match in _HOME_DIR.finditer(text):
+        segment = match.group(1)
+        if _is_placeholder_segment(segment):
+            continue'''
+new = '''
+    for match in _HOME_DIR.finditer(text):
+        segment = match.group(1)
+        del segment'''
+
+[[rows]]
+id = "u957.M10_host_lookbehind_hyphen"
+source = { table = "u957.json", id = "M10_host_lookbehind_hyphen" }
+description = "_host_forms: let a hyphenated neighbour stand before the host name"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = 'rf"(?<![A-Za-z0-9_-]){name}\.{_HOST_SUFFIXES}'
+new = 'rf"(?<![A-Za-z0-9_]){name}\.{_HOST_SUFFIXES}'
+
+[[rows]]
+id = "u957.M11_user_at_host_dropped"
+source = { table = "u957.json", id = "M11_user_at_host_dropped" }
+description = "_host_forms: drop the user@host form"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+            rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
+'''
+new = ''
+
+[[rows]]
+id = "u957.M12_user_at_host_any"
+source = { table = "u957.json", id = "M12_user_at_host_any" }
+description = "_host_forms: take any @ before the name, so a decorator reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = 'rf"(?<=[A-Za-z0-9._%+-]@){name}'
+new = 'rf"(?<=@){name}'
+
+[[rows]]
+id = "u957.M13_scp_form_loose"
+source = { table = "u957.json", id = "M13_scp_form_loose" }
+description = "_host_forms: take the name followed by any colon, so a mapping key reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '{name}:(?:~|/(?!/))",'
+new = '{name}:",'
+
+[[rows]]
+id = "u957.M14_list_exemption_off"
+source = { table = "u957.json", id = "M14_list_exemption_off" }
+description = "scan_tree: look for a declared listed word in the list itself again"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+        if relative == ORDINARY_WORDS_PATH:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u957.M15_list_exemption_wide"
+source = { table = "u957.json", id = "M15_list_exemption_wide" }
+description = "scan_tree: skip every token in the list file, so a planted name passes"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+                (token for token in identity if token.lower() not in listed),
+'''
+new = '''
+                (),
+'''
+
+[[rows]]
+id = "u957.M16_cloud_relaxes_declared"
+source = { table = "u957.json", id = "M16_cloud_relaxes_declared" }
+description = "machine_identity_tokens: under the cloud exemption mark the declared tokens shape only"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+        return IdentityTokens(declared)
+'''
+new = '''
+        return IdentityTokens(declared, declared)
+'''
+
+[[rows]]
+id = "u957.M17_scheme_read_as_scp"
+source = { table = "u957.json", id = "M17_scheme_read_as_scp" }
+description = "_host_forms: let the scp form take a URL scheme, so word:// reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '{name}:(?:~|/(?!/))",'
+new = '{name}:(?:~|/)",'
+
+[[rows]]
+id = "u957.M18_method_call_read_as_host"
+source = { table = "u957.json", id = "M18_method_call_read_as_host" }
+description = "_host_forms: let a method call such as word.local() read as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '(?![A-Za-z0-9_(-])",'
+new = '(?![A-Za-z0-9_-])",'
+
+[[rows]]
+id = "u957.M19_occurrences_case_exact"
+source = { table = "u957.json", id = "M19_occurrences_case_exact" }
+description = "_names_the_machine: look for the token's occurrences case exact, so a host written in another case is missed"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '        for written in re.finditer(re.escape(token), text, re.IGNORECASE)'
+new = '        for written in re.finditer(re.escape(token), text)'
+
+[[rows]]
+id = "u957.M1_declared_wins"
+source = { table = "u957.json", id = "M1_declared_wins" }
+description = "machine_identity_tokens: relax a detected ordinary word even when it is also declared"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+        if is_ordinary_word(token) and token.lower() not in declared_folded
+'''
+new = '''
+        if is_ordinary_word(token)
+'''
+
+[[rows]]
+id = "u957.M20_file_url_read_as_host"
+source = { table = "u957.json", id = "M20_file_url_read_as_host" }
+description = "_host_forms: take any two slashes before the name, so a file:/// path or a path double slash reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''(?:(?<=[A-Za-z]://)|(?<=[\s\"'`(<\[]//)|(?<=^//)){name}'''
+new = '(?<=//){name}'
+
+[[rows]]
+id = "u957.M21_drive_path_read_as_unc"
+source = { table = "u957.json", id = "M21_drive_path_read_as_unc" }
+description = "_host_forms: take any two backslashes before the name, so an escaped drive path reads as a UNC host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '(?:(?<=[^:A-Za-z0-9\\]\\\\)|(?<=^\\\\)){name}'
+new = '(?<=\\\\){name}'
+
+[[rows]]
+id = "u957.M22_host_end_narrow"
+source = { table = "u957.json", id = "M22_host_end_narrow" }
+description = "_HOST_END: end a share or UNC host only at a colon, slash, space or the end, so a quoted or linked host is missed"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '_HOST_END = r"(?![A-Za-z0-9_-])(?!\.[A-Za-z0-9])"'
+new = '_HOST_END = r"(?=[:/]|\s|$)"'
+
+[[rows]]
+id = "u957.M2_shape_only_ignored"
+source = { table = "u957.json", id = "M2_shape_only_ignored" }
+description = "portability_violations: never take the shape only branch, so a detected word matches bare again"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+        if token in shape_only:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u957.M3_segment_check_dropped"
+source = { table = "u957.json", id = "M3_segment_check_dropped" }
+description = "_names_the_machine: drop the home and mount segment check, so a path naming the machine passes"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+    if token.lower() in segments:
+        return True
+    host = _host_forms(token)'''
+new = '    host = _host_forms(token)'
+
+[[rows]]
+id = "u957.M4_segment_case_exact"
+source = { table = "u957.json", id = "M4_segment_case_exact" }
+description = "_names_the_machine: compare the token to the segments case exact"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+    if token.lower() in segments:
+'''
+new = '''
+    if token in segments:
+'''
+
+[[rows]]
+id = "u957.M5_home_segments_not_collected"
+source = { table = "u957.json", id = "M5_home_segments_not_collected" }
+description = "portability_violations: collect no home directory segment"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+    for match in _HOME_DIR.finditer(text):
+        segment = match.group(1)
+        if _is_placeholder_segment(segment):
+            continue
+        segments.add(segment.lower())
+'''
+new = '''
+    for match in _HOME_DIR.finditer(text):
+        segment = match.group(1)
+        if _is_placeholder_segment(segment):
+            continue
+'''
+
+[[rows]]
+id = "u957.M6_placeholder_segments_collected"
+source = { table = "u957.json", id = "M6_placeholder_segments_collected" }
+description = "portability_violations: collect a stand in mount segment, so /Volumes/Music names a machine called Music"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+    for match in _MOUNT.finditer(text):
+        segment = match.group(1)
+        if _is_placeholder_segment(segment):
+            continue
+        segments.add(segment.lower())
+'''
+new = '''
+    for match in _MOUNT.finditer(text):
+        segment = match.group(1)
+        segments.add(segment.lower())
+        if _is_placeholder_segment(segment):
+            continue
+'''
+
+[[rows]]
+id = "u957.M7_inner_capital_ignored"
+source = { table = "u957.json", id = "M7_inner_capital_ignored" }
+description = "is_ordinary_word: treat a mixed case token like AirPort as the word"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+    if token[1:] != token[1:].lower() and not token.isupper():
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u957.M8_list_case_exact"
+source = { table = "u957.json", id = "M8_list_case_exact" }
+description = "is_ordinary_word: look the token up case exact, so a capitalised hostname is never ordinary"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''
+    return token.lower() in ordinary_words()
+'''
+new = '''
+    return token in ordinary_words()
+'''
+
+[[rows]]
+id = "u957.M9_lan_suffix_dropped"
+source = { table = "u957.json", id = "M9_lan_suffix_dropped" }
+description = "_HOST_SUFFIXES: drop lan"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '_HOST_SUFFIXES = r"(?:local|lan|localdomain|home\.arpa)"'
+new = '_HOST_SUFFIXES = r"(?:local|localdomain|home\.arpa)"'
+
+[[rows]]
+id = "r1313.A1_classifier_failure_alone"
+source = { table = "r1313.json", id = "A1_classifier_failure_alone" }
+description = "classify_unavailable: read the 404 off the failure alone, as before R-1313, so a track answered with a 404 page is retried for ever"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_vendor_import.py"]
+old = '''
+    if answered_not_found(exc):
+        return TrackOutcome.UNAVAILABLE_PERMANENT'''
+new = '''
+    if getattr(getattr(exc, "response", None), "status_code", None) == 404:
+        return TrackOutcome.UNAVAILABLE_PERMANENT'''
+
+[[rows]]
+id = "r1313.A2_status_before_no_file_landed"
+source = { table = "r1313.json", id = "A2_status_before_no_file_landed" }
+description = "classify_unavailable: ask the nearest status before NoFileLanded, so a download whose swallowed cause was a 404 page quarantines a live track"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_vendor_import.py"]
+old = '''
+    if isinstance(exc, NoFileLanded):
+        return TrackOutcome.UNAVAILABLE_TRANSIENT
+    text = str(exc).lower()'''
+new = '''
+    if answered_not_found(exc):
+        return TrackOutcome.UNAVAILABLE_PERMANENT
+    if isinstance(exc, NoFileLanded):
+        return TrackOutcome.UNAVAILABLE_TRANSIENT
+    text = str(exc).lower()'''
+
+[[rows]]
+id = "r1313.A3_classifier_name_on_any_link"
+source = { table = "r1313.json", id = "A3_classifier_name_on_any_link" }
+description = "classify_unavailable: read a not found class name on any link the walk reaches, so a name met only as context is read as the provider's answer"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_vendor_import.py"]
+old = '''
+    if "notfound" in type(exc).__name__.lower():
+        return TrackOutcome.UNAVAILABLE_PERMANENT
+    if answered_not_found(exc):'''
+new = '''
+    from cratekit.core.cause import failure_links  # noqa: PLC0415
+
+    if any("notfound" in type(one).__name__.lower() for one, _ in failure_links(exc)):
+        return TrackOutcome.UNAVAILABLE_PERMANENT
+    if answered_not_found(exc):'''
+
+[[rows]]
+id = "r705-b.S7_acquire_one_softens_the_park_at_the_lookup"
+source = { table = "r705-b.json", id = "S7_acquire_one_softens_the_park_at_the_lookup" }
+description = "a park raised at the offer is one unavailable track and the driver claims the next"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        offer = source.offer(request)
+    except (AdapterAuthFailed, AdapterBroken, Parked):
+'''
+new = '''
+        offer = source.offer(request)
+    except (AdapterAuthFailed, AdapterBroken):
+'''
+
+[[rows]]
+id = "r705-b.S8_acquire_one_softens_the_park_at_the_fetch"
+source = { table = "r705-b.json", id = "S8_acquire_one_softens_the_park_at_the_fetch" }
+description = "a park raised at the fetch is one unavailable track and the driver claims the next"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        path = source.fetch(request, settings.download_staging)
+    except (AdapterAuthFailed, AdapterBroken, Parked):
+'''
+new = '''
+        path = source.fetch(request, settings.download_staging)
+    except (AdapterAuthFailed, AdapterBroken):
+'''
+
+[[rows]]
+id = "u269.M3_only_import_hidden_from_the_tree"
+source = { table = "u269.json", id = "M3_only_import_hidden_from_the_tree" }
+description = "acquire/bandcamp.py: the one import of curl_cffi becomes a computed name, so no import under src names it"
+file = "src/cratekit/acquire/bandcamp.py"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''
+        from curl_cffi import requests as curl_requests  # noqa: PLC0415 - the network seam
+'''
+new = '''
+        curl_requests = __import__("".join(["curl", "_cffi.requests"])).requests
+'''
+
+[[rows]]
+id = "r1115.M1_failed_needs_a_failure"
+source = { table = "r1115.json", id = "M1_failed_needs_a_failure" }
+description = "read_download: drop the rule that a FAILED job settles only with a failed track, so a FAILED job holding none reads as settled"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        and bool(failed)
+'''
+new = '''
+        and True
+'''
+
+[[rows]]
+id = "r1115.M2_every_failure_for_good"
+source = { table = "r1115.json", id = "M2_every_failure_for_good" }
+description = "read_download: drop the rule that every failed track is refused for good, so a transient failure settles and the go lands over it"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        and len(for_good) == len(failed)
+'''
+new = '''
+        and len(for_good) >= 0
+'''
+
+[[rows]]
+id = "r1115.M3_nothing_left_to_run"
+source = { table = "r1115.json", id = "M3_nothing_left_to_run" }
+description = "read_download: drop the rule that no track is still to run, so a FAILED job with a track never attempted settles"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        and all(item.state in finished for item in held)
+'''
+new = '''
+        and any(item.state in finished for item in held)
+'''
+
+[[rows]]
+id = "r1115.M4_retryable_is_not_for_good"
+source = { table = "r1115.json", id = "M4_retryable_is_not_for_good" }
+description = "read_download: read every failure with a cause as refused for good, retryable or not"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        item.item_id for item in failed if item.cause is not None and not item.cause.retryable
+'''
+new = '''
+        item.item_id for item in failed if item.cause is not None
+'''
+
+[[rows]]
+id = "r1115.M5_declined_is_refused"
+source = { table = "r1115.json", id = "M5_declined_is_refused" }
+description = "read_download: leave a declined track out of the refused rows, so a lossy only track is named nowhere on the go's check"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        and (item.item_id in for_good or item.state is jobs.ItemState.SKIPPED)
+'''
+new = '''
+        and (item.item_id in for_good)
+'''
+
+[[rows]]
+id = "r1115.M6_landed_needs_a_track"
+source = { table = "r1115.json", id = "M6_landed_needs_a_track" }
+description = "DownloadRead.landed: read a settled download with no track done as landed, so a tail is set over an empty folder"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        return self.settled and self.done > 0
+'''
+new = '''
+        return self.settled
+'''
+
+[[rows]]
+id = "r1115.M7_done_counts_done"
+source = { table = "r1115.json", id = "M7_done_counts_done" }
+description = "read_download: count a skipped track as done too"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        done=sum(1 for item in held if item.state is jobs.ItemState.DONE),
+'''
+new = '''
+        done=sum(1 for item in held if item.state in (jobs.ItemState.DONE, jobs.ItemState.SKIPPED)),
+'''
+
+[[rows]]
+id = "r1115.M8_failed_names_the_failures"
+source = { table = "r1115.json", id = "M8_failed_names_the_failures" }
+description = "read_download: name no failed track, so the go's own warning for one is never raised"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+        failed=tuple(item.item_id for item in failed if item.item_id in for_good),
+'''
+new = '''
+        failed=(),
+'''
+
+[[rows]]
+id = "r668-a.M11_no_frozen_list_skip"
+source = { table = "r668-a.json", id = "M11_no_frozen_list_skip" }
+description = "a job whose payload names no list is compared against an empty path and refuses any list named beside it"
+file = "src/cratekit/acquire/cli.py"
+surface = "maintainer"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+    if not frozen:
+        return
+    try:'''
+new = '    try:'
+
+[[rows]]
+id = "u108-c.G25_drive_maps_ending"
+source = { table = "u108-c.json", id = "G25_drive_maps_ending" }
+description = "acquire_cli.drive_queued: a parked or half failed job is returned as if it ended clean"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py", "tests/test_acquire_workers.py", "tests/test_intake_missing.py", "tests/test_label_sync_go.py", "tests/test_listdoc.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    jobs.raise_for_state(job)
+    return job, warnings'''
+new = '    return job, warnings'
+
+[[rows]]
+id = "u169.A2_any_permanent_declined"
+source = { table = "u169.json", id = "A2_any_permanent_declined" }
+description = "refused_for_good: drop the policy class, so any permanent failure (output-exists) is skipped"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '    return cause.code is ExitCode.REFUSED_BY_POLICY and not cause.retryable'
+new = '    return not cause.retryable'
+
+[[rows]]
+id = "u169.A3_worker_never_declines"
+source = { table = "u169.json", id = "A3_worker_never_declines" }
+description = "handle: re-raise a policy refusal instead of declining it, the base's behaviour"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '            raise jobs.Declined(exc.cause) from exc'
+new = '            raise'
+
+[[rows]]
+id = "u169.A4_no_declined_warning"
+source = { table = "u169.json", id = "A4_no_declined_warning" }
+description = "drive_queued: add no warning for the skipped tracks"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '    warnings = (*warnings, *declined_warnings(store, job))'
+new = '    warnings = tuple(warnings)'
+
+[[rows]]
+id = "u42-author.W2_unreadable_reported"
+source = { table = "u42-author.json", id = "W2_unreadable_reported" }
+description = "Collect the unreadable directories and then never report them"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_reserved_causes.py"]
+old = '    found += [_item(path, root, "path-unreadable") for path in unreadable]'
+new = ''
+
+[[rows]]
+id = "r679-b.D2_fallback_gate_on_question_alone"
+source = { table = "r679-b.json", id = "D2_fallback_gate_on_question_alone" }
+description = "fallback pass: gate the store on the needs-review state alone"
+file = "src/cratekit/acquire/fallback_cli.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_review_queue.py"]
+old = '    if any(match_cli.touches_the_queue(one) for one in resolved.matches):'
+new = '    if any(one.state is match.MatchState.NEEDS_REVIEW for one in resolved.matches):'
+
+[[rows]]
+id = "r1313.I1_cache_failure_alone"
+source = { table = "r1313.json", id = "I1_cache_failure_alone" }
+description = "said_not_found: read the 404 off the failure alone, as before R-1313, so an ISRC answered with a 404 page is never kept"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py"]
+old = '    return answered_not_found(exc)'
+new = '    return getattr(getattr(exc, "response", None), "status_code", None) == 404'
+
+[[rows]]
+id = "r1313.I2_cache_keeps_any_status"
+source = { table = "r1313.json", id = "I2_cache_keeps_any_status" }
+description = "said_not_found: keep any failure carrying a status, so an outage is remembered for a week as filed under nothing"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py"]
+old = '    return answered_not_found(exc)'
+new = '    return answered_not_found(exc) or getattr(getattr(exc, "response", None), "status_code", None) is not None'
+
+[[rows]]
+id = "u206-b.M2b_disabled_recall_composite"
+source = { table = "u206-b.json", id = "M2b_disabled_recall_composite" }
+description = "Composite: drop recall's days 0 guard AND give every entry at least a day's life, so answers kept before the cache was turned off still answer"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        global _PROCESS_HITS
+        if not self.enabled:
+            return None'''
+new = '''
+        global _PROCESS_HITS
+        self.days = max(self.days, 1)'''
+
+[[rows]]
+id = "u206.M11_unreadable_answer_kept"
+source = { table = "u206.json", id = "M11_unreadable_answer_kept" }
+description = "Cache.remember: keep an answer holding a track that cannot be read"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        if not all(_readable(track) for track in tracks):
+            return False'''
+new = '''
+        if False:
+            return False'''
+
+[[rows]]
+id = "u68.D1_unlisted_on_blank_ref"
+source = { table = "u68.json", id = "D1_unlisted_on_blank_ref" }
+description = "A row with no provider id is written to the document instead of being returned unlisted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''
+        if not ref:
+            unlisted.append(row)
+            continue'''
+new = '''
+        if False:
+            unlisted.append(row)
+            continue'''
+
+[[rows]]
+id = "u68.D2_first_id_wins"
+source = { table = "u68.json", id = "D2_first_id_wins" }
+description = "A repeated id is written again instead of being folded into its first occurrence"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''
+        if ref in seen:
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u68.D3_ref_stripped"
+source = { table = "u68.json", id = "D3_ref_stripped" }
+description = "An id is compared as given rather than stripped, as the reader strips it"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '        ref = str(row.ref or "").strip()'
+new = '        ref = str(row.ref or "")'
+
+[[rows]]
+id = "u68.D4_reader_check"
+source = { table = "u68.json", id = "D4_reader_check" }
+description = "Drop the read back through the reader's own row recognition, so a row the reader refuses is written"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''
+        track = _track(row, ref)
+        _checked(track, position)'''
+new = '        track = _track(row, ref)'
+
+[[rows]]
+id = "u68.F1_different_file_refused"
+source = { table = "u68.json", id = "F1_different_file_refused" }
+description = "An existing file holding different bytes is overwritten instead of refused"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '    if present != payload:'
+new = '    if False:'
+
+[[rows]]
+id = "u68.M1_manifest_version"
+source = { table = "u68.json", id = "M1_manifest_version" }
+description = "The manifest records the declared version of a row as empty"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '            "version": track.get("version", ""),'
+new = '            "version": "",'
+
+[[rows]]
+id = "u68.N1_slash"
+source = { table = "u68.json", id = "N1_slash" }
+description = "A name holding a slash is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''
+        or "/" in name
+'''
+new = ''
+
+[[rows]]
+id = "u68.N2_surrounding_space"
+source = { table = "u68.json", id = "N2_surrounding_space" }
+description = "A name with leading or trailing space is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '''
+        or name != name.strip()
+'''
+new = ''
+
+[[rows]]
+id = "u68.N3_dot_names"
+source = { table = "u68.json", id = "N3_dot_names" }
+description = "A name of one or two dots is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_listdoc.py"]
+old = '''
+        or name in {".", ".."}
+'''
+new = ''
+
+[[rows]]
+id = "u68.P1_missing_provenance"
+source = { table = "u68.json", id = "P1_missing_provenance" }
+description = "A listed id with no provenance is not refused by name"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''
+    if found is None:
+        raise ListDocRefused'''
+new = '''
+    if False:
+        raise ListDocRefused'''
+
+[[rows]]
+id = "u68.P2_blank_source"
+source = { table = "u68.json", id = "P2_blank_source" }
+description = "A provenance naming no source is accepted"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '    if not isinstance(found.source, str) or not found.source.strip():'
+new = '    if False:'
+
+[[rows]]
+id = "u68.T1_version_written"
+source = { table = "u68.json", id = "T1_version_written" }
+description = "A declared version is not written to the track"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '''
+    if row.version.strip():
+        track["version"]'''
+new = '''
+    if False:
+        track["version"]'''
+
+[[rows]]
+id = "u68.T2_isrc_written"
+source = { table = "u68.json", id = "T2_isrc_written" }
+description = "An isrc is not written to the track"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '    if row.isrc and row.isrc.strip():'
+new = '    if False:'
+
+[[rows]]
+id = "u68.T3_key_written"
+source = { table = "u68.json", id = "T3_key_written" }
+description = "A key is not written to the track"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '    if row.key and row.key.strip():'
+new = '    if False:'
+
+[[rows]]
+id = "u68.W1_other_service_unlisted"
+source = { table = "u68.json", id = "W1_other_service_unlisted" }
+description = "A track from another service keeps its id and is written as a provider id"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '    ref = wanted.ref if wanted.origin == match.TIDAL else ""'
+new = '    ref = wanted.ref'
+
+[[rows]]
+id = "u68.W2_raw_title_candidate"
+source = { table = "u68.json", id = "W2_raw_title_candidate" }
+description = "Drop the raw title plus declared version spelling, so the split title is the fallback"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '        if wanted.version and wanted.spelled.endswith(suffix):'
+new = '        if False:'
+
+[[rows]]
+id = "u73-b.C1_refs_only_when_several"
+source = { table = "u73-b.json", id = "C1_refs_only_when_several" }
+description = "Write source_refs for a single reference too, changing the bytes of a manifest an earlier build wrote"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '        if len(origin.source_refs) > 1:'
+new = '        if len(origin.source_refs) >= 1:'
+
+[[rows]]
+id = "u73-b.C2_refs_written"
+source = { table = "u73-b.json", id = "C2_refs_written" }
+description = "Never write source_refs into the manifest"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_listdoc.py"]
+old = '            entry["source_refs"] = list(origin.source_refs)'
+new = '            pass'
+
+[[rows]]
+id = "u77-c.C1_manifest_version"
+source = { table = "u77-c.json", id = "C1_manifest_version" }
+description = "manifest_rows: refuse only a version below this build's, so a manifest of a later version is read on the hope its keys still mean what they meant"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = 'if isinstance(version, bool) or version != MANIFEST_VERSION:'
+new = 'if isinstance(version, bool) or version < MANIFEST_VERSION:'
+
+[[rows]]
+id = "u77-c.C2_manifest_version_bool"
+source = { table = "u77-c.json", id = "C2_manifest_version_bool" }
+description = "manifest_rows: drop the boolean test on the version, so true, which Python holds equal to 1, reads as version 1"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "maintainer"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = 'if isinstance(version, bool) or version != MANIFEST_VERSION:'
+new = 'if version != MANIFEST_VERSION:'
+
+[[rows]]
+id = "u77-c.C3_not_a_manifest"
+source = { table = "u77-c.json", id = "C3_not_a_manifest" }
+description = "manifest_rows: stop asking whether the document names a manifest version at all, so a list document passed by mistake is not refused by name"
+file = "src/cratekit/acquire/listdoc.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_landing.py", "tests/test_intake_land.py", "tests/test_tree_writer.py", "tests/test_listdoc.py", "tests/test_xml_splice_golden.py"]
+old = 'if not isinstance(body, Mapping) or "manifest" not in body:'
+new = 'if not isinstance(body, Mapping):'
