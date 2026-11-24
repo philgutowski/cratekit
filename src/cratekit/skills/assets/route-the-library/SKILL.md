@@ -206,8 +206,13 @@ deletes a playlist membership. The driven resort carries a
 `membership-left-behind` warning naming each playlist and the file still in it,
 so the person can take it out in rekordbox if it no longer belongs there. The
 warning names the first twenty, counts the rest, and ends with the directory
-the whole list is written in. A resort that failed part way says the same thing
-as a step on its refusal. `crate converge` says whether a tree still differs.
+the whole list is written in. A playlist the check could not tie to one
+destination (under a folder renamed in rekordbox, or beside a folder a write
+made again) is not in that count, so the gate shows every such playlist under
+`not compared` beside `left behind`, and the driven resort carries a
+`playlist-not-compared` warning naming each one. A resort that failed part way
+says both as steps on its refusal. `crate converge` says whether a tree still
+differs.
 
 `--state` is repeatable and refuses a state it does not recognise instead of
 matching nothing, because a filter that silently matches nothing looks exactly
