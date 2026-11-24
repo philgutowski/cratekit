@@ -7,7 +7,6 @@ scenarios live in ``tests/test_sync_pair_back.py``.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -21,26 +20,17 @@ from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, pair_discover
 from tests import outbound_fakes
 from tests._sync_builders import exited
-from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
-from tests.test_rb_writer_db import _build_disposable_database
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-
-VERB = ["sync", "pair"]
-#: Content rows one through nine, each carrying the ISRC its account track has.
-ROWS = tuple(str(index) for index in range(1, 10))
+from tests.test_sync_pair import ROWS, VERB, _codes, _sql, remote, rows_database, sync, writing
 
 
 def isrc(index: str) -> str:
     return f"USBBB26{int(index):05d}"
-
-
-def remote(index: str) -> str:
-    return f"t{index}"
 
 
 class Listed:
@@ -116,35 +106,20 @@ class World:
         return rb_writer.open_db(Path(self.cfg.library.db_path), unlock=False, cfg=self.cfg)
 
     def folder(self, name: str, under: str | None = None) -> str:
-        handle = self.open()
-        try:
+        with writing(self) as handle:
             parent = None if under is None else handle.get_playlist(ID=under)
-            row = handle.create_playlist_folder(name, parent=parent)
-            handle.session.commit()
-            return str(row.ID)
-        finally:
-            rb_writer.close_db(handle)
+            return str(handle.create_playlist_folder(name, parent=parent).ID)
 
     def playlist(self, name: str, *content_ids: str, under: str | None = None) -> str:
-        handle = self.open()
-        try:
+        with writing(self) as handle:
             parent = None if under is None else handle.get_playlist(ID=under)
             row = handle.create_playlist(name, parent=parent)
             for content_id in content_ids:
                 handle.add_to_playlist(row, content_id)
-            handle.session.commit()
             return str(row.ID)
-        finally:
-            rb_writer.close_db(handle)
 
     def sql(self, statement: str, *args) -> list[tuple]:
-        conn = sqlite3.connect(self.cfg.library.db_path)
-        try:
-            rows = conn.execute(statement, args).fetchall()
-            conn.commit()
-            return rows
-        finally:
-            conn.close()
+        return _sql(self.cfg.library.db_path, statement, *args)
 
     def held(self, playlist_id: str) -> list[str]:
         return [
@@ -157,14 +132,10 @@ class World:
         ]
 
     def rekordbox_add(self, playlist_id: str, *content_ids: str) -> None:
-        handle = self.open()
-        try:
+        with writing(self) as handle:
             row = handle.get_playlist(ID=playlist_id)
             for content_id in content_ids:
                 handle.add_to_playlist(row, content_id)
-            handle.session.commit()
-        finally:
-            rb_writer.close_db(handle)
 
     def rekordbox_remove(self, playlist_id: str, *content_ids: str) -> None:
         for content_id in content_ids:
@@ -191,21 +162,6 @@ class World:
         return {name: pid for pid, name in self.account.folder_playlists(ids[0]).items()}
 
 
-def sync(args: list[str] = VERB, *, rekordbox: str = "apply", account: str = "apply"):
-    """Drive the verb through both explicit gates, answering each as asked."""
-    answers = {pair_cli.REKORDBOX_GATE: rekordbox, pair_cli.ACCOUNT_GATE: account}
-    run_id = None
-    for _ in range(3):
-        resume = ["--run", run_id] if run_id else []
-        code, envelope = drive([*resume, *args])
-        if code != int(ExitCode.DECISION_REQUIRED):
-            return code, envelope
-        run_id = envelope["run_id"]
-        gate = envelope["cause"]["detail"]["gate"]
-        exited(drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"]))
-    raise AssertionError("the verb kept asking after both gates were answered")
-
-
 def plan_only(args: list[str] = VERB):
     """The plan both gates show, both answered skip, so nothing is written."""
     envelope = exited(sync(args, rekordbox="skip", account="skip"))
@@ -215,40 +171,12 @@ def plan_only(args: list[str] = VERB):
 @pytest.fixture
 def db(cfg, monkeypatch):
     """A disposable database holding nine content rows, each with its ISRC."""
-    path = Path(cfg.library.db_path)
-    _build_disposable_database(path)
-    conn = sqlite3.connect(path)
-    try:
-        for content_id in ROWS:
-            conn.execute(
-                "INSERT OR IGNORE INTO djmdContent (ID, Title, rb_local_deleted, created_at, "
-                "updated_at) VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
-                (content_id, f"Title {remote(content_id)}"),
-            )
-            conn.execute(
-                "UPDATE djmdContent SET FolderPath = ?, ISRC = ?, rb_local_deleted = 0 "
-                "WHERE ID = ?",
-                (f"{cfg.library.root}/Music/{content_id}.flac", isrc(content_id), content_id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer,
-        "integrity_ok",
-        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
-    )
-    return path
+    return rows_database(cfg, monkeypatch, isrc)
 
 
 @pytest.fixture
 def world(cfg, gates_pass, db, monkeypatch) -> World:
     return World(cfg, monkeypatch)
-
-
-def _codes(envelope) -> set[str]:
-    return {warning["code"] for warning in envelope.get("warnings") or ()}
 
 
 def _said(envelope, code: str) -> str:
