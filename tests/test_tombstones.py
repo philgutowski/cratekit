@@ -33,15 +33,15 @@ def cfg(library_root):
     return config.from_dict(valid_data(library_root))
 
 
-def _row(content_id="1", *, artist=ARTIST, title=ORIGINAL, recorded="/music/x.flac"):
+def _row(content_id="1", *, artist=ARTIST, title=ORIGINAL, recorded="/music/x.flac", **more):
     return library.RemovedRow(
-        content_id=content_id,
-        recorded=recorded,
-        sequence=10,
-        size=11,
-        artist=artist,
-        title=title,
+        content_id=content_id, recorded=recorded, sequence=10, size=11, artist=artist, title=title,
+        **more,
     )
+
+
+def _identity(title: str, artist: str = ARTIST) -> dict:
+    return tombstone.version_identity(artist=artist, title=title)
 
 
 # The identity
@@ -49,41 +49,30 @@ def _row(content_id="1", *, artist=ARTIST, title=ORIGINAL, recorded="/music/x.fl
 
 def test_a_remix_and_its_original_are_two_identities(cfg):
     """AE17: version identity, not recording identity, as the library is remix heavy (KTD16)."""
-    assert tombstone.version_identity(artist=ARTIST, title=ORIGINAL) != (
-        tombstone.version_identity(artist=ARTIST, title=REMIX)
-    )
+    assert _identity(ORIGINAL) != _identity(REMIX)
 
 
 @pytest.mark.parametrize(
     "artist, title",
     [
-        (ARTIST.upper(), ORIGINAL.lower()),
-        (f"  {ARTIST} ", f"{ORIGINAL}  "),
+        (ARTIST.upper(), ORIGINAL.lower()), (f"  {ARTIST} ", f"{ORIGINAL}  "),
         (ARTIST, ORIGINAL.replace(" ", "  ")),
     ],
 )
 def test_case_spacing_and_padding_are_folded(artist, title):
     """Routine differences between a row and a search result are not a different version."""
-    assert tombstone.version_identity(artist=artist, title=title) == (
-        tombstone.version_identity(artist=ARTIST, title=ORIGINAL)
-    )
+    assert _identity(title, artist) == _identity(ORIGINAL)
 
 
 def test_composition_form_is_folded():
     """Composition form folds, as macOS and providers hand back different forms."""
     accented = "Café Track"
-    assert tombstone.version_identity(artist=ARTIST, title=accented) == (
-        tombstone.version_identity(
-            artist=ARTIST, title=unicodedata.normalize("NFD", accented)
-        )
-    )
+    assert _identity(accented) == _identity(unicodedata.normalize("NFD", accented))
 
 
 def test_punctuation_is_not_folded():
     """Conservative, since an over-eager fold silently withholds music the user wants."""
-    assert tombstone.version_identity(artist=ARTIST, title="Track (Live)") != (
-        tombstone.version_identity(artist=ARTIST, title="Track [Live]")
-    )
+    assert _identity("Track (Live)") != _identity("Track [Live]")
 
 
 def test_an_identity_with_neither_field_refuses():
@@ -94,21 +83,13 @@ def test_an_identity_with_neither_field_refuses():
 
 def test_the_field_set_never_varies_with_the_input():
     """An omitted empty field would hash differently and never match."""
-    assert set(tombstone.version_identity(artist=ARTIST, title="")) == {"artist", "title"}
-    assert set(tombstone.version_identity(artist="", title=ORIGINAL)) == {"artist", "title"}
+    assert set(_identity("")) == {"artist", "title"}
+    assert set(_identity(ORIGINAL, "")) == {"artist", "title"}
 
 
 def test_the_isrc_is_carried_in_the_payload_and_never_in_the_identity(cfg):
     """A code in the identity would miss the same version from a source without one."""
-    row = library.RemovedRow(
-        content_id="1",
-        recorded="/music/x.flac",
-        sequence=10,
-        size=11,
-        artist=ARTIST,
-        title=ORIGINAL,
-        isrc="AA6Q72000047",
-    )
+    row = _row(isrc="AA6Q72000047")
     record = stores.record_tombstone(cfg, row, actor="cli")
     assert "isrc" not in (record.identity or {})
     assert record.payload["isrc"] == "AA6Q72000047"
@@ -196,9 +177,9 @@ def test_both_stores_are_declared_state_and_roll_back_with_the_database():
 def test_the_two_kinds_never_collide_even_on_one_identity(cfg):
     """One identity mapping, two kinds, two identifiers. The kind is part of the key."""
     same = {"content_id": "1", "recorded": "/music/x.flac"}
-    assert review.suppression_id_for(
-        tombstone.DECLINE_STORE_KEY, tombstone.KIND_REMOVED_FILE, same
-    ) != review.suppression_id_for(tombstone.STORE_KEY, tombstone.KIND_REMOVED_FILE, same)
+    kind = tombstone.KIND_REMOVED_FILE
+    declined = review.suppression_id_for(tombstone.DECLINE_STORE_KEY, kind, same)
+    assert declined != review.suppression_id_for(tombstone.STORE_KEY, kind, same)
 
 
 # fold_code: the folding for a STRUCTURED IDENTIFIER, which fold is not
