@@ -13,7 +13,9 @@ out, and never listed, as another writer's list or no list:
   that name leave both out rather than guess;
 * another app's top level folder (U185);
 * a twins' folder, ``Custom Playlists <year>`` (U149), which pairs itself;
-* a playlist a pair already holds.
+* a playlist a pair already holds;
+* a playlist under WIP the account mirror already copies (U959), by the title
+  ``mirror.wip_title`` gives it, so the account never holds it twice.
 
 **WHAT IS LISTED, NEVER WRITTEN.** A playlist under a skipped folder
 (``outbound.pair_skip_folders``), a smart playlist, one whose account side a
@@ -200,20 +202,24 @@ def discover(
     skip: Iterable[str],
     paired: Iterable[str],
     released: Iterable[str],
+    mirrored: Iterable[str] = (),
 ) -> Discovery:
     """Walk the live playlist tree once and say what a sync of every pair should make.
 
     ``tops`` is ``pair_model.generated_tops``'s answer, ``favorites`` the
     favourites playlist's name, ``skip`` the top folders to list and never
-    write, ``paired`` the rekordbox playlists pairs hold, and ``released``
-    those whose account side was deleted.
+    write, ``paired`` the rekordbox playlists pairs hold, ``released``
+    those whose account side was deleted, and ``mirrored`` the WIP titles the
+    account mirror made (:func:`mirrored_wip`).
     """
     from cratekit.core import active_taxonomy
+    from cratekit.modules.outbound import mirror
 
     roots, names = tops
     skipped = frozenset(str(one) for one in skip)
     held = frozenset(str(one) for one in paired)
     gone = frozenset(str(one) for one in released)
+    copied = frozenset(str(one) for one in mirrored)
     every, live, children = _live_children(db)
 
     foreign = {str(row.ID) for row in active_taxonomy.foreign_roots_in(live)}
@@ -285,6 +291,9 @@ def discover(
                 )
             )
             return
+        # THE ACCOUNT MIRROR'S OWN WIP COPY (U959): another writer's list.
+        if copied and mirror.wip_title(here) in copied:
+            return
         folder, title = title_of(here)
         found.append(Found(node_id, name, folder, title, here))
 
@@ -324,6 +333,14 @@ def discover(
         else:
             kept.append(one)
     return Discovery(found=tuple(kept), listed=tuple(listed))
+
+
+def mirrored_wip(cfg: Any) -> frozenset[str]:
+    """Every WIP playlist title the account mirror made (U959), for discovery to leave alone."""
+    from cratekit.modules.outbound import ledger, mirror
+
+    held = ledger.mirror_folders(cfg).get(mirror.WIP)
+    return frozenset(held.playlists) if held is not None else frozenset()
 
 
 def left_behind(db: Any, playlist: Any, *, favorites: str, skip: Iterable[str]) -> str:

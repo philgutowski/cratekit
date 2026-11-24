@@ -1,0 +1,264 @@
+name = "u959"
+pass_kind = "light"
+
+[[rows]]
+id = "W01_name_not_stripped"
+description = "_wip: compare the top level folder's name unstripped, so the live library's 'WIP ' is never found"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py", "tests/test_organize_mirror_edits_wip.py"]
+old = '''        and str(row.Name or "").strip() == WIP'''
+new = '''        and str(row.Name or "") == WIP'''
+
+[[rows]]
+id = "W02_any_depth"
+description = "_wip: drop the top level check, so a folder named WIP anywhere is read as the WIP folder"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''        and str(getattr(row, "ParentID", "") or "") in rb_writer.ROOT_PARENT_SENTINELS
+'''
+new = '''
+'''
+
+[[rows]]
+id = "W03_removed_folder_read"
+description = "_wip: drop the soft delete check, so a WIP folder removed in rekordbox is still mirrored"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''        and not rb_writer.node_removed(row)
+        and str(getattr(row, "ParentID", "")'''
+new = '''        and str(getattr(row, "ParentID", "")'''
+
+[[rows]]
+id = "W04_playlist_named_wip"
+description = "_wip: drop the folder check, so a plain playlist named WIP at the top counts as a WIP folder"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''        if rb_writer.is_folder(row)
+        and not rb_writer.node_removed(row)'''
+new = '''        if not rb_writer.node_removed(row)'''
+
+[[rows]]
+id = "W05_two_tops_not_refused"
+description = "_wip: two top level WIP folders no longer refuse, so the first by row order is mirrored"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''    if len(tops) > 1:
+        return _twice(WIP, "top level folders")'''
+new = '''    if False:
+        return _twice(WIP, "top level folders")'''
+
+[[rows]]
+id = "W06_pair_not_left"
+description = "_wip: a playlist a sync pair keeps is mirrored a second time"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''        elif str(row.ID) in paired:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "W08_smart_mirrored"
+description = "_wip: a smart playlist is taken as a plain one and mirrored empty"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''        if not _plain(row):
+            left(path, _SMART)'''
+new = '''        if False:
+            left(path, _SMART)'''
+
+[[rows]]
+id = "W09_deeper_folder_silent"
+description = "_wip: a folder two levels down is taken as a playlist rather than named"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''            if rb_writer.is_folder(inner):
+                left(path, _DEEPER)'''
+new = '''            if False:
+                left(path, _DEEPER)'''
+
+[[rows]]
+id = "W12_wip_not_found"
+description = "read_library: the WIP folder read is never added to what the mirror plans"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py", "tests/test_organize_mirror_edits_wip.py"]
+old = '''        if not isinstance(wip, str):
+            found.append((WIP, wip))'''
+new = '''        if False:
+            found.append((WIP, wip))'''
+
+[[rows]]
+id = "W13_unread_pairs_as_none"
+description = "_wip: a pair record that cannot be read is read as no pairs, so WIP is mirrored over it"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''    except CratekitError as exc:
+        return exc.cause
+    titled'''
+new = '''    except CratekitError:
+        paired = {}
+    titled'''
+
+[[rows]]
+id = "W14_no_wip_fact"
+description = "add_steps: no fact says WIP was not mirrored"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip.py"]
+old = '''        area.facts[WIP_FACT] = library.wip'''
+new = '''        pass'''
+
+[[rows]]
+id = "W15_why_dropped"
+description = "read_library: the reason nothing was mirrored for WIP is dropped from the library"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py", "tests/test_organize_mirror_wip.py"]
+old = '''        wip if isinstance(wip, str) else "",'''
+new = '''        "",'''
+
+[[rows]]
+id = "E01_wip_carried"
+description = "_decide_each: a WIP edit is carried into the library as an INBOX one is, not held"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_wip.py"]
+old = '''            if tree == WIP:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "E02_wip_hold_shared"
+description = "_holds: every WIP playlist shares one hold, so one held on one playlist stops rekordbox's addition to another"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_wip.py"]
+old = '''_ALONE = (INBOX, WIP)'''
+new = '''_ALONE = (INBOX,)'''
+
+[[rows]]
+id = "E03_wip_not_decided"
+description = "decide: WIP playlists are never read for edits, so the mirror undoes every account edit to them"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_wip.py"]
+old = '''        *_decide_each(mine(WIP), owner, known, tree=WIP),
+'''
+new = '''
+'''
+
+[[rows]]
+id = "E04_wip_not_a_tree"
+description = "TREES: WIP left out, so a frozen plan holding WIP is unreadable and planned afresh"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip.py"]
+old = '''TREES = (GENRE, FAVORITES, INBOX, WIP)'''
+new = '''TREES = (GENRE, FAVORITES, INBOX)'''
+
+[[rows]]
+id = "E05_inbox_join_leave_swapped"
+description = "_decide_each (existing guard, sample): an INBOX addition LEAVES and a removal JOINS"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_u204.py", "tests/test_mirror_edits.py"]
+old = '''            kind = JOIN if added else LEAVE'''
+new = '''            kind = LEAVE if added else JOIN'''
+
+[[rows]]
+id = "P01_no_wip_places"
+description = "places: WIP playlists take no place, so the edit rule never reads them"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_wip.py"]
+old = '''            found.update(_wip_places(folder))'''
+new = '''            pass'''
+
+[[rows]]
+id = "W10_title_without_folder"
+description = "mirror.wip_title: a WIP playlist is titled by its own name alone, without its subfolder or WIP"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py", "tests/test_sync_pair_discover_wip.py"]
+old = '''    return title(WIP if len(path) == 2 else path[1].strip(), path[-1])'''
+new = '''    return path[-1]'''
+
+[[rows]]
+id = "W11_subfolder_unstripped"
+description = "mirror.wip_title: a subfolder's name keeps its trailing space, so sync pair reads another title than the mirror gave"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py", "tests/test_sync_pair_discover_wip.py"]
+old = '''    return title(WIP if len(path) == 2 else path[1].strip(), path[-1])'''
+new = '''    return title(WIP if len(path) == 2 else path[1], path[-1])'''
+
+[[rows]]
+id = "S01_pair_takes_mirrored_wip"
+description = "discover: a bare sync pair pairs a WIP playlist the account mirror already copies, a second copy"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover_wip.py", "tests/test_sync_pair_discover.py"]
+old = '''        if copied and mirror.wip_title(here) in copied:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "S02_plan_not_told"
+description = "_discovered: the sync pair plan does not pass the mirror's WIP titles to discovery"
+file = "src/cratekit/sync/pair_screen.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover_wip.py", "tests/test_sync_pair_discover.py"]
+old = '''        mirrored=pair_discover.mirrored_wip(cfg),
+    )
+    listed = list(discovery.listed)'''
+new = '''    )
+    listed = list(discovery.listed)'''
+
+[[rows]]
+id = "S03_ledger_read_as_none"
+description = "mirrored_wip: the mirror's WIP titles read as none"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover_wip.py", "tests/test_organize_mirror_wip.py"]
+old = '''    return frozenset(held.playlists) if held is not None else frozenset()'''
+new = '''    return frozenset()'''
+
+[[rows]]
+id = "W16_shared_title_planned"
+description = "read_library: a WIP title another mirrored folder takes no longer refuses WIP"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_wip_library.py"]
+old = '''        elif shared:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "S04_check_not_told"
+description = "pair_check: the check before the write does not leave out what the mirror copied since the plan, so the answer makes a second copy"
+file = "src/cratekit/sync/pair_check.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover_wip.py", "tests/test_sync_pair_discover.py"]
+old = '''                    mirrored=pair_discover.mirrored_wip(cfg),
+                ).found'''
+new = '''                ).found'''
+
+[[dropped]]
+id = "F01_wip_not_frozen"
+description = "_library_json: the WIP reason is not frozen"
+reason = "maintainer facing, at the cap; the frozen round trip test reads it (test_the_frozen_plan_carries_wip_its_rule_its_unmirrored_and_why_not)"
+
+[[dropped]]
+id = "F02_old_plan_refused"
+description = "_library_of: a plan frozen before WIP, with no wip key, is unreadable"
+reason = "maintainer facing, at the cap; pinned by test_a_plan_frozen_before_wip_reads_as_no_reason_given"
+
+[[dropped]]
+id = "W07_twin_said_as_pair"
+description = "_paired: a custom playlist twin is named as an ordinary pair"
+reason = "wording only, at the cap; the exact reasons are asserted in test_a_paired_playlist_and_a_twin_are_left_with_their_reasons"

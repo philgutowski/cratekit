@@ -95,6 +95,23 @@ def title(folder: str, playlist: str) -> str:
     return f"{folder} {playlist}"
 
 
+#: rekordbox's top level folder of sets in progress (U959), its name compared
+#: stripped, since the live library's carries a trailing space.
+WIP = "WIP"
+
+
+def wip_title(path: tuple[str, ...]) -> str:
+    """The account title the mirror gives a playlist under WIP, top folder first, or ``""`` (U959).
+
+    ``WIP <Playlist>`` directly under it, ``<Subfolder> <Playlist>`` one level
+    down, the folder names stripped; nothing deeper, and nothing outside WIP.
+    ``crate sync pair`` reads it too, so the two never disagree on a title.
+    """
+    if len(path) not in (2, 3) or path[0].strip() != WIP:
+        return ""
+    return title(WIP if len(path) == 2 else path[1].strip(), path[-1])
+
+
 @dataclass(frozen=True, slots=True)
 class Row:
     """One library membership. ``isrc`` is the database's own code, folded, or empty."""
@@ -130,8 +147,8 @@ class Folder:
     playlists: tuple[Source, ...] = ()
     retire: bool = False
     present: frozenset[str] = frozenset()
-    #: The edit rule reading it, ``mirror_edits.GENRE``, ``FAVORITES`` or
-    #: ``INBOX``, or ``""`` for a folder mirrored one way.
+    #: The edit rule reading it, ``mirror_edits.GENRE``, ``FAVORITES``,
+    #: ``INBOX`` or ``WIP``, or ``""`` for a folder mirrored one way.
     edits: str = ""
     #: Each node of the folder that is not mirrored, ``(label, reason)`` (U214).
     unmirrored: tuple[tuple[str, str], ...] = ()
@@ -771,6 +788,6 @@ def apply(
 __all__ = [
     "ADOPT", "AMBIGUOUS_REASON", "Applied", "CHUNK", "CREATE", "Counted", "Folder",
     "FolderPlan", "Identity", "LEFT", "Matcher", "NO_ISRC", "NO_MATCH", "PlaylistPlan",
-    "RETIRE", "REUSE", "Row", "Source", "UNMADE", "UNREAD", "UNREADABLE", "ambiguous", "apply",
+    "RETIRE", "REUSE", "Row", "Source", "UNMADE", "UNREAD", "UNREADABLE", "WIP", "ambiguous", "apply",
     "plan", "settled", "title",
 ]

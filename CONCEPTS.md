@@ -436,7 +436,8 @@ The account tracks a mirrored playlist held when `crate organize`'s account
 mirror last finished it, in the outbound ledger under `agreed`. It tells an
 account edit (taken into rekordbox by the `mirror-edits` step) from a rekordbox
 change; a new account track the library lacks goes to `mirror-downloads`, whose
-job the next new sync pass takes. Its landing's own filing by tags is not a
+job the next new sync pass takes. An edit to a WIP playlist is held as the
+account has it and neither taken nor queued (U959). Its landing's own filing by tags is not a
 rekordbox change: the edit is carried once (U227), reading a queuing
 playlist never agreed as it stood at the queue (U230). Nor is the month a
 favourite put in `All Favorites` was placed in: kept beside it under `placed`,
@@ -1203,10 +1204,11 @@ playlists older versions left gapped.
 
 ### Account mirror
 The `mirror` step of `crate organize`: an account root folder copying one
-rekordbox routing folder, the Favorites folder or INBOX, one private playlist per
-rekordbox playlist (`<Folder> <Playlist>`), kept equal each run. Unmatched rows
+rekordbox routing folder, the Favorites folder, INBOX or the top level WIP folder,
+one private playlist per rekordbox playlist (`<Folder> <Playlist>`, a WIP
+subfolder's as `<Subfolder> <Playlist>`), kept equal each run. Unmatched rows
 are named, never substituted. A batch leaving INBOX has its mirrored playlist
-removed. An ISRC tie is matched to the lowest provider id after narrowing.
+removed. An edit on the account to a WIP playlist is held, never carried. An ISRC tie is matched to the lowest provider id after narrowing.
 
 *Avoid:* an export (one way, add only) or a pair (both ways).
 
