@@ -20,6 +20,7 @@ from cratekit.label.catalogue import AccountPlaylist
 from cratekit.organize import inspiration
 from cratekit.sync import mark_record, pair_discover, playlists, strip_cli, taken_cli, twins
 from tests import outbound_fakes
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
@@ -41,13 +42,28 @@ def fresh_cache():
 
 def _answered(argv: list[str], gate: str, option: str = "apply") -> tuple[int, dict]:
     """R34's two acts on a verb's own gate, then the run that carries them out."""
-    code, refused = drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(argv), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == gate
     run_id = refused["run_id"]
-    code, decided = drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
-    assert code == int(ExitCode.OK), decided
+    exited(drive(["run", "decide", run_id, gate, option, "--actor", "a-person"]))
     return drive(["--run", run_id, *argv])
+
+
+def _unmark(name: str, *extra: str) -> tuple[int, dict]:
+    """``sync unmark`` of the pass ``name``, answered apply."""
+    return _answered(["sync", "unmark", "--pass", name, *extra], "sync.unmark.confirm")
+
+
+def _account(monkeypatch, **options) -> outbound_fakes.FakeAccount:
+    """A fake account the outbound writes are bound to."""
+    account = outbound_fakes.FakeAccount(**options)
+    bind_account(monkeypatch, account)
+    return account
+
+
+def _passed() -> dict:
+    """``sync all``, which must exit OK."""
+    return exited(drive(["sync", "all"]))
 
 
 def _items(done: dict) -> dict[str, dict]:
@@ -105,25 +121,12 @@ def test_exclusion_answers_swept_for_a_taken_playlist_with_no_prefix():
 def test_a_version_one_record_reads_as_one_with_nothing_taken(slim):
     record = mark_record.MarkRecord(slim)
     record.path.parent.mkdir(parents=True, exist_ok=True)
-    record.path.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "library_id": slim.library.volume_id,
-                "marks": [
-                    {
-                        "pass": "p1",
-                        "playlist_id": "pl-a",
-                        "name": "Warmup",
-                        "to": "DOWNLOADED Warmup",
-                        "marked": "2026-10-01T10:00:00Z",
-                        "unmarked": "",
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    mark = {
+        "pass": "p1", "playlist_id": "pl-a", "name": "Warmup", "to": "DOWNLOADED Warmup",
+        "marked": "2026-10-01T10:00:00Z", "unmarked": "",
+    }
+    raw = {"version": 1, "library_id": slim.library.volume_id, "marks": [mark]}
+    record.path.write_text(json.dumps(raw), encoding="utf-8")
     assert record.taken() == {} and record.taken_ids() == frozenset()
     assert [entry.playlist_id for entry in record.all()] == ["pl-a"]
     # THE FIRST WRITE REWRITES IT AS VERSION 2, the mark kept.
@@ -173,12 +176,8 @@ def test_an_unreadable_taken_list_refuses_rather_than_reading_as_none(slim, take
     """UNREAD IS NOT NONE: empty would offer every taken playlist as new."""
     record = mark_record.MarkRecord(slim)
     record.path.parent.mkdir(parents=True, exist_ok=True)
-    record.path.write_text(
-        json.dumps(
-            {"version": 2, "library_id": slim.library.volume_id, "marks": [], "taken": taken}
-        ),
-        encoding="utf-8",
-    )
+    raw = {"version": 2, "library_id": slim.library.volume_id, "marks": [], "taken": taken}
+    record.path.write_text(json.dumps(raw), encoding="utf-8")
     with pytest.raises(CratekitError) as caught:
         playlists.taken_ids(slim)
     assert caught.value.cause.reason == "sync-mark-record-unusable"
@@ -232,33 +231,26 @@ def test_the_migration_records_every_prefix_and_standing_mark_once_and_says_how_
     record.record_marked("gone-pass", {"pl-x": ("Undone", "DOWNLOADED Undone")}, now="2025-06-01T10:00:00Z")
     record.record_unmarked("gone-pass", "pl-x")
 
-    code, done = _answered(["sync", "taken"], TAKEN)
-    assert code == int(ExitCode.OK), done
+    done = exited(_answered(["sync", "taken"], TAKEN))
     assert done["data"]["totals"]["taken"] == 2
     held = record.taken()
     assert set(held) == {"pl-h", "pl-m"}, "an unmarked mark and a plain title are not taken"
-    assert (held["pl-h"].by, held["pl-h"].how, held["pl-h"].name) == (
-        mark_record.MIGRATION,
-        mark_record.FOUND_PREFIXED,
-        "Hand",
+    found = (mark_record.MIGRATION, mark_record.FOUND_PREFIXED, "Hand")
+    assert (held["pl-h"].by, held["pl-h"].how, held["pl-h"].name) == found
+    marked = ("old-pass", mark_record.BY_PASS, "2025-06-01T10:00:00Z")
+    assert (held["pl-m"].by, held["pl-m"].how, held["pl-m"].at) == marked, (
+        "a pass's mark keeps its pass and its time, which filing reads a year from"
     )
-    assert (held["pl-m"].by, held["pl-m"].how, held["pl-m"].at) == (
-        "old-pass",
-        mark_record.BY_PASS,
-        "2025-06-01T10:00:00Z",
-    ), "a pass's mark keeps its pass and its time, which filing reads a year from"
 
     # IDEMPOTENT: a second run records nothing and says the two are held.
-    code, again = _answered(["sync", "taken"], TAKEN)
-    assert code == int(ExitCode.OK), again
+    again = exited(_answered(["sync", "taken"], TAKEN))
     assert again["outcome"] == "no_op"
     assert again["data"]["totals"]["take"] == 0 and again["data"]["totals"]["held"] == 2
 
 
 def test_the_migration_answered_abort_records_nothing(slim, monkeypatch):
     bind_playlists(monkeypatch, HAND)
-    code, done = _answered(["sync", "taken"], TAKEN, option="abort")
-    assert code == int(ExitCode.OK), done
+    exited(_answered(["sync", "taken"], TAKEN, option="abort"))
     assert mark_record.MarkRecord(slim).taken() == {}
 
 
@@ -266,10 +258,8 @@ def test_the_migration_does_not_copy_the_cursor(slim, monkeypatch):
     """A recorded playlist whose pass still owes tracks stays in sync mark's plan."""
     fake, _name = _swept_pass(monkeypatch, FRESH)
     # THE NEXT PASS RECONCILES, which is when the cursor records the playlist.
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
-    code, done = _answered(["sync", "taken"], TAKEN)
-    assert code == int(ExitCode.OK), done
+    _passed()
+    done = exited(_answered(["sync", "taken"], TAKEN))
     assert done["data"]["totals"]["cursor_only"] == 1
     assert mark_record.MarkRecord(slim).taken_ids() == frozenset()
     del fake
@@ -284,18 +274,15 @@ def _strip(*extra: str, option: str = "apply") -> tuple[int, dict]:
 
 def test_a_hand_prefixed_playlist_is_recorded_stripped_and_never_offered(slim, monkeypatch):
     fake = bind_playlists(monkeypatch, HAND, FRESH)
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    account = _account(monkeypatch)
 
-    code, done = _strip()
-    assert code == int(ExitCode.OK), done
+    done = exited(_strip())
     assert account.renamed == [("pl-h", "Hand")]
     assert _items(done)["pl-h"]["action"] == strip_cli.STRIPPED
     assert "pl-h" in mark_record.MarkRecord(slim).taken_ids()
 
     _retitled(fake, account)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = _passed()
     assert _queued(passed) == ["pl-f"]
     assert _excluded(passed)["pl-h"] == str(playlists.Excluded.SWEPT)
 
@@ -306,36 +293,29 @@ def test_a_cratekit_marked_playlist_is_never_offered_once_stripped(slim, monkeyp
     record = mark_record.MarkRecord(slim)
     record.record_marked(name, {"pl-a": ("Warmup", "DOWNLOADED Warmup")})
     fake.account = [_playlist("pl-a", "DOWNLOADED Warmup", 1)]
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    account = _account(monkeypatch)
 
-    code, done = _strip()
-    assert code == int(ExitCode.OK), done
+    exited(_strip())
     assert account.renamed == [("pl-a", "Warmup")]
     assert record.taken()["pl-a"].by == name
 
     _retitled(fake, account)
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = _passed()
     assert _queued(passed) == []
     assert _excluded(passed)["pl-a"] == str(playlists.Excluded.SWEPT)
 
 
 def test_a_mark_since_u242_writes_no_title_and_the_playlist_is_never_offered(slim, monkeypatch):
     fake, name = _swept_pass(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101", "102")))
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    xml = _land(slim, name, "101", "102")
-    code, done = _mark_answered(xml)
-    assert code == int(ExitCode.OK), done
+    account = _account(monkeypatch)
+    exited(_mark_answered(_land(slim, name, "101", "102")))
     assert account.renamed == [], "no verb writes the prefix"
     held = mark_record.MarkRecord(slim).taken()["pl-a"]
     assert (held.by, held.how, held.name) == (name, mark_record.BY_PASS, "Warmup")
     assert mark_record.MarkRecord(slim).of_pass(name) == ()
 
     # THE LEDGER IS WHAT SAYS SO, checked before the cursor.
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
+    passed = _passed()
     assert "pl-a" not in _queued(passed)
     assert _excluded(passed)["pl-a"] == str(playlists.Excluded.SWEPT)
     del fake
@@ -351,11 +331,8 @@ def test_a_collision_is_refused_and_named_and_the_rest_strip(slim, monkeypatch):
         (_playlist("pl-e", "DOWNLOADED ", 1), _tracks("5")),
         (_playlist("pl-h", "DOWNLOADED House", 1), _tracks("6")),
     )
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    code, done = _strip()
-    assert code == int(ExitCode.OK), done
-    items = _items(done)
+    account = _account(monkeypatch)
+    items = _items(exited(_strip()))
     assert account.renamed == [("pl-h", "House")]
     for identity in ("pl-t", "pl-a", "pl-b"):
         assert (items[identity]["action"], items[identity]["reason"]) == ("skip", strip_cli.COLLIDES)
@@ -374,8 +351,7 @@ def test_the_gate_screen_lists_every_rename_and_every_refusal(slim, monkeypatch)
         (_playlist("pl-t", "DOWNLOADED Techno", 1), _tracks("1")),
         (_playlist("pl-o", "Techno", 1), _tracks("2")),
     )
-    code, refused = drive(["sync", "strip"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(["sync", "strip"]), ExitCode.DECISION_REQUIRED)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["renamed on the account"] == ["DOWNLOADED Hand -> Hand"]
     assert [line.split(":")[0] for line in shown["left with the prefix"]] == ["DOWNLOADED Techno"]
@@ -409,9 +385,7 @@ def test_a_ceiling_stop_names_what_landed_and_a_second_run_resumes(slim, monkeyp
     )
     account = _Ceiling(allowed=1)
     bind_account(monkeypatch, account)
-    code, stopped = _strip()
-    assert code != int(ExitCode.OK), stopped
-    cause = stopped["cause"]
+    cause = failed(_strip())["cause"]
     assert cause["reason"] == provider_gate.CEILING
     assert cause["detail"]["stripped"] == ["pl-1"]
     assert sorted(cause["detail"]["still_prefixed"]) == ["pl-2", "pl-3"]
@@ -421,8 +395,7 @@ def test_a_ceiling_stop_names_what_landed_and_a_second_run_resumes(slim, monkeyp
 
     _retitled(fake, account)
     account.allowed = 10
-    code, resumed = _strip()
-    assert code == int(ExitCode.OK), resumed
+    resumed = exited(_strip())
     assert sorted(_items(resumed)) == ["pl-2", "pl-3"], "only what is still prefixed is planned"
     assert sorted(dict(account.renamed)) == ["pl-1", "pl-2", "pl-3"]
 
@@ -430,24 +403,17 @@ def test_a_ceiling_stop_names_what_landed_and_a_second_run_resumes(slim, monkeyp
 def test_no_rename_is_made_for_a_playlist_the_record_does_not_hold(slim, monkeypatch):
     """A rename before the record holds the id would offer the playlist as new."""
     bind_playlists(monkeypatch, HAND)
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
+    account = _account(monkeypatch)
     monkeypatch.setattr(taken_cli, "migrate", lambda cfg, listed, now=None: ([], ()))
-    code, refused = _strip()
-    assert code != int(ExitCode.OK), refused
-    assert refused["cause"]["detail"]["not_held"] == ["pl-h"]
+    assert failed(_strip())["cause"]["detail"]["not_held"] == ["pl-h"]
     assert account.renamed == []
 
 
 def test_a_title_changed_since_the_plan_is_not_renamed(slim, monkeypatch):
     fake = bind_playlists(monkeypatch, HAND)
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    code, refused = drive(["sync", "strip"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    code, decided = drive(["run", "decide", run_id, STRIP, "apply", "--actor", "a-person"])
-    assert code == int(ExitCode.OK), decided
+    account = _account(monkeypatch)
+    run_id = exited(drive(["sync", "strip"]), ExitCode.DECISION_REQUIRED)["run_id"]
+    exited(drive(["run", "decide", run_id, STRIP, "apply", "--actor", "a-person"]))
     plan_listing = list(fake.account)
     calls = {"n": 0}
     original = fake.account_playlists
@@ -459,8 +425,7 @@ def test_a_title_changed_since_the_plan_is_not_renamed(slim, monkeypatch):
         return [_playlist("pl-h", "Hand by hand", 2)]
 
     monkeypatch.setattr(fake, "account_playlists", moving)
-    code, done = drive(["--run", run_id, "sync", "strip"])
-    assert code == int(ExitCode.OK), done
+    done = exited(drive(["--run", run_id, "sync", "strip"]))
     assert account.renamed == []
     assert _items(done)["pl-h"]["reason"] == strip_cli.CHANGED_SINCE
     del plan_listing
@@ -468,36 +433,28 @@ def test_a_title_changed_since_the_plan_is_not_renamed(slim, monkeypatch):
 
 def test_every_old_title_is_restored_by_unmark_of_the_strip(slim, monkeypatch):
     fake = bind_playlists(monkeypatch, HAND, (_playlist("pl-2", "DOWNLOADED Two", 1), _tracks("2")))
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    code, done = _strip()
-    assert code == int(ExitCode.OK), done
+    account = _account(monkeypatch)
+    exited(_strip())
     _retitled(fake, account)
     account.renamed.clear()
 
-    code, back = _answered(
-        ["sync", "unmark", "--pass", strip_cli.PASS], "sync.unmark.confirm"
-    )
-    assert code == int(ExitCode.OK), back
+    exited(_unmark(strip_cli.PASS))
     assert sorted(account.renamed) == [("pl-2", "DOWNLOADED Two"), ("pl-h", "DOWNLOADED Hand")]
     assert {"pl-2", "pl-h"} <= mark_record.MarkRecord(slim).taken_ids(), "restored, still taken"
 
 
 def test_nothing_prefixed_is_a_plan_of_nothing(slim, monkeypatch):
     bind_playlists(monkeypatch, FRESH)
-    code, refused = drive(["sync", "strip"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = exited(drive(["sync", "strip"]), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["shown"]["nothing to strip"] == strip_cli.NOTHING_SAID
 
 
 def test_playlist_narrows_and_refuses_a_playlist_with_no_prefix(slim, monkeypatch):
     bind_playlists(monkeypatch, HAND, FRESH, (_playlist("pl-2", "DOWNLOADED Two", 1), _tracks("2")))
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    code, refused = drive(["sync", "strip", "--playlist", "pl-f"])
-    assert code != int(ExitCode.OK) and refused["cause"]["detail"]["not_prefixed"] == ["pl-f"]
-    code, done = _strip("--playlist", "pl-2")
-    assert code == int(ExitCode.OK), done
+    account = _account(monkeypatch)
+    refused = failed(drive(["sync", "strip", "--playlist", "pl-f"]))
+    assert refused["cause"]["detail"]["not_prefixed"] == ["pl-f"]
+    exited(_strip("--playlist", "pl-2"))
     assert account.renamed == [("pl-2", "Two")]
 
 
@@ -506,21 +463,16 @@ def test_playlist_narrows_and_refuses_a_playlist_with_no_prefix(slim, monkeypatc
 
 def test_unmark_lets_go_a_pass_mark_with_no_write_to_the_account(slim, monkeypatch):
     fake, name = _swept_pass(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    code, done = _mark_answered(_land(slim, name, "101"))
-    assert code == int(ExitCode.OK), done
+    account = _account(monkeypatch)
+    exited(_mark_answered(_land(slim, name, "101")))
     assert "pl-a" in mark_record.MarkRecord(slim).taken_ids()
 
-    code, back = _answered(["sync", "unmark", "--pass", name], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), back
+    back = exited(_unmark(name))
     assert _items(back)["pl-a"]["action"] == "released"
     assert account.renamed == []
     assert "pl-a" not in mark_record.MarkRecord(slim).taken_ids()
     # A SECOND UNMARK FINDS IT LET GO.
-    code, again = _answered(["sync", "unmark", "--pass", name], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), again
-    assert again["outcome"] == "no_op"
+    assert exited(_unmark(name))["outcome"] == "no_op"
     del fake
 
 
@@ -548,8 +500,7 @@ def test_the_inspiration_set_rule_reads_a_stripped_set_as_the_prefixed_one():
     )
     sets_found, rows = inspiration.account_sets(remote, (), frozenset({"pl-s"}))
     assert [(one[1], one[2]) for one in sets_found] == [
-        ("pl-p", "Other Set"),
-        ("pl-s", "Signal Live 2-26"),
+        ("pl-p", "Other Set"), ("pl-s", "Signal Live 2-26")
     ]
     assert [(row.playlist_id, row.action) for row in rows] == [("pl-x", inspiration.UNPREFIXED)]
 
@@ -588,10 +539,8 @@ def test_filing_reads_a_found_prefix_as_undated_and_a_pass_mark_as_dated():
 def _stripped(slim, monkeypatch, *listed):
     """The account over ``listed``, stripped through the verb, the listing retitled."""
     fake = bind_playlists(monkeypatch, *listed)
-    account = outbound_fakes.FakeAccount()
-    bind_account(monkeypatch, account)
-    code, done = _strip()
-    assert code == int(ExitCode.OK), done
+    account = _account(monkeypatch)
+    exited(_strip())
     _retitled(fake, account)
     return fake, account
 
@@ -602,13 +551,8 @@ def _filed(cfg, fake, account) -> dict[str, object]:
 
     record = mark_record.MarkRecord(cfg)
     planned = filing.plan(
-        cfg,
-        listed=fake.account,
-        remote=account,
-        labels=("Kompakt",),
-        marks=record.all(),
-        working=placeholders.is_placeholder,
-        taken=tuple(record.taken().values()),
+        cfg, listed=fake.account, remote=account, labels=("Kompakt",), marks=record.all(),
+        working=placeholders.is_placeholder, taken=tuple(record.taken().values()),
     )
     return {row.playlist_id: row for row in planned.rows}
 
@@ -624,10 +568,8 @@ def test_filing_after_a_real_strip_reads_every_playlist_as_it_did_before(slim, m
     account = outbound_fakes.FakeAccount()
     before = _filed(slim, fake, account)
     fake, account = _stripped(slim, monkeypatch, *listed)
-    assert [mark.pass_name for mark in record.all() if mark.pass_name == strip_cli.PASS] == [
-        strip_cli.PASS,
-        strip_cli.PASS,
-    ], "the producer wrote its own records"
+    strips = [mark.pass_name for mark in record.all() if mark.pass_name == strip_cli.PASS]
+    assert strips == [strip_cli.PASS, strip_cli.PASS], "the producer wrote its own records"
 
     after = _filed(slim, fake, account)
 
@@ -655,15 +597,12 @@ def test_a_stripped_playlist_named_like_a_followed_label_is_still_filed_by_its_m
 def test_unmark_of_the_migration_lets_nothing_go_and_nothing_is_offered(slim, monkeypatch):
     """A playlist found prefixed is no pass's, so no unmark releases it."""
     _stripped(slim, monkeypatch, HAND, FRESH)
-    code, done = _answered(["sync", "unmark", "--pass", mark_record.MIGRATION], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), done
+    done = exited(_unmark(mark_record.MIGRATION))
     assert done["outcome"] == "no_op" and done["data"]["items"] == []
     assert "pl-h" in mark_record.MarkRecord(slim).taken_ids()
-    code, refused = drive(["sync", "unmark", "--pass", "no-such-pass"])
+    _code, refused = drive(["sync", "unmark", "--pass", "no-such-pass"])
     assert mark_record.MIGRATION not in refused["cause"]["detail"]["shown"]["passes the record holds"]
-    code, passed = drive(["sync", "all"])
-    assert code == int(ExitCode.OK), passed
-    assert _queued(passed) == ["pl-f"]
+    assert _queued(_passed()) == ["pl-f"]
 
 
 def test_unmark_of_a_legacy_pass_after_the_strip_releases_and_stamps_it(slim, monkeypatch):
@@ -671,13 +610,11 @@ def test_unmark_of_a_legacy_pass_after_the_strip_releases_and_stamps_it(slim, mo
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-m": ("Marked", "DOWNLOADED Marked")})
     _stripped(slim, monkeypatch, (_playlist("pl-m", "DOWNLOADED Marked", 1), _tracks("701")))
-    code, done = _answered(["sync", "unmark", "--pass", "old-pass"], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), done
+    done = exited(_unmark("old-pass"))
     assert _items(done)["pl-m"]["action"] == "released"
     assert record.of_pass("old-pass")[0].unmarked
     assert "pl-m" not in record.taken_ids()
-    code, again = _answered(["sync", "taken"], TAKEN)
-    assert code == int(ExitCode.OK), again
+    again = exited(_answered(["sync", "taken"], TAKEN))
     assert again["data"]["totals"]["take"] == 0, "a stamped mark is not taken again"
 
 
@@ -686,12 +623,10 @@ def test_unmark_of_a_legacy_pass_after_the_strip_is_put_back_renames_back(slim, 
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-m": ("Marked", "DOWNLOADED Marked")})
     fake, account = _stripped(slim, monkeypatch, (_playlist("pl-m", "DOWNLOADED Marked", 1), _tracks("701")))
-    code, back = _answered(["sync", "unmark", "--pass", strip_cli.PASS], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), back
+    exited(_unmark(strip_cli.PASS))
     _retitled(fake, account)
     account.renamed.clear()
-    code, done = _answered(["sync", "unmark", "--pass", "old-pass"], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), done
+    exited(_unmark("old-pass"))
     assert account.renamed == [("pl-m", "Marked")]
     assert "pl-m" not in record.taken_ids()
 
@@ -715,10 +650,8 @@ def test_a_legacy_archive_mark_a_strip_superseded_no_longer_holds_the_rename(sli
 def test_the_strip_records_each_old_title_before_its_rename(slim, monkeypatch):
     """A rename that fails after its record reads to the unmark as already put back."""
     bind_playlists(monkeypatch, HAND)
-    account = outbound_fakes.FakeAccount(fail_on={"pl-h"})
-    bind_account(monkeypatch, account)
-    code, failed = _strip()
-    assert code != int(ExitCode.OK), failed
+    account = _account(monkeypatch, fail_on={"pl-h"})
+    failed(_strip())
     assert account.renamed == []
     (mark,) = mark_record.MarkRecord(slim).of_pass(strip_cli.PASS)
     assert (mark.playlist_id, mark.name, mark.to) == ("pl-h", "DOWNLOADED Hand", "Hand")
@@ -735,14 +668,9 @@ def test_unmark_playlist_narrows_the_releases(slim, monkeypatch):
     fake, name = _swept_pass(
         monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")), (_playlist("pl-b", "Peak"), _tracks("201"))
     )
-    bind_account(monkeypatch, outbound_fakes.FakeAccount())
-    code, done = _mark_answered(_land(slim, name, "101", "201"))
-    assert code == int(ExitCode.OK), done
-    code, back = _answered(
-        ["sync", "unmark", "--pass", name, "--playlist", "pl-b"], "sync.unmark.confirm"
-    )
-    assert code == int(ExitCode.OK), back
-    assert sorted(_items(back)) == ["pl-b"]
+    _account(monkeypatch)
+    exited(_mark_answered(_land(slim, name, "101", "201")))
+    assert sorted(_items(exited(_unmark(name, "--playlist", "pl-b")))) == ["pl-b"]
     assert mark_record.MarkRecord(slim).taken_ids() == frozenset({"pl-a"})
     del fake
 
@@ -755,12 +683,9 @@ def test_a_release_whose_title_was_retitled_since_stamps_the_pass_mark(slim, mon
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-a": ("Warmup ", "DOWNLOADED Warmup ")})
     _stripped(slim, monkeypatch, (_playlist("pl-a", "DOWNLOADED Warmup ", 1), _tracks("1")))
-    code, done = _answered(["sync", "unmark", "--pass", "old-pass"], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), done
-    assert _items(done)["pl-a"]["action"] == "released"
+    assert _items(exited(_unmark("old-pass")))["pl-a"]["action"] == "released"
     assert record.of_pass("old-pass")[0].unmarked, "the release stamps the pass's mark"
-    code, again = _answered(["sync", "taken"], TAKEN)
-    assert code == int(ExitCode.OK), again
+    again = exited(_answered(["sync", "taken"], TAKEN))
     assert again["data"]["totals"]["take"] == 0
     assert "pl-a" not in record.taken_ids()
 
@@ -772,10 +697,8 @@ def test_a_title_retitled_since_and_still_prefixed_is_left_alone_and_stays_taken
     record.record_marked(name, {"pl-a": ("Warmup", "DOWNLOADED Warmup")})
     taken_cli.migrate(slim, {"pl-a": "DOWNLOADED Warmup"})
     fake.account = [_playlist("pl-a", "DOWNLOADED Warmup v2", 1)]
-    bind_account(monkeypatch, outbound_fakes.FakeAccount())
-    code, done = _answered(["sync", "unmark", "--pass", name], "sync.unmark.confirm")
-    assert code == int(ExitCode.OK), done
-    item = _items(done)["pl-a"]
+    _account(monkeypatch)
+    item = _items(exited(_unmark(name)))["pl-a"]
     assert (item["action"], item["reason"], item["release"]) == ("skip", "renamed-since-mark", False)
     assert "pl-a" in record.taken_ids() and not record.of_pass(name)[0].unmarked
 
@@ -786,31 +709,26 @@ def test_a_release_that_fails_part_way_names_what_was_let_go(slim, monkeypatch):
     record.record_marked(name, {"pl-a": ("Warmup", "DOWNLOADED Warmup")})
     taken_cli.migrate(slim, {"pl-a": "DOWNLOADED Warmup"})
     fake.account = [_playlist("pl-a", "Warmup", 1)]
-    bind_account(monkeypatch, outbound_fakes.FakeAccount())
+    _account(monkeypatch)
 
     def broken(self, pass_name, playlist_id, *, now=None):
         raise self._unusable("the disk filled")
 
     monkeypatch.setattr(mark_record.MarkRecord, "record_unmarked", broken)
-    code, failed = _answered(["sync", "unmark", "--pass", name], "sync.unmark.confirm")
-    assert code != int(ExitCode.OK), failed
-    assert failed["cause"]["detail"]["released"] == ["pl-a"]
-    assert "let go" in failed["cause"]["message"]
+    cause = failed(_unmark(name))["cause"]
+    assert cause["detail"]["released"] == ["pl-a"]
+    assert "let go" in cause["message"]
 
 
 def test_a_prefixed_copy_beside_a_taken_original_is_still_its_copy():
     """Only a taken title with no prefix ignores the taken beside it."""
     fresh = [("pl-o", "Genre Trivia! Disco"), ("pl-c", "DOWNLOADED Disco"), ("pl-x", "Disco")]
     taken = frozenset({"pl-o", "pl-c", "pl-x"})
-    assert pair_discover.copy_candidates(fresh, "pl-c", "DOWNLOADED Disco", taken) == [
-        "Genre Trivia! Disco",
-        "Disco",
-    ]
+    copied = pair_discover.copy_candidates(fresh, "pl-c", "DOWNLOADED Disco", taken)
+    assert copied == ["Genre Trivia! Disco", "Disco"]
     assert pair_discover.copy_candidates(fresh, "pl-o", "Genre Trivia! Disco", taken) == []
-    assert pair_discover.copy_candidates(fresh, "pl-o", "Genre Trivia! Disco", {"pl-o"}) == [
-        "DOWNLOADED Disco",
-        "Disco",
-    ]
+    copied = pair_discover.copy_candidates(fresh, "pl-o", "Genre Trivia! Disco", {"pl-o"})
+    assert copied == ["DOWNLOADED Disco", "Disco"]
 
 
 def test_a_strip_record_older_than_the_prefix_mark_does_not_supersede_it(slim):
