@@ -2965,6 +2965,28 @@ their units but U243 and U260. Two worker tabs, W1 and W2.
 
 **Open attended cards, as of the end of 2026-11-23.** A183 (#879), tonight's 03:17 night; A202 (#929) step 1, on R-1716 (#1010); A129 (#711) steps 3 and 4, on the next label download; A141 (#744), on Beatport answering this machine; A203 (#934) step 3, at the next release; A5 (#178) lines 8 and 9; and the cards the day's cloud landings filed, A217 to A228 and A230, which the next sitting reads. A208 (#950), A207 (#947) and A211 (#962) closed in this continuation.
 
+## Sitting 105, 2026-11-24, a sync pass by the crate-sync skill on v0.19.0, no rekordbox visit: nothing new on the account, and the account's tail read past the hour's line on Phillip's word
+
+Preflight held: v0.19.0 installed and the latest release, no job running, no
+other session, backups 0 days old, rekordbox closed. Two messages from
+Phillip ("lets sync tidal and rekordbox", then "its ok continue making
+calls"), 14:32Z to 14:44Z, against sitting 47's 25 messages and about three
+hours.
+
+| Step | Ran | Observed |
+|---|---|---|
+| The night's record | `sync night --last` | night of 2026-11-23, `nothing-new` at 08:17Z, 33 calls, 522418193 refused `lossy-refused` |
+| The pass, first | `sync land`, run `14:32:58Z-c73f` | **refused before its first call**: the account had made 1,869 calls in the hour, past the 1,125 read line of 1,500, most of them a morning session's organize runs answered at 13:38Z and 13:41Z. Nothing queued |
+| The pass, again | `crate --calls-per-hour 3000 sync land`, pass run `14:35:21Z-fece`, on Phillip's word to keep calling | **nothing to land**: stopped at its download with 0 staged; the one missing track, Satisfy by Calvin Harris (522418193), refused `lossy-refused` again. 31 calls. `--calls-per-hour` is a global flag and goes before the verb; after it, argparse refuses it |
+| The marks | `organize --only marks`, run `14:36:20Z-eab8`, answered `apply` as `session` | 12 passes, nothing to mark. Held with tracks outstanding: Phil 9-30-26 (2), New York Fever Vol. 1 (19), Alex Kaminski (1), Get Up&Get Down 2026 (4), Turn up the sound (1). 23 calls |
+| The filing | `organize --only file`, run `14:37:07Z-e4ef`, answered `apply` as `session` | nothing to move; 4 left at the root, one a set playlist and three working custom playlists. 172 calls |
+| `sync removed` | four runs: refused at the hour's line with 3,000; 500 calls to the command ceiling with 4,000; 1,000 with `--calls 1000 --calls-per-hour 5000`; then run `14:41:30Z-93a4` finished with `--calls 2000 --calls-per-hour 6000` | **724 playlists read, 401 of 737 from the held reads, nothing offered**, 1 left (Cotonete, Parribean Disco, off Daily 11-5-26, no library file, as sitting 104 left it), 13 retired by a person on 2026-11-22. Hearts 351 declared, 342 listed, 9 withheld. 2,597 calls across the runs, no rate limit |
+
+About 2,800 calls this sitting, and the account near 4,700 in its hour at
+14:44Z, with no rate limit answered. A full `sync removed` read costs about
+2,600 calls when the held reads are cold, which no default ceiling lets one
+run finish.
+
 ## Next sitting
 
 **Later the same night, on `d6e7597f`, after U320, R-1037 and U324 landed.** **Met and closed:** A201 (#924), A194 (#906), A179 (#842), A197 (#912), A200 (#922). **Filed:** R-1830's card (#925), R-1844's card (#926). **Progress only, left open:** A190 (#897), Auto Analysis on, the visit waiting for a landing; A129 (#711), a removal of a track landed after `f3dc078`, so the next landing's; A183 (#879), the night. **Decided by the session under Phillip's instruction of 2026-11-21**, each on its card: `--retire` answered at its gate rather than waiting a day for the second sighting, since it writes only Cratekit's record; the first offer of two tracks aborted so A197 takes one; the budget's hour waited out rather than raised; `delete review` run from the session and its offered set read through the planner before `trash`; Cotonete, Parribean Disco left in the Trash and off its TIDAL playlist, since trashing it was the card's proof (put back from the volume's Trash and re-added on TIDAL if wanted); Auto Analysis turned on at this visit, last, so the throwaways were not analysed.
