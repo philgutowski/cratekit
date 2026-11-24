@@ -460,7 +460,7 @@ def places(folder: Path, silence: Path, names) -> None:
 
 
 def queue(folder: Path):
-    """``crate tag folder --queue-only`` over ``folder``."""
+    """``crate tag folder`` over ``folder``, queued and not driven."""
     return drive(["tag", "folder", "--queue-only", str(folder)])
 
 
