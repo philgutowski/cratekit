@@ -233,6 +233,22 @@ def test_a_folder_a_rebuild_recorded_is_compared_after_a_rename_as_before(
     assert report.unidentified == () and report.foreign == ()
 
 
+def test_a_renamed_recorded_folder_is_read_by_its_recorded_genre_alone(
+    cfg, gates_pass, db, adopted_root
+):
+    """THE TABLE'S ZERO (K5): a write recorded the folder for Tech House, so a
+    playlist only another genre declares stays a person's own after a rename."""
+    _rebuild_suite._rebuild(cfg, db, adopted_root, DECLARED, [], truth=[_track(cfg)])
+    folder = db.get_playlist(ID=_node(db, adopted_root, TWO, HIGH).folder_id)
+    rb_writer.add_membership(db, rb_writer.ensure_playlist(db, _anothers(TWO), folder), "1")
+    db.session.commit()
+    _rename(db, adopted_root, TWO)
+    report = _check(cfg, db, adopted_root, DECLARED, _derived(_track(cfg)))
+    assert report.converged, report.summaries()
+    assert report.unidentified == ()
+    assert report.foreign == (f"{RENAMED}/{_anothers(TWO)}",)
+
+
 # 2. What stays a person's own
 
 
