@@ -125,9 +125,7 @@ def test_a_made_pair_dragged_into_archive_before_the_write_refuses_stale(world):
     assert world.account.playlists[world.titled("GIG READY Opener")] == ["t1"]
 
 
-def test_a_made_pair_let_go_in_archive_and_dragged_back_before_the_write_refuses_stale(
-    world, cfg
-):
+def test_a_made_pair_let_go_in_archive_and_dragged_back_before_the_write_refuses_stale(world, cfg):
     from cratekit.modules.outbound import pairs
 
     gig = world.folder("GIG READY")

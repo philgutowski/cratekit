@@ -504,9 +504,7 @@ def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again
     assert third["data"]["totals"]["unmatched"] == 2
 
 
-def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remembered_miss(
-    world, cfg
-):
+def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remembered_miss(world):
     """U207. Every code the plan will ask is screened in batches before any is
     asked; a row with no code, a linked row and a remembered miss are not asked."""
     world.sql("UPDATE djmdContent SET ISRC = '' WHERE ID = '2'")
@@ -743,9 +741,7 @@ def test_a_version_one_document_is_read_and_written_as_version_two(world, cfg):
 
 
 @pytest.mark.parametrize("where", ["foreign", "favorites"])
-def test_a_made_pair_moved_into_another_apps_or_the_favorites_folder_is_let_go(
-    world, cfg, where
-):
+def test_a_made_pair_moved_into_another_apps_or_the_favorites_folder_is_let_go(world, cfg, where):
     from cratekit.core import foreign_tree
 
     opener, made = _made_pair(world)

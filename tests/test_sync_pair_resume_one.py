@@ -53,9 +53,7 @@ def _moved(run_id: str) -> list[dict]:
     return refused["cause"]["detail"]["moved"]
 
 
-def test_a_stop_inside_the_account_write_is_finished_without_writing_rekordbox_twice(
-    paired, cfg
-):
+def test_a_stop_inside_the_account_write_is_finished_without_writing_rekordbox_twice(paired, cfg):
     world = paired
     args = ARGS
     run_id, _first = to_the_write(args)

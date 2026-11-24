@@ -302,9 +302,7 @@ def test_a_track_added_in_rekordbox_only_lands_on_the_account(world):
     assert w.held() == ["1", "2", "5"]
 
 
-def test_a_track_removed_on_the_account_leaves_the_playlist_and_stays_in_the_collection(
-    world, cfg
-):
+def test_a_track_removed_on_the_account_leaves_the_playlist_and_stays_in_the_collection(world):
     w = paired(world, ("1", "2", "3"), ("1", "2", "3"))
     w.account.playlists[ACCOUNT] = ["t1", "t3"]
     envelope = exited(sync([*VERB, ACCOUNT]))
@@ -560,9 +558,7 @@ def test_a_rekordbox_row_with_no_isrc_column_is_matched_on_its_files_isrc(world,
     assert w.on_account() == ["t7"]
 
 
-def test_a_landed_track_is_found_in_the_inbox_playlist_landed_for_the_account(
-    world, cfg, tmp_path
-):
+def test_a_landed_track_is_found_in_the_inbox_playlist_landed_for_the_account(world, cfg, tmp_path):
     w = paired(world)
     _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
     _landed_for(w, cfg, ACCOUNT, ("8",), session_id="s-landed", name=NAME)
@@ -766,20 +762,18 @@ def _warning(envelope, code: str) -> str:
     return said
 
 
+def _library(envelope, action: str) -> list[dict]:
+    items = envelope["data"]["items"]
+    return [item for item in items if item["side"] == "library" and item["action"] == action]
+
+
 def _awaiting(envelope) -> list[tuple[str, str, str]]:
-    return [
-        (item["pair"], item["remote_id"], item.get("reason", ""))
-        for item in envelope["data"]["items"]
-        if item["side"] == "library" and item["action"] == "awaiting"
-    ]
+    awaiting = _library(envelope, "awaiting")
+    return [(item["pair"], item["remote_id"], item.get("reason", "")) for item in awaiting]
 
 
 def _acquiring(envelope) -> list[tuple[str, str]]:
-    return [
-        (item["pair"], item["remote_id"])
-        for item in envelope["data"]["items"]
-        if item["side"] == "library" and item["action"] == "acquire"
-    ]
+    return [(item["pair"], item["remote_id"]) for item in _library(envelope, "acquire")]
 
 
 def test_two_pairs_listing_one_lacking_track_queue_it_once(world, cfg):
@@ -801,14 +795,11 @@ def test_two_pairs_listing_one_lacking_track_queue_it_once(world, cfg):
     assert sorted(track for _pair, track, _why in _awaiting(again)) == ["t40", "t40"]
 
 
-@pytest.mark.parametrize(
-    "state",
-    [
-        state
-        for state in jobs.JobState
-        if state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
-    ],
-)
+#: The states a job holds nothing in, the two :func:`pair_cli.pair_jobs` passes over.
+EMPTY = (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
+
+
+@pytest.mark.parametrize("state", [one for one in jobs.JobState if one not in EMPTY])
 def test_a_track_another_pairs_job_still_holds_is_awaiting_and_not_queued(world, cfg, state):
     w = paired(world)
     _other_pairs_job(cfg, state=str(state), tracks=LACKING)
@@ -821,9 +812,8 @@ def test_a_track_another_pairs_job_still_holds_is_awaiting_and_not_queued(world,
     assert pair_cli.AWAITING in _codes(envelope)
 
 
-@pytest.mark.parametrize("state", [jobs.JobState.FAILED, jobs.JobState.CANCELLED])
+@pytest.mark.parametrize("state", EMPTY)
 def test_a_track_only_a_failed_or_cancelled_job_held_is_queued(world, cfg, state):
-    """The states a job holds nothing in, the two :func:`pair_cli.pair_jobs` passes over."""
     w = paired(world)
     _other_pairs_job(cfg, state=str(state), tracks=LACKING)
     _lacking(w)
@@ -969,11 +959,8 @@ def test_an_unreadable_landing_record_holds_the_track_it_may_have_brought_in(
     assert envelope["data"]["totals"]["landing_unread"] == 1
     said = _said(envelope, pair_cli.LANDING_UNREAD)
     assert path.name in said
-    held = [
-        item
-        for item in envelope["data"]["items"]
-        if item["action"] == pair_cli.LANDING_UNREAD_ACTION
-    ]
+    items = envelope["data"]["items"]
+    held = [item for item in items if item["action"] == pair_cli.LANDING_UNREAD_ACTION]
     assert [(item["side"], item.get("remote_id")) for item in held] == [("library", "t8")]
 
 
@@ -1010,9 +997,7 @@ def test_a_session_log_that_cannot_be_listed_holds_the_track(world, cfg, tmp_pat
     assert "cannot be listed" in _said(envelope, pair_cli.LANDING_UNREAD)
 
 
-def test_a_track_carrying_no_isrc_is_still_queued_beside_an_unreadable_record(
-    world, cfg, tmp_path
-):
+def test_a_track_carrying_no_isrc_is_still_queued_beside_an_unreadable_record(world, cfg, tmp_path):
     w = paired(world)
     _damaged_landing(w, cfg, tmp_path, "torn")
     w.codes["t40"] = ""
@@ -1067,13 +1052,9 @@ def test_the_pairs_digest_moves_with_the_landing_hold_and_only_when_any():
 
     def plan(landing_unread):
         return pair_cli.PairPlan(
-            target=target,
-            name="x",
-            rekordbox_name="x",
-            first=False,
+            target=target, name="x", rekordbox_name="x", first=False,
             merged=pair_merge.merge(None, pair_merge.Side(()), pair_merge.Side(())),
-            account_now=(),
-            rekordbox_before=(),
+            account_now=(), rekordbox_before=(),
             change=playlist_pair.Change(playlist_id="1", before=(), adds=(), removes=(), order=()),
             landing_unread=landing_unread,
         )

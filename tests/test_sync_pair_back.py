@@ -6,6 +6,7 @@ side and taken off the other goes by the later change; an unknown moment keeps i
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -20,14 +21,7 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-from tests.test_sync_pair_discover import (
-    _codes,
-    _items,
-    _said,
-    isrc,
-    plan_only,
-    sync,
-)
+from tests.test_sync_pair_discover import _codes, _items, _said, isrc, plan_only, sync
 from tests.test_sync_pair_discover import db as db  # noqa: PLC0414
 from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
 
@@ -244,6 +238,18 @@ def _home(world, folder: str, title: str, **kwargs):
         rb_writer.close_db(handle)
 
 
+@contextmanager
+def _live(cfg):
+    """The live database's handle as the write opens it, closed on leaving."""
+    handle = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        yield handle
+    finally:
+        rb_writer.close_db(handle)
+
+
 def test_home_of_refuses_each_place_it_cannot_decide(world):
     gig = world.folder("GIG READY")
     world.folder("Deep", under=gig)
@@ -271,11 +277,8 @@ def test_home_of_reads_the_longest_subfolder_and_strips_the_prefix(world):
     house = world.folder("Deep House", under=gig)
     home = _home(world, "GIG READY", "GIG READY Deep House Opener")
     assert isinstance(home, pair_discover.Home)
-    assert (home.name, home.parent_id, home.where) == (
-        "Opener",
-        house,
-        "GIG READY / Deep House / Opener",
-    )
+    where = "GIG READY / Deep House / Opener"
+    assert (home.name, home.parent_id, home.where) == ("Opener", house, where)
     plain = _home(world, "GIG READY", "Opener")
     assert (plain.name, plain.parent_id) == ("Opener", gig)
     root = _home(world, "Playlists", "Playlists GIG READY Opener")
@@ -291,14 +294,8 @@ def test_home_of_refuses_the_folder_holding_the_favourites(world):
 def test_the_write_refuses_a_name_taken_since_the_plan(world, cfg, gig):
     home = _home(world, "GIG READY", "GIG READY Closer")
     world.playlist("Closer", under=gig)
-    handle = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
-        with pytest.raises(Exception) as caught:
-            pair_reverse.create(cfg, handle, home, ("4",), source="test", analysis_roots=["/x"])
-    finally:
-        rb_writer.close_db(handle)
+    with _live(cfg) as handle, pytest.raises(Exception) as caught:
+        pair_reverse.create(cfg, handle, home, ("4",), source="test", analysis_roots=["/x"])
     assert getattr(caught.value, "cause", None) is not None
     assert caught.value.cause.reason == "decision-stale"
 
@@ -312,9 +309,7 @@ def _rekordbox_removed(world, playlist_id: str, content_id: str, when: datetime 
     if when is not None:
         world.sql(
             "UPDATE djmdSongPlaylist SET updated_at = ? WHERE PlaylistID = ? AND ContentID = ?",
-            stored(when),
-            playlist_id,
-            content_id,
+            stored(when), playlist_id, content_id,
         )
 
 
@@ -330,10 +325,7 @@ def _paired_on_both(world, gig) -> tuple[str, str]:
 def test_the_snapshot_records_each_account_tracks_added_date(world, cfg, gig):
     _playlist, account_id = _paired_on_both(world, gig)
     held = pairs.PairStore(cfg).get(account_id)
-    assert dict(held.account_added) == {
-        "t4": LONG_AGO.isoformat(),
-        "t5": LONG_AGO.isoformat(),
-    }
+    assert dict(held.account_added) == {"t4": LONG_AGO.isoformat(), "t5": LONG_AGO.isoformat()}
 
 
 def test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_both(world, gig):
@@ -349,9 +341,7 @@ def test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_bo
     assert "the removal was not later" in _said(envelope, pair_cli.LATER_CHANGE)
 
 
-def test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both(
-    world, gig
-):
+def test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both(world, gig):
     playlist, account_id = _paired_on_both(world, gig)
     world.dates["t5"] = soon(1)
     _rekordbox_removed(world, playlist, "5", soon(2))
@@ -362,9 +352,7 @@ def test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off
     assert "taken off both" in _said(envelope, pair_cli.LATER_CHANGE)
 
 
-def test_without_its_added_date_the_account_reads_as_unchanged_and_the_removal_applies(
-    world, gig
-):
+def test_without_its_added_date_the_account_reads_as_unchanged_and_the_removal_applies(world, gig):
     """R-990: no later date on the account, so rekordbox's removal is applied."""
     playlist, account_id = _paired_on_both(world, gig)
     _rekordbox_removed(world, playlist, "5", soon(1))
@@ -375,9 +363,7 @@ def test_without_its_added_date_the_account_reads_as_unchanged_and_the_removal_a
 
 def test_a_removal_rekordbox_kept_no_moment_for_keeps_the_track_and_names_the_call(world, gig):
     playlist, account_id = _paired_on_both(world, gig)
-    world.sql(
-        "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", playlist, "5"
-    )
+    world.sql("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", playlist, "5")
     world.dates["t5"] = soon(1)
     envelope = exited(sync())
     assert world.held(playlist) == ["4", "5"]
@@ -396,9 +382,7 @@ def test_a_removal_whose_row_time_predates_the_last_sync_is_no_moment(world, gig
     assert pair_cli.TIME_UNKNOWN in _codes(envelope)
 
 
-def test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_is_named(
-    world, gig
-):
+def test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_is_named(world, gig):
     playlist, account_id = _paired_on_both(world, gig)
     world.account.playlists[account_id] = ["t4"]
     _rekordbox_removed(world, playlist, "5", None)
@@ -478,8 +462,7 @@ def test_a_root_folder_gone_from_the_account_brings_nothing_back(world, gig):
 def test_the_gate_line_for_a_playlist_made_in_rekordbox_names_where(world, gig):
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
     exited(sync(rekordbox="skip", account="skip"))
-    code, envelope = pair_cli_gate_context()
-    del code
+    _code, envelope = pair_cli_gate_context()
     line = envelope.get(f"pair {closer}", "")
     assert "made in rekordbox as 'GIG READY / Closer'" in line and "()" not in line
 
@@ -508,24 +491,12 @@ def test_a_put_back_dated_before_the_last_sync_is_no_put_back(world, gig):
 
 def test_the_write_refuses_a_parent_gone_or_a_row_gone_since_the_plan(world, cfg, gig):
     home = _home(world, "GIG READY", "GIG READY Closer")
-    handle = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
-        with pytest.raises(Exception) as gone_row:
-            pair_reverse.recheck(handle, home, ("4", "999"))
-    finally:
-        rb_writer.close_db(handle)
+    with _live(cfg) as handle, pytest.raises(Exception) as gone_row:
+        pair_reverse.recheck(handle, home, ("4", "999"))
     assert gone_row.value.cause.reason == "decision-stale"
     world.delete_rekordbox(gig)
-    handle = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
-        with pytest.raises(Exception) as gone_parent:
-            pair_reverse.recheck(handle, home, ("4",))
-    finally:
-        rb_writer.close_db(handle)
+    with _live(cfg) as handle, pytest.raises(Exception) as gone_parent:
+        pair_reverse.recheck(handle, home, ("4",))
     assert gone_parent.value.cause.reason == "decision-stale"
     assert "no longer a live folder" in gone_parent.value.cause.message
 
@@ -575,9 +546,7 @@ def test_a_set_playlist_sharing_a_name_does_not_stop_the_authors_own(world, gig,
     assert mine != built
 
 
-def test_with_every_pair_released_a_new_playlist_in_a_recorded_folder_still_comes(
-    world, cfg, gig
-):
+def test_with_every_pair_released_a_new_playlist_in_a_recorded_folder_still_comes(world, cfg, gig):
     """A sync of every pair reads the account when only root folders are recorded."""
     world.delete_rekordbox(in_rekordbox(world, gig)["Opener"])
     assert sync()[0] == int(ExitCode.OK)

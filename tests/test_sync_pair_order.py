@@ -170,9 +170,7 @@ def test_a_continue_of_the_run_puts_the_refused_pair_in_order_and_moves_nothing_
     assert _kept(cfg, opener_account).account == ("t3", "t1", "t2")
 
 
-def test_a_first_order_is_asked_with_nothing_to_agree_with_but_what_the_adapter_wrote(
-    world, owed
-):
+def test_a_first_order_is_asked_with_nothing_to_agree_with_but_what_the_adapter_wrote(world, owed):
     opener_account = world.titled("GIG READY Opener")
     exited(sync())
     assert world.account.playlists[opener_account] == ["t3", "t1", "t2"]
@@ -351,15 +349,19 @@ def test_a_continue_of_a_refused_order_that_also_added_finishes_it(world, cfg, m
     assert world.account.added == added, "a continue added a track a second time"
 
 
+@pytest.mark.parametrize(
+    "reordered", [("2", "4", "1", "3", "5"), ("1", "2", "5", "3", "4")], ids=["whole", "added-alone"]
+)
 def test_a_continue_of_a_refused_order_that_also_added_holds_a_reorder_made_since(
-    world, cfg, monkeypatch
+    world, monkeypatch, reordered
 ):
+    """A reorder since the refusal is held, a move of only the track this write added too."""
     opener, account_id, run_id = _refused_with_an_addition(world, monkeypatch)
-    world.account.playlists[account_id][:] = _ids("2", "4", "1", "3", "5")
+    world.account.playlists[account_id][:] = _ids(*reordered)
     ordered = list(world.account.ordered)
     refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
     assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [REORDERED]
-    assert world.account.playlists[account_id] == _ids("2", "4", "1", "3", "5")
+    assert world.account.playlists[account_id] == _ids(*reordered)
     assert world.account.ordered == ordered
     assert world.held(opener) == ["4", "3", "1", "2", "5"]
 
@@ -415,17 +417,3 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
     exited(drive(["--run", run_id, *VERB]))
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
-
-
-def test_a_continue_of_a_refused_order_that_also_added_holds_the_added_track_moved_since(
-    world, cfg, monkeypatch
-):
-    """A person moving only the track this write added is a reorder too."""
-    opener, account_id, run_id = _refused_with_an_addition(world, monkeypatch)
-    world.account.playlists[account_id][:] = _ids("1", "2", "5", "3", "4")
-    ordered = list(world.account.ordered)
-    refused = exited(drive(["--run", run_id, *VERB]), ExitCode.DECISION_STALE)
-    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [REORDERED]
-    assert world.account.playlists[account_id] == _ids("1", "2", "5", "3", "4")
-    assert world.account.ordered == ordered
-    assert world.held(opener) == ["4", "3", "1", "2", "5"]

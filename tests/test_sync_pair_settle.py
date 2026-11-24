@@ -76,9 +76,7 @@ def test_an_order_the_provider_serves_at_once_finishes_in_the_one_run(world, owe
     assert held_plan.carried() == ([], [])
 
 
-def test_an_order_the_provider_serves_late_is_left_pending_and_the_run_ends_ok(
-    world, owed, cfg
-):
+def test_an_order_the_provider_serves_late_is_left_pending_and_the_run_ends_ok(world, owed, cfg):
     opener, account_id = owed
     world.account.served[account_id] = _ids("1", "2", "3", "4")
     envelope = exited(sync())
@@ -214,9 +212,7 @@ def test_a_pending_pair_the_person_reordered_after_a_sync_read_it_is_merged_as_t
     assert held.seen is None and held.stop_seen is None
 
 
-def test_a_pending_pair_agreed_once_off_the_path_keeps_rekordboxs_order(
-    world, owed, cfg, monkeypatch
-):
+def test_a_pending_pair_agreed_once_off_the_path_keeps_rekordboxs_order(world, owed, monkeypatch):
     """U234: one agreed reading off the path is not the person's reorder on that alone."""
     opener, account_id = owed
     _agreeing_at_once(monkeypatch)
@@ -403,9 +399,7 @@ def test_a_stopped_writes_counts_are_carried_past_its_runs_steps(world, owed, cf
     assert world.account.playlists[account_id] == reached
 
 
-def test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending(
-    world, owed, cfg, monkeypatch
-):
+def test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending(world, owed, monkeypatch):
     """The refused finish's record does not hide the stopped write it finishes,
     or the lagging order would be read as the person's reorder."""
     opener, account_id = owed
@@ -705,9 +699,7 @@ def test_a_continue_whose_steps_cannot_be_read_still_sends_no_move_again(
     assert _kept(cfg, account_id).account == tuple(_ids("1", "2", "3", "4"))
 
 
-def test_a_continues_settle_window_is_counted_from_when_the_moves_began(
-    world, owed, cfg, monkeypatch
-):
+def test_a_continues_settle_window_is_counted_from_when_the_moves_began(world, owed, monkeypatch):
     """A continue waits only what is left of the window the moves began."""
     from datetime import UTC, datetime
 
@@ -817,9 +809,7 @@ def test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_m
     assert world.held(opener) == ["4", "3", "2", "1", "5"]
 
 
-def test_a_finish_that_also_adds_served_as_the_moves_left_it_finishes(
-    world, owed, cfg, monkeypatch
-):
+def test_a_finish_that_also_adds_served_as_the_moves_left_it_finishes(world, owed, monkeypatch):
     opener, account_id, reached = _stopped_then_added(world, owed, monkeypatch)
     for _ in range(2):
         exited(sync())
@@ -988,9 +978,7 @@ def _stopping_off_the_path(world, monkeypatch, playlist_id: str) -> list[int]:
     return stops
 
 
-def test_a_pending_stop_agreed_off_its_path_is_finished_from_rekordbox(
-    world, longer, cfg, monkeypatch
-):
+def test_a_pending_stop_agreed_off_its_path_is_finished_from_rekordbox(world, longer, monkeypatch):
     """Through U231's hold, no rekordbox order from the agreed half done order."""
     closer, account_id = longer
     _agreeing_at_once(monkeypatch)
