@@ -9,7 +9,6 @@ from types import MappingProxyType
 from cratekit.cli import render
 from cratekit.cli.doctor_model import Finding, Status, _Inputs, _unchecked, satisfies
 from cratekit.core import (
-    active_taxonomy,
     config,
     preflight,
     processes,
@@ -710,6 +709,8 @@ def _check_playlist_numbers(inputs: _Inputs) -> Finding:
     withheld = _copy_withheld(inputs, key, title, question)
     if withheld is not None:
         return withheld
+    from cratekit.core import active_taxonomy  # lazy: doctor's help loads none of it
+
     try:
         declared = active_taxonomy.load(inputs.cfg)
     except CratekitError as exc:

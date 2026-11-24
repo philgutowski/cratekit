@@ -42,10 +42,11 @@ from cratekit.core.cause import (
     access_remedy,
 )
 from cratekit.core.exit_codes import Remedy
-from cratekit.write import metadata_cli, numbers
+from cratekit.write import metadata_cli
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.deletion.trash import TrashStatus
+    from cratekit.write.numbers import NumbersPlan
 
 
 class Status(StrEnum):
@@ -296,14 +297,14 @@ def _survey_paths(cfg: config.Config) -> metadata_cli.ResolutionTotals | None:
         return metadata_cli.resolution_totals(cfg, db)
 
 
-def _survey_numbers(
-    cfg: config.Config, declared: taxonomy.Taxonomy
-) -> numbers.NumbersPlan | None:
+def _survey_numbers(cfg: config.Config, declared: taxonomy.Taxonomy) -> NumbersPlan | None:
     """The repair's plan over a copy of the database: the product's playlists not 1 to N (U958).
 
     Off a copy, never the live path, as :func:`_survey_paths` reads. None when
     there is no database file; one that cannot be opened raises its own refusal.
     """
+    from cratekit.write import numbers  # lazy: doctor's help loads none of the repair
+
     source = rb_writer.live_db_path(cfg)
     if not source.is_file():
         return None
@@ -539,7 +540,7 @@ class Probes:
     )
     #: The product's playlists whose live rows are not 1 to N, off a copy, or None
     #: when there is no database file (U958). Asked as ``path_survey`` is.
-    numbers_survey: Callable[[config.Config, taxonomy.Taxonomy], numbers.NumbersPlan | None] = (
+    numbers_survey: Callable[[config.Config, taxonomy.Taxonomy], NumbersPlan | None] = (
         _survey_numbers
     )
     #: How this copy was installed, read off its PEP 610 record (U159).
