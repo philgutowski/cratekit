@@ -1,9 +1,7 @@
 """Organize's edit pass: a move made on the account carried into the library (U309).
 
-`crate organize --only mirror-edits --only mirror` carries a move made on the
-account into the library behind the rekordbox gate, and the mirror writes
-nothing back over it. Its own file because both borrowed suites name
-``machine``.
+The mirror writes nothing back over it. Its own file because both borrowed
+suites name ``machine``.
 """
 
 from __future__ import annotations

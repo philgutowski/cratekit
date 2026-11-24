@@ -1,9 +1,7 @@
 """The report verbs' scenarios: the tables each prints and the queue one writes (U311).
 
-`crate audit coverage`, `audit duplicates`, `report library` and `report
-intake-aging` each read the report suite's export, in a person's rendering and
-as JSON; the duplicate audit's queue is held after each of three runs, the last
-after its pair is rejected.
+Each reads the report suite's export, rendered and as JSON; the duplicate
+audit's queue is held after each of three runs, the last after its pair is rejected.
 """
 
 from __future__ import annotations

@@ -1,8 +1,7 @@
 """Favorites' scenarios: the Favorites folder put in order behind its gate (U298).
 
-`crate favorites order` shows the order at its gate, then moves the playlists in
-one guarded session, on the order suite's library. Its gate lookup and its
-capture are two of the things U298 gave one home each.
+On the order suite's library. Its gate lookup and its capture are two of the
+things U298 gave one home each.
 """
 
 from __future__ import annotations

@@ -1,9 +1,6 @@
 """Acquire's fallback search scenarios: candidates offered, kept and accepted (U305).
 
-`crate acquire fallback` searches second sources through the suite's fake
-searcher: a first run, a second that searches nothing, a source that is down,
-and an acceptance. Apart from ``acquire.py`` because the fallback suite names
-its own ``cfg`` and ``library``.
+Apart from ``acquire.py`` because the fallback suite names its own ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

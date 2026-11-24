@@ -1,8 +1,6 @@
 """Intake's missing scenarios over a text list: candidates searched, offered and accepted (U307).
 
-A typed list's missing rows are searched and offered into review, an accepted
-candidate is listed next run without a search, and a provider that cannot
-search refuses. Its own file for its ``cfg`` and ``library``.
+Its own file for its ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

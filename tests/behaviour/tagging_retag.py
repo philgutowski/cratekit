@@ -1,10 +1,7 @@
 """Tagging's retag scenarios: `crate tag retag` over a folder of coarse genres (U306).
 
-The sweep stops at its gate, is queued and driven with a searcher that names
-one coarse file and sends the other to review; a second sweep is aborted, and
-nothing coarse, an absent folder, an unnamed one and a file deleted before the
-drive each answer as themselves. Self contained, so the suites beside it can be
-trimmed without moving it.
+The searcher names one coarse file and sends the other to review. Self
+contained, so the suites beside it can be trimmed without moving it.
 """
 
 from __future__ import annotations

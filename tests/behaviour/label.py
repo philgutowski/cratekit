@@ -1,7 +1,6 @@
 """Label's scenarios: the registry document, written, read back and refused (U298).
 
-`crate label registry` writes its document under the lock and reads it back,
-and refuses an unparseable one rather than reading it empty, which U298's move
+An unparseable document is refused rather than read empty, which U298's move
 of the read and the lock must keep. The second scenario drives every other
 action and its refusals (U308).
 """

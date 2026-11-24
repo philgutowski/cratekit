@@ -2,11 +2,7 @@
 
 The fake is REGISTERED by name, so ``load`` and ``build`` run for real and
 every network touch lands here. It lands REAL AUDIO, since the worker reads
-the codec through mutagen: ``wav_bytes`` is a stdlib RIFF WAVE (lossless),
-``mp3_bytes`` four MPEG-1 layer III frame headers (lossy), both measured
-through ``vendored.codec_of``.
-
-Not a test module: pytest does not collect it.
+the codec through mutagen, both kinds measured through ``vendored.codec_of``.
 """
 
 from __future__ import annotations

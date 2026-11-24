@@ -1,9 +1,7 @@
 """Acquire's fallback fetch scenarios: an accepted upload landed marked (U305).
 
-`crate acquire fallback-fetch` downloads each accepted upload through the
-suite's fake fetcher and lands it marked lossy, or refuses it under a strict
-policy. Apart from ``acquire.py`` because the fetch suite names its own
-``library``.
+Landed marked lossy, or refused under a strict policy. Apart from ``acquire.py``
+because the fetch suite names its own ``library``.
 """
 
 from __future__ import annotations

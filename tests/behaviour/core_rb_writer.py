@@ -1,9 +1,7 @@
 """The guarded writer's refusals, driven through a whole verb (U300).
 
 `crate rebuild` on the routing suite's library, under each condition the writer
-or the session refuses: rekordbox or its agent running, rekordbox started
-before the commit, Cloud Library Sync on, the lock held elsewhere, and the
-acknowledgment absent or expired. `core_gates.py` drives the version check and
+or the session refuses. `core_gates.py` drives the version check and
 `tests/test_rb_writer_db.py` the writes no verb produces.
 """
 

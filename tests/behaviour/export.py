@@ -1,9 +1,7 @@
 """Export's set scenarios: a set made, archived, backfilled and renamed (U309).
 
-`crate export set` makes a set playlist on the account behind its gate,
-`export archive` files it in its year's folder, each backfills given nothing,
-and `export set --rename` follows a renamed INSPIRATION playlist. The refusals:
-a rename onto a name the ledger holds, and no provider session.
+The rename follows a renamed INSPIRATION playlist. The refusals: a rename onto
+a name the ledger holds, and no provider session.
 """
 
 from __future__ import annotations

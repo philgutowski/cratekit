@@ -1,9 +1,8 @@
 """Core's foundation scenarios: the config file, the taxonomy and the cause table (U299).
 
-The config verbs' `config.toml` is captured byte for byte: fresh, after `crate
-profile set`, and refused per schema shape. The taxonomy verbs write the active
-copy, and dumps of both templates' taxonomies and of the cause and exit code
-tables are written, so a refactor of the modules holding them compares content.
+`config.toml` is captured byte for byte, and dumps of both templates'
+taxonomies and of the cause and exit code tables are written, so a refactor of
+the modules holding them compares content.
 """
 
 from __future__ import annotations

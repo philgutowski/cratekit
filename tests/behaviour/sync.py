@@ -1,9 +1,7 @@
 """Sync's scenario: the collection removal behind its gate (U298).
 
-`crate sync removed` takes a track an account playlist lost out of the
-collection through the guarded writer, behind its gate. ``borrowed`` routes a
-suite's own drivers through the stage, so its tests run as written as
-scenarios (U304).
+``borrowed`` routes a suite's own drivers through the stage, so its tests run
+as written as scenarios (U304).
 """
 
 from __future__ import annotations

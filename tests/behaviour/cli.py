@@ -1,9 +1,8 @@
 """The command shell's scenarios: every verb's help, and a config no verb can use.
 
 The help is generated from the registry, so a later verb is captured without an
-edit here, as an unconfigured machine shows it (U297). Then one verb after
-another runs with no configuration and with a broken one, so each verb's own
-message and origin are held (U298).
+edit here (U297); each verb's own message for a missing and a broken
+configuration is held (U298).
 """
 
 from __future__ import annotations

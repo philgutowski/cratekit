@@ -1,8 +1,6 @@
 """The set builder's scenarios: the plans `crate setbuild` makes over a real library (U311).
 
-On the set builder suite's FLAC files, the tempo in the title head since nothing
-here writes a tempo tag, the capture holds the plan, each refusal, and the
-index cache the verb writes.
+The tempo is in the title head, since nothing here writes a tempo tag.
 """
 
 from __future__ import annotations

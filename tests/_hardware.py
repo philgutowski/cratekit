@@ -1,25 +1,19 @@
 """Hardware backed verification fixtures: repeated timing, a FAT volume, a read only volume.
 
-1. ``time_repeated`` returns a ``TimingTable`` of every duration, the repeat
-   count and the pass rate against a threshold, the only shape METHOD's
-   driver rule allows for a timing row.
-2. ``fat_volume`` mounts a real FAT32 image made with hdiutil, since every
-   rekordbox USB export is FAT (U23) and a temp directory on APFS is not.
-3. ``read_only_volume`` populates an image writable, then remounts it read
-   only, since U27's doctor must tell an EROFS mount from an absent volume,
-   which a chmod cannot stand in for.
+1. ``time_repeated`` keeps every duration, the repeat count and the pass
+   rate, the only shape METHOD's driver rule allows for a timing row.
+2. ``fat_volume`` mounts a real FAT32 image, since every rekordbox USB export
+   is FAT (U23) and a temp directory on APFS is not.
+3. ``read_only_volume`` remounts a populated image read only, since U27's
+   doctor must tell an EROFS mount from an absent volume, which chmod cannot.
 
-Probed on 2026-08-13: ``newfs_msdos`` cannot lay out FAT32 under about 33 MB
-and hdiutil blames permissions, so ``FAT32_MIN_MB`` is enforced with the real
-cause; and the macOS msdos driver allows symlinks, so ``filesystem_kind``,
-reading the mount table, is the FAT detector. Mountpoints are private temp
-directories, never under the system mount root, to avoid collisions and the
-portability scan.
+Probed on 2026-08-13: the macOS msdos driver allows symlinks, so
+``filesystem_kind``, reading the mount table, is the FAT detector. Mountpoints
+are private temp directories, never under the system mount root.
 
-Calibration lives in ``tests/fixtures/timing_calibration.json``, written by
-``scripts/calibrate_timing.py`` on a QUIET machine. ``threshold_seconds``
-expresses a threshold as a multiple of the calibrated median, and loading
-refuses a calibration whose interpreter or CPU facts are another machine's.
+The calibration, ``tests/fixtures/timing_calibration.json``, is written by
+``scripts/calibrate_timing.py`` on a QUIET machine; loading refuses one whose
+interpreter or CPU facts are another machine's.
 """
 
 from __future__ import annotations
@@ -257,13 +251,33 @@ def _run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return proc
 
 
+def _scratch(prefix: str) -> tuple[Path, Path, Path]:
+    """A private workdir, the image path inside it and its made mountpoint."""
+    workdir = Path(tempfile.mkdtemp(prefix=prefix))
+    mountpoint = workdir / "mnt"
+    mountpoint.mkdir()
+    return workdir, workdir / "volume.dmg", mountpoint
+
+
+def _create(image: Path, size_mb: int, filesystem: str, label: str) -> None:
+    _run(
+        [
+            "hdiutil", "create", "-size", f"{size_mb}m",
+            "-fs", filesystem, "-volname", label, "-quiet", str(image),
+        ]
+    )
+
+
+def _attach(image: Path, mountpoint: Path, *flags: str) -> None:
+    _run(["hdiutil", "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse", *flags, "-quiet"])
+
+
 def _mount_entry(mountpoint: Path) -> str:
     """The parenthesized attribute list the mount table shows for ``mountpoint``.
 
-    The path is resolved first (macOS reaches the temp root through a symlink).
-    Each line reads ``device on path (attrs)``; the path is everything between
-    the first `` on `` and the LAST attribute group, compared EXACTLY, since
-    macOS mounts a duplicate label at ``NAME (1)``.
+    Resolved first, since macOS reaches the temp root through a symlink. A line
+    reads ``device on path (attrs)``, the path compared EXACTLY up to the LAST
+    group, since macOS mounts a duplicate label at ``NAME (1)``.
     """
     resolved = str(Path(mountpoint).resolve())
     for line in _run(["mount"]).stdout.splitlines():
@@ -344,18 +358,10 @@ def fat_volume(*, size_mb: int = 64, label: str = "CKFAT") -> Iterator[Path]:
         )
     if not label.isalnum() or label != label.upper() or len(label) > 11:
         raise ValueError(f"a FAT label is at most 11 uppercase alphanumeric characters, got {label!r}")
-    workdir = Path(tempfile.mkdtemp(prefix="cratekit-fat-"))
-    image = workdir / "volume.dmg"
-    mountpoint = workdir / "mnt"
-    mountpoint.mkdir()
+    workdir, image, mountpoint = _scratch("cratekit-fat-")
     try:
-        _run(
-            [
-                "hdiutil", "create", "-size", f"{size_mb}m",
-                "-fs", "MS-DOS FAT32", "-volname", label, "-quiet", str(image),
-            ]
-        )
-        _run(["hdiutil", "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse", "-quiet"])
+        _create(image, size_mb, "MS-DOS FAT32", label)
+        _attach(image, mountpoint)
         try:
             yield mountpoint
         finally:
@@ -370,35 +376,21 @@ def read_only_volume(
 ) -> Iterator[Path]:
     """A really read only volume, populated by the caller, yielded as its mountpoint.
 
-    Attached writable once for ``populate``, then remounted readonly. HFS plus,
-    since it mounts as a single volume. What ``populate`` wrote is fingerprinted
-    before the detach and verified after the remount, since a forced detach can
-    strand unflushed data.
+    HFS plus, since it mounts as a single volume. What ``populate`` wrote is
+    fingerprinted before the detach and verified after the readonly remount,
+    since a forced detach can strand unflushed data.
     """
-    workdir = Path(tempfile.mkdtemp(prefix="cratekit-ro-"))
-    image = workdir / "volume.dmg"
-    mountpoint = workdir / "mnt"
-    mountpoint.mkdir()
+    workdir, image, mountpoint = _scratch("cratekit-ro-")
     try:
-        _run(
-            [
-                "hdiutil", "create", "-size", f"{size_mb}m",
-                "-fs", "HFS+", "-volname", label, "-quiet", str(image),
-            ]
-        )
-        _run(["hdiutil", "attach", str(image), "-mountpoint", str(mountpoint), "-nobrowse", "-quiet"])
+        _create(image, size_mb, "HFS+", label)
+        _attach(image, mountpoint)
         try:
             populate(mountpoint)
             declared = _content_manifest(mountpoint)
             os.sync()
         finally:
             _detach(mountpoint)
-        _run(
-            [
-                "hdiutil", "attach", str(image), "-mountpoint", str(mountpoint),
-                "-nobrowse", "-readonly", "-quiet",
-            ]
-        )
+        _attach(image, mountpoint, "-readonly")
         try:
             served = _content_manifest(mountpoint)
             if served != declared:
