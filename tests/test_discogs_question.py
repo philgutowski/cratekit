@@ -48,11 +48,8 @@ def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
     by_question = {(_typed(artist), _typed(title)): number for artist, title, number, _ in CATALOGUE}
     pages = {
         f"{searchers.DISCOGS_RELEASE}{number}": release(
-            number,
-            artist=artist,
-            title=title,
-            tracks=[{"position": "A1", "type_": "track", "title": title}],
-            styles=(style,),
+            number, artist=artist, title=title,
+            tracks=[{"position": "A1", "type_": "track", "title": title}], styles=(style,),
         )
         for artist, title, number, style in CATALOGUE
     }
@@ -119,11 +116,8 @@ def tagged(tmp_path: Path, silence: Path, name: str, **fields: str) -> Path:
 
 def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_path, silence):
     path = tagged(
-        tmp_path,
-        silence,
-        "03B - 83 - Earth, Wind & Fire - That's the Way of the World.flac",
-        title="03B - 83 - That's the Way of the World",
-        artist="Earth, Wind & Fire",
+        tmp_path, silence, "03B - 83 - Earth, Wind & Fire - That's the Way of the World.flac",
+        title="03B - 83 - That's the Way of the World", artist="Earth, Wind & Fire",
     )
     seen: list[str] = []
     result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
@@ -133,9 +127,7 @@ def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_p
     assert (result.source, result.source_genre) == (searchers.DISCOGS, "Funk")
     assert tags.read_genre_from_file(path) == genre_of("Funk")
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
-        "Earth, Wind & Fire",
-        "That's the Way of the World",
-        titles.Read.PAST_HEAD.value,
+        "Earth, Wind & Fire", "That's the Way of the World", titles.Read.PAST_HEAD.value
     )
 
 
@@ -161,9 +153,7 @@ def test_an_untagged_file_is_asked_by_the_artist_and_title_its_name_reads_to(tmp
     # Past the older naming's _PN tail too (R-1724, ``tests/test_name_tail.py``).
     assert question["track"] == "On The Rocks"
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
-        "Obiman",
-        "On The Rocks (Cafe Del Mar Mix)",
-        titles.Read.BY_NAME.value,
+        "Obiman", "On The Rocks (Cafe Del Mar Mix)", titles.Read.BY_NAME.value
     )
 
 
@@ -287,10 +277,7 @@ def test_an_untagged_name_with_no_head_is_asked_as_before(tmp_path, silence):
     seen: list[str] = []
     result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
     assert discogs_questions(seen)[0] == {
-        "type": "release",
-        "artist": "",
-        "track": "Kerri Chandler - On My Way",
-        "per_page": "10",
+        "type": "release", "artist": "", "track": "Kerri Chandler - On My Way", "per_page": "10"
     }
     assert result.genre_written is None
     assert (result.asked_artist, result.asked_read) == ("", titles.Read.AS_WRITTEN.value)
@@ -403,15 +390,11 @@ def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path,
     tagged(folder, silence, "8A - 122 - Kerri Chandler - On My Way - Live At Space.flac")
     tagged(folder, silence, "8A - 122 - Kerri Chandler - On My Way.flac")
     bound(monkeypatch, build(typed_fetch()))
-
     code, job, resumed = sweep(str(folder))
-
     assert code == int(ExitCode.OK), resumed
     reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
     assert reports["a.flac"]["asked"] == {
-        "artist": "Earth, Wind & Fire",
-        "title": "That's the Way of the World",
-        "read": "past-head",
+        "artist": "Earth, Wind & Fire", "title": "That's the Way of the World", "read": "past-head"
     }
     assert reports["a.flac"]["genre_written"] == genre_of("Funk")
     assert reports["8A - 122 - Kerri Chandler - On My Way - Live At Space.flac"]["asked"] == {
@@ -420,9 +403,7 @@ def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path,
         "read": "name-ambiguous",
     }
     assert reports["8A - 122 - Kerri Chandler - On My Way.flac"]["asked"] == {
-        "artist": "Kerri Chandler",
-        "title": "On My Way",
-        "read": "by-name",
+        "artist": "Kerri Chandler", "title": "On My Way", "read": "by-name"
     }
     assert reports["8A - 122 - Kerri Chandler - On My Way.flac"]["genre_written"] == genre_of("House")
 

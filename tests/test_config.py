@@ -1,8 +1,7 @@
 """U2: the config schema, the two state roots, profiles, and credentials.
 
 Validation names every missing key; every state file has one root, the right one; nothing
-snapshots config at import time; a credential failure says which of three things went wrong.
-"""
+snapshots config at import time; a credential failure says which of three things went wrong."""
 
 from __future__ import annotations
 
@@ -257,8 +256,7 @@ def test_installation_state_never_lands_under_the_library(cfg, library):
     for entry in _file_entries(config.state_files_for(config.StateRoot.INSTALLATION)):
         path = config.state_path(entry.key, cfg)
         assert library not in path.parents, (
-            f"{entry.key} is declared installation-scoped but resolves inside the "
-            f"library at {path}"
+            f"{entry.key} is declared installation-scoped but resolves inside the library at {path}"
         )
 
 
@@ -406,9 +404,8 @@ def test_the_locks_and_the_snapshot_store_are_not_in_the_coupled_set():
     for entry in config.STATE_FILES:
         if any(part.startswith("lock") for part in entry.key.split("_")):
             assert entry.key not in coupled, (
-                f"{entry.key} is a lock inside the coupled set, so a restore "
-                f"swaps the inode a live lock is held on and every holder keeps "
-                f"believing it has exclusive access"
+                f"{entry.key} is a lock inside the coupled set, so a restore swaps the inode a "
+                f"live lock is held on and every holder keeps believing it has exclusive access"
             )
 
 
@@ -513,14 +510,12 @@ def test_an_entry_with_no_sidecars_resolves_to_no_sidecar_paths(cfg):
 # The consumers are held to the derivation by text guards.
 def _snapshot_source() -> str:
     import cratekit.core.snapshot as snapshot  # noqa: PLC0415
-
     return Path(snapshot.__file__).read_text()
 
 
 def _restore_source() -> str:
     # The restore's replacement moved to ``restore_perform`` (R-1890).
     from tests._split_modules import source_of  # noqa: PLC0415
-
     return source_of("cratekit.core.restore")
 
 
@@ -536,8 +531,7 @@ def test_the_snapshot_consumers_derive_their_sets_rather_than_listing_them(read,
     """U8 reaches for ``snapshot_sources``, and no consumer types a sidecar suffix of its own.
 
     A text search only; ``tests/test_restore.py`` drives whether the derivation is used, and
-    which sidecars come back is declared by Sidecar.restored on the rekordbox_db entry.
-    """
+    which sidecars come back is declared by Sidecar.restored on the rekordbox_db entry."""
     source = read()
     assert any(name in source for name in derivations), (
         f"the unit calls none of {derivations}, so its set is a second copy of the inventory"
@@ -597,11 +591,10 @@ def test_a_malformed_acknowledgment_is_named_even_when_the_database_is_contained
 def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_another_one():
     """A deferral with a countdown: dict to dict migrations cannot move a file."""
     assert config.LIBRARY_STATE_LAYOUT_VERSION == 1, (
-        "the library state layout changed. Config migrations are dict-to-dict "
-        "and cannot move a file, so the unit that changed it owns a one-time "
-        "on-disk reconciliation with its own mechanism, run under the same "
-        "exclusive lock, idempotent, and refusing rather than half-moving. Add "
-        "it, then update this test to cover it."
+        "the library state layout changed. Config migrations are dict-to-dict and cannot move a "
+        "file, so the unit that changed it owns a one-time on-disk reconciliation with its own "
+        "mechanism, run under the same exclusive lock, idempotent, and refusing rather than "
+        "half-moving. Add it, then update this test to cover it."
     )
 
 
@@ -610,7 +603,6 @@ def test_doctor_reports_a_database_that_sits_outside_the_library_root(
 ):
     """ARMED by U27. Asserted on what the OK branch cannot produce, not on "atomic"."""
     from cratekit.cli import doctor
-
     outside = tmp_path / "elsewhere" / "master.db"
     acknowledged = config.from_dict(
         _outside(library, tmp_path, db_outside_root_acknowledged_on="2026-08-01")
@@ -897,7 +889,6 @@ def test_the_backup_destination_check_reads_the_effective_mapping(library, monke
     # The seam is named in both modules that pass through it (U299).
     monkeypatch.setattr(config, "_apply_env_overrides", relocating)
     from cratekit.core import config_validate
-
     monkeypatch.setattr(config_validate, "_apply_env_overrides", relocating)
     assert config.validate(data) == []
     assert config.from_dict(data).backup.dest == "gdrive:MusicBackup"
@@ -1038,7 +1029,6 @@ def test_importing_the_config_module_creates_nothing(tmp_path):
 def config_parts() -> tuple:
     """config and its parts split off (U299), imported late for the behaviour scenarios."""
     from cratekit.core import config_base, config_schema, config_validate, state_files
-
     return (config, config_base, config_schema, config_validate, state_files)
 
 
@@ -1219,7 +1209,6 @@ def test_a_save_under_a_relocation_writes_a_file_that_loads_again(library, tmp_p
 def test_saving_refuses_to_write_a_file_this_module_would_refuse_to_load(cfg, tmp_path):
     """The general guarantee. Built through the dataclass, the only way to an invalid Config."""
     from dataclasses import replace  # noqa: PLC0415
-
     outside = tmp_path / "elsewhere" / "master.db"
     broken = replace(cfg, library=replace(cfg.library, db_path=outside))
     with pytest.raises(config.ConfigInvalid, match="is not under library.root"):
@@ -1546,7 +1535,6 @@ def test_the_environment_fallback_is_opt_in_and_never_silent(monkeypatch):
 def test_the_presence_index_cycle_is_held_under_an_exclusive_lock():
     """Unlocked, two processes lost a name in 23 of 25 trials; a fresh descriptor contends."""
     import fcntl
-
     lock_path = config.state_path("credential_index_lock")
     # Created so a build that never locks fails on contention, not a missing file.
     lock_path.parent.mkdir(parents=True, exist_ok=True)

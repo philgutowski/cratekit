@@ -28,8 +28,6 @@ ADDRESS = "<provider.artist.Artist object at 0x10b77ec00>"
 
 
 class Track:
-    """A provider row in the shape the provider reader reads."""
-
     def __init__(
         self, track_id: str, artist: str, name: str, *, version: str = "", genre: str = ""
     ) -> None:
@@ -70,7 +68,6 @@ def accepted_raw(
     cfg: config.Config, identity: dict, payload: dict, *, kind: str = sweep.KIND,
     handler_key: str = sweep.HANDLER_KEY,
 ) -> str:
-    """An item offered straight into the label queue, then accepted. Its id."""
     with review.open_store(cfg) as items:
         item = review.offer(
             items, queue=str(review.Queue.LABEL_RELEASE), kind=kind, identity=identity,
@@ -98,7 +95,6 @@ def approved(*extra: str) -> tuple[int, dict]:
 
 
 def listed(monkeypatch, fake=None, *extra: str) -> dict:
-    """Bind ``fake`` (unless None) and run the verb, which must succeed. Its envelope."""
     if fake is not None:
         bind(monkeypatch, fake)
     code, envelope = approved(*extra)
@@ -107,7 +103,6 @@ def listed(monkeypatch, fake=None, *extra: str) -> dict:
 
 
 def unusable(monkeypatch, fake=None, *extra: str) -> dict:
-    """Bind ``fake`` (unless None) and run the verb, which must refuse the list. Its cause."""
     if fake is not None:
         bind(monkeypatch, fake)
     code, envelope = approved(*extra)
@@ -117,7 +112,6 @@ def unusable(monkeypatch, fake=None, *extra: str) -> dict:
 
 
 def one_release(cfg, monkeypatch, year: int | None = 2024) -> StrictCatalogue:
-    """``r-1`` accepted and its two tracks bound under ``year``. The fake."""
     accepted(cfg, "r-1")
     fake = StrictCatalogue(releases={"r-1": (two_track_release()[0], year)})
     bind(monkeypatch, fake)
@@ -569,12 +563,13 @@ def test_the_verb_declares_what_it_is():
 
 
 def test_a_lookup_error_that_is_not_the_seams_own_is_never_read_as_a_gone_release(cfg, monkeypatch):
-    """``KeyError`` is a ``LookupError``, as a client raises parsing a payload it did not
-    expect. A parse failure is not a withdrawal."""
+    """``KeyError`` is a ``LookupError`` a client raises parsing: not a withdrawal."""
     accepted(cfg, "r-odd")
     accepted(cfg, "r-1")
-    odd = Failing(releases={"r-1": two_track_release()}, failing={"r-odd"},
-                  error=lambda: KeyError("numberOfTracks"))
+    odd = Failing(
+        releases={"r-1": two_track_release()}, failing={"r-odd"},
+        error=lambda: KeyError("numberOfTracks"),
+    )
     envelope = listed(monkeypatch, odd)
     failure = check(envelope, "release.r-odd")
     assert "is gone from the provider" not in failure["detail"]
@@ -642,11 +637,8 @@ def test_an_item_naming_no_release_is_told_to_clear_it_and_not_to_wait(cfg, monk
 def test_a_provider_that_stopped_answering_is_not_asked_about_every_release(cfg, monkeypatch):
     accepted(cfg, *(f"r-{number}" for number in range(1, 8)))
     fake = Failing(error=timed_out(ConnectionError))
-    bind(monkeypatch, fake)
-    code, envelope = approved()
-    assert code == int(ExitCode.PRECONDITION), envelope
+    failed = unusable(monkeypatch, fake)["detail"]["failed"]
     assert fake.releases_asked_for == ["r-1", "r-2", "r-3"]
-    failed = envelope["cause"]["detail"]["failed"]
     assert [one["kind"] for one in failed] == ["provider"] * 3 + ["not-asked"] * 4
 
 
@@ -654,8 +646,10 @@ def test_an_answer_resets_the_count_so_scattered_failures_never_stop_the_run(cfg
     accepted(cfg, *(f"r-{number}" for number in range(1, 7)))
     glass = ([Track("601", "Mira Vale", "Glass Hour")], 2020)
     # Two failures, an answer, then two more: never three in a row.
-    fake = Failing(releases={"r-3": two_track_release(), "r-6": glass},
-                   failing={"r-1", "r-2", "r-4", "r-5"}, error=timed_out(ConnectionError))
+    fake = Failing(
+        releases={"r-3": two_track_release(), "r-6": glass}, failing={"r-1", "r-2", "r-4", "r-5"},
+        error=timed_out(ConnectionError),
+    )
     envelope = listed(monkeypatch, fake)
     assert fake.releases_asked_for == ["r-1", "r-2", "r-3", "r-4", "r-5", "r-6"]
     assert envelope["data"]["summary"]["written"] == 3
@@ -675,7 +669,6 @@ HOUSE_RELEASES = 10
 
 
 def house_label(cfg, *, label_id: str = "tide-works", count: int = HOUSE_RELEASES) -> dict:
-    """Ten accepted house releases on one label, one track each. The releases."""
     ids = [f"h-{n}" for n in range(count)]
     accepted(cfg, *ids, label_id=label_id, label_name=label_id.title())
     return {
@@ -685,7 +678,6 @@ def house_label(cfg, *, label_id: str = "tide-works", count: int = HOUSE_RELEASE
 
 
 def held_label(cfg, count: int = HOUSE_RELEASES, **fields: str) -> dict:
-    """``count`` house releases, then hip hop ``r-hh`` accepted on Tide Works. The releases."""
     releases = house_label(cfg, count=count)
     accepted(cfg, "r-hh", **fields)
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
@@ -826,13 +818,11 @@ def test_nothing_missing_with_one_held_and_one_unread_is_refused_and_says_both(
     for n in range(HOUSE_RELEASES):
         owned(library, f"House Artist h{n} - Deep Cut.flac")
     accepted(cfg, "r-gone", label_id="salt-flats", label_name="Salt Flats")
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-    code, envelope = approved()
-    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = unusable(monkeypatch, StrictCatalogue(releases=releases))
     assert (
         "nothing is missing from the 10 release(s) that could be read and passed the "
         "genre gate (1 more held by it), and 1 could not be"
-    ) in envelope["cause"]["message"]
+    ) in cause["message"]
 
 
 def test_the_default_human_output_names_a_held_release(cfg, monkeypatch):

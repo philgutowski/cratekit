@@ -18,12 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 OWED = frozenset({"core", "module", "reshaped"})
 
 #: The plan in the sibling repository; the drift check asserts nothing without it.
-PLAN = (
-    REPO_ROOT.parent
-    / "DJ_tools"
-    / "docs"
-    / "plans"
-    / "2026-08-01-001-feat-dj-product-reengineering-plan.md"
+PLAN = REPO_ROOT.parent / "DJ_tools" / "docs" / "plans" / (
+    "2026-08-01-001-feat-dj-product-reengineering-plan.md"
 )
 
 #: One inventory row: `| 7 | Fallback lossy acquisition | Module, off by default | ...`
@@ -106,9 +102,7 @@ def test_the_inventory_is_complete_and_contiguous():
 def test_every_declared_disposition_is_one_this_file_understands():
     """Every disposition is owed, cut or defer, so none silently leaves the backlog."""
     known = OWED | {"cut", "defer"}
-    unknown = sorted(
-        {d for d in dispositions().values() if d not in known}
-    )
+    unknown = sorted({d for d in dispositions().values() if d not in known})
     assert not unknown, (
         f"registry.FEATURES carries dispositions this parity check does not "
         f"classify as owed or decided: {unknown}. Add them to OWED or to the "
@@ -148,10 +142,8 @@ def test_the_backlog_is_every_owed_row_without_a_landed_verb():
     owed = backlog()
     covered = covering_verbs()
     cited = citing_verbs()
-
     for row in owed:
         assert row not in covered, f"row {row} is in the backlog and has a landed verb"
-
     waiting = {row: sorted(set(cited.get(row, []))) for row in owed}
     assert all(waiting.values()), (
         f"a backlog row is waiting on no declared verb, so no unit owns it: "

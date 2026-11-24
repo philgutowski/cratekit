@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.cli import gates, render
-from tests.test_gate_not_reached import _state, digest_spec
+from tests.test_gate_not_reached import _reached, _state, digest_spec
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "cratekit"
 
@@ -23,15 +23,10 @@ def _plan(*items: dict) -> dict:
 
 
 def _refused(**kwargs) -> dict:
-    state = _state()
-    with pytest.raises(gates.DecisionRequired) as raised:
-        gates.Gates(state=state).require(_spec(), **kwargs)
-    return raised.value.cause.detail
+    return _reached(_state(), _spec(), **kwargs).detail
 
 
 # The helper
-
-
 def test_shown_plan_carries_the_facts_then_the_digest_the_count_and_every_item():
     shown = gates.shown_plan(_plan({"a": 1}, {"a": 2}), {"folder": "/music"})
     assert list(shown.items()) == [
@@ -66,29 +61,22 @@ def test_shown_plan_says_none_for_an_empty_plan_rather_than_nothing():
     """An empty plan can still be aborted, so its screen says the list is empty (R-686)."""
     shown = gates.shown_plan({"digest": "d", "items": []})
     assert shown["items"] == [] and shown["count"] == 0
-    cause = _refused(plan={"digest": "d", "items": []})
-    screen = render.render_gate(_cause(cause))
+    screen = render.render_gate(_cause(_refused(plan={"digest": "d", "items": []})))
     assert "  items: none" in screen
 
 
 # require() with a plan
-
-
 def test_require_shows_the_plan_it_binds_the_decision_to():
     detail = _refused(plan=_plan({"path": "a.flac"}), context={"folder": "/music"})
     assert detail["shown"] == {
-        "folder": "/music",
-        "digest": "sha256:abc",
-        "count": 1,
-        "items": [{"path": "a.flac"}],
+        "folder": "/music", "digest": "sha256:abc", "count": 1, "items": [{"path": "a.flac"}],
     }
 
 
 def test_require_records_the_offer_off_the_plan_it_showed():
     """The digest the answer is judged against is the one on the screen."""
     state = _state()
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(_spec(), plan=_plan())
+    _reached(state, _spec(), plan=_plan())
     assert state.offers["shown.probe"] == "sha256:abc"
 
 
@@ -103,9 +91,8 @@ def test_require_shows_the_plan_on_the_explicit_refusal_as_well():
 
 def test_require_refuses_a_digest_beside_a_plan():
     """Two sources of the digest is how the screen and the binding disagree."""
-    state = _state()
     with pytest.raises(TypeError):
-        gates.Gates(state=state).require(_spec(), digest="other", plan=_plan())
+        gates.Gates(state=_state()).require(_spec(), digest="other", plan=_plan())
 
 
 def test_require_answers_from_the_plan_and_records_its_digest():
@@ -131,19 +118,13 @@ def test_the_screen_prints_the_plan_in_the_default_mode():
 
 def _cause(detail: dict):
     """The refusal's cause, rebuilt so the renderer is driven as the CLI drives it."""
-    state = _state()
-    try:
-        gates.Gates(state=state).require(_spec(), digest="unused")
-    except gates.DecisionRequired as raised:
-        cause = raised.cause
+    cause = _reached(_state(), _spec(), digest="unused")
     cause.detail.clear()
     cause.detail.update(detail)
     return cause
 
 
 # The sweep that found the seven, as a guard
-
-
 @functools.cache
 def _require_calls() -> tuple[tuple[Path, int, set[str]], ...]:
     """Every ``gate.require(...)`` call in the package: its keyword names and where it is."""
@@ -177,36 +158,19 @@ def test_the_population_this_guard_sweeps_is_the_one_the_ledger_counted():
 
 #: Gates showing their plan through their own body, not ``plan=``: per file, the count and why.
 SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
-    "src/cratekit/write/naming_cli.py": (
-        1,
-        "R-670's screen is bounded at PLAN_SHOWN by decision, because the "
-        "default root is the whole library; the gate layer's body has no bound",
-    ),
-    "src/cratekit/intake/land_cli.py": (
-        1,
-        "shows the landing's files by name with the folder, the target and the "
-        "batch, the screen R-670 was written to match",
-    ),
-    "src/cratekit/sync/mark_cli.py": (
-        1,  # Both branches ask through one call, after ``plan_pass`` (U112).
-        "shows each item as renamed on the account or left alone with its "
-        "reason, one line per fact",
-    ),
-    "src/cratekit/sync/unmark_cli.py": (
-        1,
-        "shows each item as put back on the account or left alone with its "
-        "reason, one line per fact, as sync mark's screen does",
-    ),
-    "src/cratekit/session/restore_cli.py": (
-        1,
-        "shows the off machine snapshot the restore would pull; the offer's "
-        "items are the two halves, not a list a person approves one by one",
-    ),
-    "src/cratekit/deletion/cli.py": (
-        1,
-        "shows the baseline and the offered count only, R-134's screen; the "
-        "files themselves are not listed, recorded as R-702",
-    ),
+    "src/cratekit/write/naming_cli.py": (1, "R-670's screen is bounded at PLAN_SHOWN by decision, "
+        "because the default root is the whole library; the gate layer's body has no bound"),
+    "src/cratekit/intake/land_cli.py": (1, "shows the landing's files by name with the folder, the "
+        "target and the batch, the screen R-670 was written to match"),
+    # Both branches ask through one call, after ``plan_pass`` (U112).
+    "src/cratekit/sync/mark_cli.py": (1, "shows each item as renamed on the account or left alone "
+        "with its reason, one line per fact"),
+    "src/cratekit/sync/unmark_cli.py": (1, "shows each item as put back on the account or left "
+        "alone with its reason, one line per fact, as sync mark's screen does"),
+    "src/cratekit/session/restore_cli.py": (1, "shows the off machine snapshot the restore would "
+        "pull; the offer's items are the two halves, not a list a person approves one by one"),
+    "src/cratekit/deletion/cli.py": (1, "shows the baseline and the offered count only, R-134's "
+        "screen; the files themselves are not listed, recorded as R-702"),
 }
 
 
@@ -229,9 +193,6 @@ def test_every_digest_bound_gate_shows_the_plan_it_binds_to():
 
 
 def test_no_gate_passes_a_digest_beside_a_plan():
-    twice = [
-        f"{path}:{line}"
-        for path, line, keywords in _require_calls()
-        if {"digest", "plan"} <= keywords
-    ]
+    calls = _require_calls()
+    twice = [f"{path}:{line}" for path, line, keywords in calls if {"digest", "plan"} <= keywords]
     assert twice == [], twice

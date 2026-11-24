@@ -53,7 +53,6 @@ def cfg(tmp_path: Path) -> config.Config:
     return built
 
 
-
 @pytest.fixture
 def export(tmp_path: Path) -> Path:
     path = tmp_path / "fresh.xml"
@@ -68,10 +67,8 @@ def _staging(cfg: config.Config) -> Path:
 def _stage(cfg: config.Config, silence: Path, name: str) -> Path:
     path = _staging(cfg) / name
     shutil.copyfile(silence, path)
-    assert tags.write_tags(
-        path,
-        {"title": Path(name).stem, "artist": "Probe", "genre": "Deep House", "energylevel": 7},
-    )
+    fields = {"title": Path(name).stem, "artist": "Probe", "genre": "Deep House", "energylevel": 7}
+    assert tags.write_tags(path, fields)
     return path
 
 
@@ -344,10 +341,8 @@ def test_a_manifest_is_on_the_gate_and_its_labels_reported(
 ):
     """The engine is handed the manifest rows and fingerprint the gate compared."""
     _stage(cfg, silence, "One.flac")
-    manifest = _manifest(
-        tmp_path,
-        [("1", "Probe", "One", "Kompakt", 2025), ("2", "Probe", "Never Arrived", "Kompakt", 2024)],
-    )
+    never = ("2", "Probe", "Never Arrived", "Kompakt", 2024)
+    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025), never])
     argv = _land(export, "--name", BATCH, "--manifest", str(manifest))
     asked = _spy_preflight(monkeypatch)
     code, refused = _drive(argv)
@@ -356,10 +351,8 @@ def test_a_manifest_is_on_the_gate_and_its_labels_reported(
     assert shown["labels filed from"] == str(manifest)
     assert shown["label playlists named"] == ["Kompakt 2024 (1 listed)", "Kompakt 2025 (1 listed)"]
     (call,) = asked
-    assert [(row.provenance.label_name, row.provenance.year) for row in call["label_rows"]] == [
-        ("Kompakt", 2025),
-        ("Kompakt", 2024),
-    ]
+    labelled = [(row.provenance.label_name, row.provenance.year) for row in call["label_rows"]]
+    assert labelled == [("Kompakt", 2025), ("Kompakt", 2024)]
     handed = _watch_apply(monkeypatch, before=lambda: None)
     code, envelope = _drive(["-d", f"{GATE}=apply", *argv])
     assert code == int(ExitCode.PENDING_HUMAN), envelope
@@ -367,18 +360,11 @@ def test_a_manifest_is_on_the_gate_and_its_labels_reported(
     data = envelope["data"]
     assert [item["action"] for item in data["items"]] == ["landed", "filed", "unfiled"]
     assert data["items"][1] == {
-        "action": "filed",
-        "label": "Kompakt",
-        "year": 2025,
-        "playlist": "Kompakt 2025",
-        "count": 1,
+        "action": "filed", "label": "Kompakt", "year": 2025, "playlist": "Kompakt 2025", "count": 1,
     }
     unfiled = data["items"][2]
-    assert (unfiled["id"], unfiled["title"], unfiled["reason"]) == (
-        "2",
-        "Never Arrived",
-        "label-row-unmatched",
-    )
+    said = (unfiled["id"], unfiled["title"], unfiled["reason"])
+    assert said == ("2", "Never Arrived", "label-row-unmatched")
     assert data["totals"] == {"count": 1, "landed": 1, "refused": 0, "filed": 1, "unfiled": 1}
     (warning,) = envelope["warnings"]
     assert warning["code"] == "label-row-unmatched"
@@ -602,9 +588,7 @@ def _an_engine_failing_with_no_refusal(cfg, export, patched) -> None:
 @pytest.mark.parametrize(
     "arrange",
     [
-        _an_export_that_is_not_there,
-        _an_intake_file_already_there,
-        _every_target_taken,
+        _an_export_that_is_not_there, _an_intake_file_already_there, _every_target_taken,
         _an_engine_failing_with_no_refusal,
     ],
 )
@@ -671,9 +655,7 @@ def test_a_landing_in_another_process_refuses_this_one_until_it_ends(cfg, silenc
     _stage(cfg, silence, "One.flac")
     holder = subprocess.Popen(
         [sys.executable, "-c", _HOLDER, BATCH],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        text=True,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
     )
     try:
         assert holder.stdout.readline().strip() == "held"

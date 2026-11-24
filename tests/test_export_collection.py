@@ -77,6 +77,8 @@ TRACKS = (
     ("41", "Gone Track.flac", "Gone Track", 2, True),
 )
 LIVE = ("1", "2", "11", "12", "13", "31")
+#: The batch playlist's keys in stored order, the tombstone left out.
+BATCH_KEYS = ("11", "12", "13")
 
 #: What the routing rules read off each intake file, served by file name.
 READINGS = {
@@ -90,7 +92,7 @@ CRATE = "Night Crate"
 
 #: Every playlist the export must carry, by path under the root, with its keys in stored order.
 EXPECTED_PLAYLISTS = {
-    (INTAKE, BATCH): ("11", "12", "13"),
+    (INTAKE, BATCH): BATCH_KEYS,
     (TREE, "Deep House", "Low"): (),
     (TREE, "Deep House", "Med"): (),
     (TREE, "Deep House", "High"): (),
@@ -168,7 +170,8 @@ def _machine(tmp_path, monkeypatch, *, moved: bool = False, rule: bool = True) -
     data = valid_data(root, profile={"name": "full"}, rekordbox=pin)
     data["paths"] = {"download_staging": str(staging)}
     if moved and rule:
-        data["library"]["location_prefix_map"] = [{"from": str(tmp_path / BASE_DRIVE), "to": "{library.root}"}]
+        rule = {"from": str(tmp_path / BASE_DRIVE), "to": "{library.root}"}
+        data["library"]["location_prefix_map"] = [rule]
     resolved = config.from_dict(data)
     config.save(resolved)
     config.reset_cache()
@@ -243,9 +246,9 @@ def _content(cfg: config.Config, rows) -> None:
             db_session.add(_row(tables.DjmdArtist, ID="900", Name="Probe & Co"))
         for identifier, _filename, title, stars, deleted, path in rows:
             db_session.add(_row(
-                tables.DjmdContent, ID=identifier, Title=title, ArtistID="900", FolderPath=str(path),
-                BPM=STORED_TEMPO, Rating=stars, Length=300, FileType=5, StockDate="2026-09-18",
-                rb_local_deleted=1 if deleted else 0,
+                tables.DjmdContent, ID=identifier, Title=title, ArtistID="900",
+                FolderPath=str(path), BPM=STORED_TEMPO, Rating=stars, Length=300, FileType=5,
+                StockDate="2026-09-18", rb_local_deleted=1 if deleted else 0,
             ))
         db_session.commit()
     engine.dispose()
@@ -534,7 +537,7 @@ def test_an_ampersand_a_quote_and_an_accent_survive_the_readers(machine):
 def test_no_tempo_the_database_holds_reaches_the_file(either):
     """Every seeded row stores a tempo; the file carries the gridless constant on both layouts."""
     machine = either
-    stored = {row: tempo for row, tempo in _sql(machine, "SELECT ID, BPM FROM djmdContent") if tempo}
+    stored = {row: bpm for row, bpm in _sql(machine, "SELECT ID, BPM FROM djmdContent") if bpm}
     assert set(stored) >= {"11", "12", "13", "31"}, "no row stores a tempo to leak"
     assert set(stored.values()) == {STORED_TEMPO}
     exported = _export(machine)
@@ -783,8 +786,9 @@ def _stage(cfg: config.Config, silence: Path, name: str, folder: Path | None = N
 
 def _imported(cfg: config.Config, paths) -> None:
     """Rows for ``paths`` as rekordbox's import records them, from identifier 9000 up."""
-    rows = [(str(9000 + i), p.name, p.stem, 0, False, _as_recorded(cfg, p.resolve())) for i, p in paths]
-    _content(cfg, rows)
+    _content(cfg, [
+        (str(9000 + i), p.name, p.stem, 0, False, _as_recorded(cfg, p.resolve())) for i, p in paths
+    ])
 
 
 def _spliced(artifact: str, added: int) -> ET.Element:
@@ -810,7 +814,7 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     # The batch playlist carries the batch's name, not the file's (U110).
     assert len(nodes[(INTAKE, batch)].findall("TRACK")) == 2
     # What the export already held is still there, in the same order.
-    assert tuple(t.get("Key") for t in nodes[(INTAKE, BATCH)].findall("TRACK")) == ("11", "12", "13")
+    assert tuple(t.get("Key") for t in nodes[(INTAKE, BATCH)].findall("TRACK")) == BATCH_KEYS
     assert collection_export.provenance_of(intake_file.read_bytes()) is not None
     landed_in = Path(machine.library.root) / machine.library.music_dir / batch
     _imported(machine, enumerate(sorted(landed_in.glob("*.flac"))))
@@ -966,7 +970,8 @@ def _at(*rows: tuple[str, str]) -> list:
 
 def test_an_identifier_is_spelled_one_way_in_the_collection_and_in_a_playlist():
     """A leading zero. The row and the key naming it have to be the same string."""
-    document = _rendered(_at(("007", "/library/a.flac")), [_Node("1", "root", "Held", 0, 1, ("007",))])
+    held = [_Node("1", "root", "Held", 0, 1, ("007",))]
+    document = _rendered(_at(("007", "/library/a.flac")), held)
     view = library_export.read_export(document.content)
     assert tuple(entry.track_id for entry in view.entries) == ("007",)
     assert {item.path: item.track_ids for item in view.playlists} == {("Held",): ("007",)}
@@ -1020,7 +1025,8 @@ def test_a_streamed_track_is_not_dressed_as_a_file_on_this_machine():
         ("7", "tidal:tracks:123", "tidal:tracks:123"),
         ("8", "", ""),
         ("9", "/library/Music/a b.flac", "file://localhost/library/Music/a%20b.flac"),
-        ("10", "file://localhost/library/Music/c%20d.flac", "file://localhost/library/Music/c%20d.flac"),
+        ("10", "file://localhost/library/Music/c%20d.flac",
+         "file://localhost/library/Music/c%20d.flac"),
     )
     document = _rendered(_at(*((key, held) for key, held, _written in spellings)))
     assert _rows(document) == {key: written for key, _held, written in spellings}
@@ -1040,7 +1046,8 @@ def _handle(rows, songs=()) -> SimpleNamespace:
 
 @pytest.mark.parametrize("unreadable", [None, "folder", "", True, 2.5j])
 def test_a_kind_that_cannot_be_read_is_never_written_as_a_playlist(unreadable):
-    document = _rendered([], collection_export.read_nodes(_handle([_node("1", unreadable), _node("2", 0)])))
+    nodes = collection_export.read_nodes(_handle([_node("1", unreadable), _node("2", 0)]))
+    document = _rendered([], nodes)
     root = ET.fromstring(document.content).find("PLAYLISTS").find("NODE")
     written = [node.get("Name") for node in root.findall("NODE")]
     assert written == ["Node 2"]
@@ -1136,7 +1143,8 @@ def test_a_membership_somebody_removed_is_not_written_back_into_the_playlist():
     songs = [_song("a", "1", "10", 1), removed, _song("c", "1", "30", 3)]
     (node,) = collection_export.read_nodes(_handle([_node("1", 0)], songs))
     assert node.members == ("10", "30")
-    document = _rendered(_at(*((key, f"/library/{key}.flac") for key in ("10", "20", "30"))), [node])
+    tracks = _at(*((key, f"/library/{key}.flac") for key in ("10", "20", "30")))
+    document = _rendered(tracks, [node])
     view = library_export.read_export(document.content)
     assert view.playlists[0].track_ids == ("10", "30")
     assert document.omitted.dangling_members == 0
@@ -1168,7 +1176,8 @@ def _locations(path: Path) -> dict[str, str]:
 
 def _encoded_under(prefix: str) -> dict[str, str]:
     """Every row's written location, the seeded files' under ``prefix``, the baseline's empty."""
-    return {"1": "", "2": "", **{k: f"file://localhost{prefix}/Music/{n}" for k, n in ENCODED.items()}}
+    under = {key: f"file://localhost{prefix}/Music/{name}" for key, name in ENCODED.items()}
+    return {"1": "", "2": "", **under}
 
 
 def _location_check(envelope: dict) -> dict:
@@ -1181,7 +1190,8 @@ def test_the_moved_fixture_is_a_library_whose_base_drive_is_not_its_mounted_root
     base, root = str(_base(moved)), str(moved.library.root)
     assert _PLAIN.fullmatch(root), "the literals below assume a root the encoder leaves alone"
     assert not Path(base).exists(), "the base drive is a name nothing mounts"
-    recorded = dict(_sql(moved, "SELECT ID, FolderPath FROM djmdContent WHERE ID IN ('11', '12', '13', '31')"))
+    held = "SELECT ID, FolderPath FROM djmdContent WHERE ID IN ('11', '12', '13', '31')"
+    recorded = dict(_sql(moved, held))
     assert set(recorded) == {"11", "12", "13", "31"}
     assert all(path.startswith(base + "/Music/") for path in recorded.values()), recorded
     (drives,) = _sql(moved, "SELECT BaseDBDrive, CurrentDBDrive FROM djmdProperty")
@@ -1259,7 +1269,8 @@ def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
     """One row per way a row can resolve, with the written value spelled out."""
     spellings = (
         ("1", "/former/Music/a b.flac", "file://localhost/library/Music/a%20b.flac"),
-        ("2", "file://localhost/former/Music/c%20d.flac", "file://localhost/library/Music/c%20d.flac"),
+        ("2", "file://localhost/former/Music/c%20d.flac",
+         "file://localhost/library/Music/c%20d.flac"),
         # Decomposed on the way in, composed and lowercase on the way out.
         ("3", "/former/Music/Café.flac", "file://localhost/library/Music/Caf%c3%a9.flac"),
         # A different folder that shares the rule's spelling, so no rule places it.
@@ -1283,8 +1294,10 @@ def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
 
 def test_the_rules_are_walked_in_the_order_they_were_recorded():
     """First match wins, so a rule that is another's prefix has to come first."""
-    rules = (locations.PrefixRule("/former/Music", "/library/Deep"), locations.PrefixRule("/former", "/library"))
-    document = _rendered(_at(("1", "/former/Music/a.flac"), ("2", "/former/Sets/b.flac")), prefix_map=rules)
+    rules = (locations.PrefixRule("/former/Music", "/library/Deep"),
+             locations.PrefixRule("/former", "/library"))
+    tracks = _at(("1", "/former/Music/a.flac"), ("2", "/former/Sets/b.flac"))
+    document = _rendered(tracks, prefix_map=rules)
     assert _rows(document) == {
         "1": "file://localhost/library/Deep/a.flac", "2": "file://localhost/library/Sets/b.flac",
     }
@@ -1330,7 +1343,9 @@ def test_a_rule_onto_a_second_volume_is_left_to_the_reader_that_follows_it():
     ],
     ids=["onto-itself", "moved-again", "target-not-a-path"],
 )  # fmt: skip
-def test_a_rule_places_a_row_only_where_it_reads_back_as_itself(rules, written, read_back, remapped, left):
+def test_a_rule_places_a_row_only_where_it_reads_back_as_itself(
+    rules, written, read_back, remapped, left
+):
     prefix_map = tuple(locations.PrefixRule(source, target) for source, target in rules)
     document = _rendered(_at(("1", "/former/Music/a.flac")), prefix_map=prefix_map)
     assert _rows(document) == {"1": f"file://localhost{written}"}
@@ -1361,7 +1376,8 @@ def test_the_envelope_counts_a_row_left_to_its_rule(tmp_path, monkeypatch):
     ("prefixes", "listed"),
     [
         ((("/a/b", 3),), "rule (3 under /a/b), and"),
-        ((("/a/b", 3), ("/c/d", 2), ("/e/f", 1)), "rule (3 under /a/b, 2 under /c/d, 1 under /e/f), and"),
+        ((("/a/b", 3), ("/c/d", 2), ("/e/f", 1)),
+         "rule (3 under /a/b, 2 under /c/d, 1 under /e/f), and"),
         ((("/a/b", 3), ("/c/d", 2), ("/e/f", 1), ("/g/h", 1)),
          "rule (3 under /a/b, 2 under /c/d, 1 under /e/f, and 1 other prefix), and"),
         ((("/a/b", 3), ("/c/d", 2), ("/e/f", 1), ("/g/h", 1), ("/i/j", 1)),

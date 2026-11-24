@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from cratekit.core import jobs, provider_gate
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.label import kept_listing, kept_reads, sweep, tidal_catalogue
+from cratekit.core.exit_codes import ExitCode
+from cratekit.label import catalogue, kept_listing, kept_reads, sweep, tidal_catalogue
 from cratekit.label import registry as labels
+from cratekit.label.playlists_cli import estimate
+from tests.cli_drive import drive
+from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease
 from tests.test_label_tidal_catalogue import FakeClient, ProviderArtist, Release, cfg  # noqa: F401
 
 NOW = datetime(2026, 11, 5, 12, 0, tzinfo=timezone.utc)
@@ -67,14 +72,9 @@ class CountedClient(FakeClient):
         return super().album(album_id)
 
 
-class Credited:
-    def __init__(self, identity: str) -> None:
-        self.id = identity
-        self.name = f"Act {identity}"
-
-
 def label_release(release_id: str, *, by: str, year: str = "2025") -> Release:
-    return Release(release_id, copyright=f"(P) {year} {LABEL}", year=year, artists=[Credited(by)])
+    credited = SimpleNamespace(id=by, name=f"Act {by}")
+    return Release(release_id, copyright=f"(P) {year} {LABEL}", year=year, artists=[credited])
 
 
 def roster_client(budget: Budget, *, acts: int = 4) -> CountedClient:
@@ -123,7 +123,6 @@ def fresh_calls(entry) -> tuple[int, list[str]]:
     return budget.calls, listed_ids(roster)
 
 
-# A second ask asks nothing
 def test_a_second_listing_of_the_same_label_asks_the_provider_nothing(entry, clock, budget):
     first = adapter(roster_client(budget)).artist_for(entry)
     spent = budget.calls
@@ -159,10 +158,8 @@ def test_a_kept_release_verifies_with_no_call(entry, clock, budget):
     assert budget.calls == spent
 
 
-# A continue after the ceiling asks only what was not read
-def test_a_listing_stopped_at_the_ceiling_continues_with_only_the_unread_part(entry, clock):
+def test_a_listing_stopped_at_the_ceiling_continues_with_only_the_unread_part(entry, clock, budget):
     whole, ids = fresh_calls(entry)
-    budget = Budget()
     budget.ceiling = whole // 2 + 5
     with pytest.raises(jobs.Parked):
         adapter(roster_client(budget)).artist_for(entry)
@@ -192,7 +189,6 @@ def test_a_ceiling_stop_inside_discovery_keeps_every_search_it_finished(entry, c
     assert not set(searched) & set(again)
 
 
-# The first run lists each artist once
 def test_the_first_listing_pages_each_discovered_artist_once(entry, clock, budget):
     adapter(roster_client(budget)).artist_for(entry)
     pages = [one for one in budget.asked if one.startswith(("albums ", "singles "))]
@@ -206,7 +202,6 @@ def test_without_a_store_the_roster_still_lists_each_member_now(budget):
     assert roster.kept is None
 
 
-# What makes it ask again
 def test_a_listing_older_than_the_kept_life_is_asked_again(entry, clock, budget):
     adapter(roster_client(budget)).artist_for(entry)
     whole = budget.calls
@@ -254,9 +249,8 @@ def test_a_label_entry_that_changed_reads_the_kept_listing_as_empty(entry, clock
         assert "changed after its listing was kept" in roster.kept.said()
 
 
-def test_a_failed_listing_is_not_kept(entry, clock, monkeypatch):
+def test_a_failed_listing_is_not_kept(entry, clock, monkeypatch, budget):
     monkeypatch.setattr(tidal_catalogue, "_pause", lambda seconds: None)
-    budget = Budget()
     class Failing(CountedArtist):
         def get_ep_singles(self, limit=None, offset=0):
             raise RuntimeError("the provider failed")
@@ -279,9 +273,7 @@ def test_an_artist_with_no_identifier_is_listed_and_not_kept(entry, clock, budge
     assert [one.id for one in tidal_catalogue.listing.artist_releases(roster)] == ["9"]
 
 
-# The store itself
 def _store(**sections: dict) -> str:
-    """A kept listing document, every section empty but those given."""
     return json.dumps({
         "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
         "identified": {}, "searched": {}, "listed": {}, **sections,
@@ -291,9 +283,7 @@ def _store(**sections: dict) -> str:
 @pytest.mark.parametrize(
     "written",
     [
-        "{not json",
-        "[]",
-        json.dumps({"version": 2}),
+        "{not json", "[]", json.dumps({"version": 2}),
         json.dumps({"version": 1, "label_id": "another"}),
         json.dumps({"version": 1, "label_id": "kept-recordings"}),
         _store(searched={"q": {"read_at": "2026-11-05T12:00:00", "value": []}}),
@@ -301,11 +291,10 @@ def _store(**sections: dict) -> str:
         _store(listed={"1 get_albums": {"read_at": NOW.isoformat(), "value": [{"id": 1}]}}),
     ],
 )
-def test_a_kept_listing_that_cannot_be_read_refuses_before_any_call(entry, clock, written):
+def test_a_kept_listing_that_cannot_be_read_refuses_before_any_call(entry, clock, written, budget):
     path = kept_listing.path_for(entry.label_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(written)
-    budget = Budget()
     with pytest.raises(CratekitError) as refused:
         adapter(roster_client(budget)).artist_for(entry)
     assert refused.value.cause.reason == kept_listing.UNUSABLE
@@ -314,19 +303,18 @@ def test_a_kept_listing_that_cannot_be_read_refuses_before_any_call(entry, clock
 
 
 def test_a_write_the_filesystem_refuses_is_said_and_the_listing_still_made(
-    entry, clock, monkeypatch
+    entry, clock, monkeypatch, budget
 ):
     def refused(payload, path, **kwargs):
         raise OSError("read only volume")
     monkeypatch.setattr(kept_listing.config, "atomic_write_bytes", refused)
-    budget = Budget()
     roster = adapter(roster_client(budget)).artist_for(entry)
     assert listed_ids(roster)
     assert "read only volume" in roster.kept.unkept
     assert "could not be kept" in roster.kept.said()
 
 
-def test_the_store_writes_every_flush_batch_as_it_goes(entry, clock, monkeypatch):
+def test_the_store_writes_every_flush_batch_as_it_goes(entry, clock, monkeypatch, budget):
     monkeypatch.setattr(kept_listing, "FLUSH_EVERY", 3)
     writes: list[int] = []
     real = kept_listing.config.atomic_write_bytes
@@ -334,7 +322,6 @@ def test_the_store_writes_every_flush_batch_as_it_goes(entry, clock, monkeypatch
         writes.append(len(payload))
         return real(payload, path, **kwargs)
     monkeypatch.setattr(kept_listing.config, "atomic_write_bytes", counted)
-    budget = Budget()
     roster = adapter(roster_client(budget)).artist_for(entry)
     assert len(writes) >= roster.kept.asked // 3
 
@@ -345,7 +332,6 @@ def test_the_first_listing_says_none_was_kept(entry, clock):
     assert "since none was kept" in roster.kept.said()
 
 
-# The verbs: label playlists after a listing, and the screen
 def test_label_playlists_after_a_sync_listing_asks_no_listing(entry, clock, cfg):  # noqa: F811
     budget = Budget()
     client = roster_client(budget)
@@ -358,12 +344,8 @@ def test_label_playlists_after_a_sync_listing_asks_no_listing(entry, clock, cfg)
     assert again.kept is not None and again.kept.asked == 0
 
 
-# The verb: a second label sync --next --label asks the provider nothing
 def test_a_second_label_sync_next_of_the_label_makes_no_provider_call(clock, cfg, monkeypatch):  # noqa: F811
     """Through the verb: the second ask lists and verifies from the kept answers."""
-    from cratekit.core.exit_codes import ExitCode
-    from cratekit.label import catalogue
-    from tests.cli_drive import drive
     budget = Budget()
     own = CountedArtist(
         budget, LABEL, [Release("r1", copyright="(P) 2025 Another Label", year="2025")],
@@ -378,29 +360,24 @@ def test_a_second_label_sync_next_of_the_label_makes_no_provider_call(clock, cfg
     assert first > 0
     _code, envelope = drive(["label", "sync", "--next", "--label", LABEL])
     assert budget.calls == first, budget.asked[first:]
-    (line,) = [
-        one for one in envelope["data"]["checks"] if one["key"].endswith("listing.kept-recordings")
-    ]
+    checks = envelope["data"]["checks"]
+    (line,) = [one for one in checks if one["key"].endswith("listing.kept-recordings")]
     assert "no listing call" in line["detail"]
     assert "old" in line["detail"]
 
 
 def test_the_playlists_crawl_gate_says_the_listing_was_kept(entry, clock, cfg):  # noqa: F811
-    from cratekit.label import playlists_cli
     found = adapter(roster_client(Budget()))
     sweep.listed_releases(cfg, entry, found)
-    counted = playlists_cli.estimate(cfg, entry, sweep.listed_releases(cfg, entry, found))
+    counted = estimate(cfg, entry, sweep.listed_releases(cfg, entry, found))
     assert "no listing call" in counted.shown()["listing"]
 
 
 def test_a_catalogue_that_keeps_no_listing_says_nothing_about_one(entry, cfg):  # noqa: F811
-    from cratekit.label import playlists_cli
-    from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease
     fake = FakeCatalogue(artists={entry.label_id: FakePagedArtist([FakeRelease("r1", year="2025")])})
     listed = sweep.listed_releases(cfg, entry, fake)
     assert listed.kept is None
-    assert "listing" not in playlists_cli.estimate(cfg, entry, listed).shown()
-
+    assert "listing" not in estimate(cfg, entry, listed).shown()
 
 
 def _forget(entry, section: str, key: str) -> None:
@@ -411,9 +388,8 @@ def _forget(entry, section: str, key: str) -> None:
     path.write_text(json.dumps(document))
 
 
-def test_a_listing_the_client_does_not_expose_stays_unread_on_every_run(entry, clock):
+def test_a_listing_the_client_does_not_expose_stays_unread_on_every_run(entry, clock, budget):
     """A missing method is not an answer, so nothing is kept."""
-    budget = Budget()
     class AlbumsOnly:
         def __init__(self) -> None:
             self.name = LABEL
@@ -446,9 +422,8 @@ def test_a_kept_seed_the_provider_no_longer_has_is_unread_not_empty(entry, clock
     )
 
 
-def test_a_failed_artist_read_in_discovery_still_refuses_rather_than_skipping(entry, clock):
+def test_a_failed_artist_read_in_discovery_still_refuses_rather_than_skipping(entry, clock, budget):
     """A kept artist whose listing is not kept is read, and a failure raises."""
-    budget = Budget()
     client = roster_client(budget)
     adapter(client).artist_for(entry)
     _forget(entry, "listed", "3 get_albums")
@@ -485,9 +460,8 @@ def test_a_continue_stopped_inside_an_artist_listing_still_costs_less_than_fresh
     assert not [one for one in budget.asked[stopped_at:] if one.startswith("search ")]
 
 
-def test_a_search_that_fails_on_a_continue_is_counted_so_the_line_stays_true(entry, clock):
+def test_a_search_that_fails_on_a_continue_is_counted_so_the_line_stays_true(entry, clock, budget):
     """A failed search is a call, so the line does not say none was made."""
-    budget = Budget()
     client = roster_client(budget)
     adapter(client).artist_for(entry)
     _forget(entry, "searched", f"{LABEL} 042")

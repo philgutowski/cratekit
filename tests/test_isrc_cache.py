@@ -1,7 +1,5 @@
-"""U206: an ISRC the provider already answered is not asked again.
-
-Driven through the account's ``match_track`` and the catalogue's
-``tracks_for_isrc`` over a fake client that counts what it is asked.
+"""U206: an ISRC the provider already answered is not asked again, driven through the
+account's ``match_track`` and the catalogue's ``tracks_for_isrc`` over a counting client.
 """
 
 from __future__ import annotations
@@ -85,9 +83,8 @@ class Client:
         if self.failures:
             raise self.failures.pop(0)
         answer = self.answers.get(isrc, ObjectNotFound)
-        if isinstance(answer, BaseException) or (
-            isinstance(answer, type) and issubclass(answer, BaseException)
-        ):
+        raised = isinstance(answer, type) and issubclass(answer, BaseException)
+        if isinstance(answer, BaseException) or raised:
             raise answer() if isinstance(answer, type) else answer
         return list(answer)
 
@@ -126,6 +123,25 @@ def stored() -> dict:
     return json.loads(config.state_path(isrc_cache.STATE_KEY).read_text(encoding="utf-8"))
 
 
+def _cache_file(text: str) -> Path:
+    path = config.state_path(isrc_cache.STATE_KEY)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _refusing(path: Path):
+    """``Path.read_text`` refusing ``path`` as an unreadable file, and reading the rest."""
+    real = Path.read_text
+
+    def read_text(self, *args, **kwargs):
+        if self == path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real(self, *args, **kwargs)
+
+    return read_text
+
+
 def test_a_second_account_over_a_fresh_client_asks_nothing_for_an_answered_isrc(clock):
     first = Client({ONE: single()})
     assert account(first, cache(clock)).match_track(identity="1", isrc=ONE) == "9001"
@@ -140,10 +156,8 @@ def test_a_second_account_over_a_fresh_client_asks_nothing_for_an_answered_isrc(
 def test_the_cache_file_sits_beside_the_provider_gate_not_under_the_library():
     assert config.state_file(isrc_cache.STATE_KEY).root is config.StateRoot.INSTALLATION
     assert config.state_file(isrc_cache.LOCK_KEY).root is config.StateRoot.INSTALLATION
-    assert (
-        config.state_path(isrc_cache.STATE_KEY).parent
-        == config.state_path("provider_gate").parent
-    )
+    gate = config.state_path("provider_gate")
+    assert config.state_path(isrc_cache.STATE_KEY).parent == gate.parent
 
 
 def test_a_choice_among_several_releases_is_made_from_a_remembered_answer_with_no_call(clock):
@@ -220,12 +234,22 @@ def test_a_spelling_that_is_not_its_own_fold_is_asked_and_never_kept(clock):
     assert not config.state_path(isrc_cache.STATE_KEY).exists()
 
 
-def test_a_not_found_is_kept_and_asked_again_after_seven_days(clock):
-    client = Client({})
-    made = cache(clock)
-    assert account(client, made).match_track(identity="1", isrc=ONE) is None
-    clock.now += 7 * DAY - 1
-    assert account(client, made).match_track(identity="1", isrc=ONE) is None
+@pytest.mark.parametrize(
+    ("answers", "days", "lives"),
+    [({}, 30, 7), ({ONE: single()}, 3, 3), ({ONE: single()}, None, 30), ({}, 2, 2)],
+    ids=[
+        "not-found-seven-days", "found-the-configured-days", "found-thirty-days-unless-set",
+        "not-found-no-longer-than-a-shorter-setting",
+    ],
+)
+def test_an_answer_is_kept_for_its_lifetime_and_asked_again_after_it(clock, answers, days, lives):
+    """A not found lives seven days, a found answer the configured days, thirty unset."""
+    client = Client(answers)
+    made = isrc_cache.Cache(clock=clock) if days is None else cache(clock, days=days)
+    found = "9001" if answers else None
+    assert account(client, made).match_track(identity="1", isrc=ONE) == found
+    clock.now += lives * DAY - 1
+    assert account(client, made).match_track(identity="1", isrc=ONE) == found
     assert client.asked == [ONE]
 
     clock.now += 1
@@ -241,43 +265,6 @@ def test_the_catalogue_keeps_a_not_found_too(clock, monkeypatch):
 
     assert catalogue(client, made, monkeypatch).tracks_for_isrc(ONE) == ()
     assert client.asked == [ONE]
-
-
-def test_a_found_answer_is_asked_again_after_the_configured_days(clock):
-    client = Client({ONE: single()})
-    made = cache(clock, days=3)
-    account(client, made).match_track(identity="1", isrc=ONE)
-    clock.now += 3 * DAY - 1
-    account(client, made).match_track(identity="1", isrc=ONE)
-    assert client.asked == [ONE]
-
-    clock.now += 1
-    account(client, made).match_track(identity="1", isrc=ONE)
-
-    assert client.asked == [ONE, ONE]
-
-
-def test_a_found_answer_lives_thirty_days_unless_set(clock):
-    client = Client({ONE: single()})
-    made = isrc_cache.Cache(clock=clock)
-    account(client, made).match_track(identity="1", isrc=ONE)
-    clock.now += 30 * DAY - 1
-    account(client, made).match_track(identity="1", isrc=ONE)
-    assert client.asked == [ONE]
-    clock.now += 1
-    account(client, made).match_track(identity="1", isrc=ONE)
-    assert client.asked == [ONE, ONE]
-
-
-def test_a_not_found_lives_no_longer_than_a_shorter_setting(clock):
-    client = Client({})
-    made = cache(clock, days=2)
-    account(client, made).match_track(identity="1", isrc=ONE)
-    clock.now += 2 * DAY
-
-    account(client, made).match_track(identity="1", isrc=ONE)
-
-    assert client.asked == [ONE, ONE]
 
 
 def test_an_expired_answer_is_replaced_by_the_new_one(clock):
@@ -322,20 +309,36 @@ def test_zero_days_asks_every_time_and_writes_nothing(clock, monkeypatch):
     assert not config.state_path(isrc_cache.STATE_KEY).exists()
 
 
+def _ask(seam: str, client: Client, made: isrc_cache.Cache, monkeypatch):
+    if seam == "account":
+        return account(client, made).match_track(identity="1", isrc=ONE)
+    return catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
+
+
+#: Per seam: how many failures exhaust its ladder, what it raises, and what it answers after.
+#: The catalogue's ladder re-raises the client's own failure.
+SEAMS = {"account": (6, CratekitError, "9001"), "catalogue": (10, Exception, None)}
+
+
+@pytest.mark.parametrize("seam", list(SEAMS))
 @pytest.mark.parametrize(
     "failure", [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
     ids=["outage", "rejected-session", "rate-limit"],
 )
-def test_a_failed_lookup_is_never_kept_and_the_next_one_asks(clock, failure):
+def test_a_failed_lookup_is_never_kept_and_the_next_one_asks(clock, monkeypatch, seam, failure):
+    exhausted, raised, answered = SEAMS[seam]
     client = Client({ONE: single()})
-    client.failures = [failure] * 6
+    client.failures = [failure] * exhausted
     made = cache(clock)
-    with pytest.raises(CratekitError):
-        account(client, made).match_track(identity="1", isrc=ONE)
+    with pytest.raises(raised):
+        _ask(seam, client, made, monkeypatch)
     client.failures = []
     asked_before = len(client.asked)
 
-    assert account(client, made).match_track(identity="1", isrc=ONE) == "9001"
+    found = _ask(seam, client, made, monkeypatch)
+
+    if answered is not None:
+        assert found == answered
     assert len(client.asked) == asked_before + 1
 
 
@@ -359,24 +362,6 @@ def test_an_invalid_isrc_on_the_catalogue_is_raised_and_never_kept(clock, monkey
     asked_before = len(client.asked)
 
     assert [t.id for t in catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)] == [9001]
-    assert len(client.asked) == asked_before + 1
-
-
-@pytest.mark.parametrize(
-    "failure", [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
-    ids=["outage", "rejected-session", "rate-limit"],
-)
-def test_the_catalogue_never_keeps_a_failure(clock, monkeypatch, failure):
-    client = Client({ONE: single()})
-    client.failures = [failure] * 10
-    made = cache(clock)
-    with pytest.raises(Exception):  # noqa: B017 - the ladder re-raises the client's own
-        catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
-    client.failures = []
-    asked_before = len(client.asked)
-
-    catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
-
     assert len(client.asked) == asked_before + 1
 
 
@@ -404,9 +389,7 @@ def test_an_outage_then_an_invalid_isrc_on_the_retry_keeps_nothing(clock):
 
 
 def test_a_corrupt_file_is_set_aside_and_the_lookup_succeeds(clock):
-    path = config.state_path(isrc_cache.STATE_KEY)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{ not json", encoding="utf-8")
+    _cache_file("{ not json")
     client = Client({ONE: single()})
     made = cache(clock)
 
@@ -418,9 +401,7 @@ def test_a_corrupt_file_is_set_aside_and_the_lookup_succeeds(clock):
 
 
 def test_a_file_of_another_shape_is_set_aside_too(clock):
-    path = config.state_path(isrc_cache.STATE_KEY)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"schema": 99, "entries": {}}), encoding="utf-8")
+    _cache_file(json.dumps({"schema": 99, "entries": {}}))
     made = cache(clock)
 
     account(Client({ONE: single()}), made).match_track(identity="1", isrc=ONE)
@@ -429,20 +410,11 @@ def test_a_file_of_another_shape_is_set_aside_too(clock):
 
 
 def test_a_file_that_cannot_be_read_answers_nothing_and_is_left_alone(clock, monkeypatch):
-    path = config.state_path(isrc_cache.STATE_KEY)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{}", encoding="utf-8")
-    real = Path.read_text
-
-    def refused(self, *args, **kwargs):
-        if self == path:
-            raise PermissionError(13, "Permission denied", str(self))
-        return real(self, *args, **kwargs)
-
+    path = _cache_file("{}")
     client = Client({ONE: single()})
     made = cache(clock)
     with monkeypatch.context() as scoped:
-        scoped.setattr(Path, "read_text", refused)
+        scoped.setattr(Path, "read_text", _refusing(path))
         assert account(client, made).match_track(identity="1", isrc=ONE) == "9001"
         assert account(client, made).match_track(identity="1", isrc=ONE) == "9001"
 
@@ -488,7 +460,6 @@ def test_two_writer_processes_leave_one_readable_file_holding_both(tmp_path):
     script.write_text(WRITER, encoding="utf-8")
     path, lock = tmp_path / "isrc_cache.json", tmp_path / "isrc_cache.lock"
     env = {"PYTHONPATH": str(SRC_ROOT), "PYTHONDONTWRITEBYTECODE": "1"}
-
 
     children = [
         subprocess.Popen(
@@ -554,10 +525,8 @@ def test_the_setting_reaches_the_cache_both_openers_build(tmp_path, monkeypatch)
     root = tmp_path / "library"
     built = config.from_dict(valid_data(root, provider={"isrc_cache_days": 4}))
     # U261: both openers take the held session, so the stand in has no app client.
-    monkeypatch.setattr(
-        provider_session, "session_for",
-        lambda cfg=None: SimpleNamespace(client=Client({}), app=None),
-    )
+    held = SimpleNamespace(client=Client({}), app=None)
+    monkeypatch.setattr(provider_session, "session_for", lambda cfg=None: held)
 
     assert tidal_account.open_account(built)._cache.days == 4
     assert tidal_catalogue.open_catalogue(built)._cache.days == 4
@@ -599,9 +568,7 @@ def test_doctor_names_a_set_aside_file_and_never_fails():
     import time
 
     clock = Clock(time.time())
-    path = config.state_path(isrc_cache.STATE_KEY)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{ not json", encoding="utf-8")
+    path = _cache_file("{ not json")
     account(Client({ONE: single()}), cache(clock)).match_track(identity="1", isrc=ONE)
 
     finding = _doctor_note()
@@ -695,15 +662,9 @@ def test_the_catalogue_answers_a_class_named_not_found_as_before_and_keeps_nothi
 def test_a_404_status_is_kept_as_a_not_found_at_either_seam(clock, monkeypatch, seam):
     client = Client({ONE: HTTPFailure(404)})
     made = cache(clock)
-
-    def ask():
-        if seam == "account":
-            return account(client, made).match_track(identity="1", isrc=ONE)
-        return catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
-
-    ask()
+    _ask(seam, client, made, monkeypatch)
     asked = len(client.asked)
-    ask()
+    _ask(seam, client, made, monkeypatch)
 
     assert len(client.asked) == asked
     assert stored()["entries"][f"{ONE}|GB"]["tracks"] == []
@@ -715,29 +676,19 @@ def test_a_404_status_is_kept_as_a_not_found_at_either_seam(clock, monkeypatch, 
     ids=["client-not-found", "404", "invalid-isrc", "500", "file-not-found"],
 )
 def test_said_not_found_is_the_clients_own_class_or_a_404_and_nothing_else(failure):
-    kept = isinstance(failure, ObjectNotFound) or getattr(
-        getattr(failure, "response", None), "status_code", None
-    ) == 404
+    response = getattr(failure, "response", None)
+    kept = isinstance(failure, ObjectNotFound) or getattr(response, "status_code", None) == 404
     assert isrc_cache.said_not_found(failure) is kept
 
 
 def test_doctor_tells_a_file_that_does_not_parse_from_one_that_cannot_be_read(monkeypatch):
-    path = config.state_path(isrc_cache.STATE_KEY)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{ not json", encoding="utf-8")
+    path = _cache_file("{ not json")
 
     unparsed = _doctor_note()
     assert "does not parse" in unparsed.detail and "nothing to do" in unparsed.detail
 
-    real = Path.read_text
-
-    def refused(self, *args, **kwargs):
-        if self == path:
-            raise PermissionError(13, "Permission denied", str(self))
-        return real(self, *args, **kwargs)
-
     with monkeypatch.context() as scoped:
-        scoped.setattr(Path, "read_text", refused)
+        scoped.setattr(Path, "read_text", _refusing(path))
         unreadable = _doctor_note()
     assert "could not be read" in unreadable.detail
 

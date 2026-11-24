@@ -1,7 +1,6 @@
 """U79: a row nothing names exactly gets provider candidates, and never a pick.
 
-Everything but the catalogue is real. D1 applies.
-"""
+Everything but the catalogue is real. D1 applies."""
 
 # ruff: noqa: F811 - the fixtures are imported from the ISRC suite by name
 from __future__ import annotations
@@ -27,6 +26,11 @@ from tests.test_intake_missing_isrc import cfg, fresh_cache, library  # noqa: F4
 SUN = ("Aurora Bloom", "Sun Path")
 TIDE = ("Nova Reef", "Tide")
 GLASS = ("Mira Vale", "Glass Hour")
+
+
+@pytest.fixture(autouse=True)
+def _configured(cfg):
+    """Every test runs on a configured machine, so one names ``cfg`` only to read it."""
 
 
 class Hit:
@@ -133,9 +137,7 @@ def test_one_exact_candidate_is_listed_without_review(cfg, library, tmp_path, mo
     assert [one for one in items_of(cfg) if one.kind == candidates.KIND] == []
 
 
-def test_an_original_mix_row_and_a_bare_candidate_are_one_version(
-    cfg, library, tmp_path, monkeypatch
-):
+def test_an_original_mix_row_and_a_bare_candidate_are_one_version(cfg, tmp_path, monkeypatch):
     """The exact test is ``match``'s fold, so the null qualifier folds away."""
     path = tracklist(tmp_path, "AURORA BLOOM - Sun Path (Original Mix)")
     asked = ("AURORA BLOOM", "Sun Path")
@@ -146,7 +148,7 @@ def test_an_original_mix_row_and_a_bare_candidate_are_one_version(
 
 
 def test_a_version_the_row_names_goes_into_the_query_and_into_the_exact_test(
-    cfg, library, tmp_path, monkeypatch
+    cfg, tmp_path, monkeypatch
 ):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path (Extended Mix)")
     fake = searching(monkeypatch, {("Aurora Bloom", "Sun Path Extended Mix"): [
@@ -158,7 +160,7 @@ def test_a_version_the_row_names_goes_into_the_query_and_into_the_exact_test(
     assert ids(envelope["data"]["summary"]) == ["7002"], "the plain cut was listed for a remix"
 
 
-def test_the_same_exact_track_served_twice_is_one_candidate(cfg, library, tmp_path, monkeypatch):
+def test_the_same_exact_track_served_twice_is_one_candidate(tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     searching(monkeypatch, {SUN: [Hit("7001", *SUN), Hit("7001", *SUN)]})
     envelope = ok(path)[0]
@@ -167,14 +169,10 @@ def test_the_same_exact_track_served_twice_is_one_candidate(cfg, library, tmp_pa
 
 # Two exact candidates are offered, not picked
 def two_exact() -> FakeCatalogue:
-    return FakeCatalogue(
-        searches={
-            SUN: [
-                Hit("7001", "Aurora Bloom", "Sun Path", album="Sun Path"),
-                Hit("7009", "Aurora Bloom", "Sun Path", album="Harbour Lights"),
-            ]
-        }
-    )
+    return FakeCatalogue(searches={SUN: [
+        Hit("7001", "Aurora Bloom", "Sun Path", album="Sun Path"),
+        Hit("7009", "Aurora Bloom", "Sun Path", album="Harbour Lights"),
+    ]})
 
 
 def test_two_exact_candidates_are_offered_and_neither_is_picked(
@@ -208,9 +206,7 @@ def test_two_exact_candidates_are_offered_and_neither_is_picked(
     assert not list(lists_dir(library).glob("*"))
 
 
-def test_an_exact_candidate_beside_a_row_that_cannot_be_read_is_offered(
-    cfg, library, tmp_path, monkeypatch
-):
+def test_an_exact_candidate_beside_a_row_that_cannot_be_read_is_offered(cfg, tmp_path, monkeypatch):
     """The unreadable row could be the second exact candidate, so nothing is picked."""
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     nameless = Hit("7004", "", "Sun Path")
@@ -224,7 +220,7 @@ def test_an_exact_candidate_beside_a_row_that_cannot_be_read_is_offered(
 
 
 def test_an_exact_candidate_beside_an_exact_one_with_no_identifier_is_offered(
-    cfg, library, tmp_path, monkeypatch
+    cfg, tmp_path, monkeypatch
 ):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     searching(monkeypatch, {SUN: [Hit("7001", *SUN), Hit("", *SUN)]})
@@ -236,7 +232,7 @@ def test_an_exact_candidate_beside_an_exact_one_with_no_identifier_is_offered(
 
 
 def test_a_title_with_two_readings_is_offered_when_each_reading_has_a_candidate(
-    cfg, library, tmp_path, monkeypatch
+    cfg, tmp_path, monkeypatch
 ):
     """``Sun Path - Dub`` may be a dub version or a title ending in Dub."""
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path - Dub")
@@ -253,20 +249,14 @@ def test_a_title_with_two_readings_is_offered_when_each_reading_has_a_candidate(
 
 # A near miss is offered with its score and never listed until accepted
 def near_miss() -> FakeCatalogue:
-    return FakeCatalogue(
-        searches={
-            SUN: [
-                Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix"),
-                Hit("7005", "Aurora Bloome", "Sun Path"),
-                Hit("7006", "Quite Another Act", "Wholly Different"),
-            ]
-        }
-    )
+    return FakeCatalogue(searches={SUN: [
+        Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix"),
+        Hit("7005", "Aurora Bloome", "Sun Path"),
+        Hit("7006", "Quite Another Act", "Wholly Different"),
+    ]})
 
 
-def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
-    cfg, library, tmp_path, monkeypatch
-):
+def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(cfg, tmp_path, monkeypatch):
     """A near miss is offered, asked once however often it is listed, and listed as accepted."""
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     fake = bind(monkeypatch, near_miss())
@@ -303,7 +293,7 @@ def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
 
 
 # An accepted candidate is listed by the next run
-def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, library, tmp_path, monkeypatch):
+def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     searching(monkeypatch, {SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")]})
     found(path)
@@ -332,7 +322,7 @@ def test_an_accepted_candidate_the_library_now_holds_is_not_listed_again(
     assert "already in the library" in checks(envelope)["accepted"]["detail"]
 
 
-def test_a_rejected_row_is_reported_and_never_searched_again(cfg, library, tmp_path, monkeypatch):
+def test_a_rejected_row_is_reported_and_never_searched_again(cfg, tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Nova Reef - Tide")
     fake = searching(monkeypatch, {
         SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")],
@@ -351,7 +341,7 @@ def test_a_rejected_row_is_reported_and_never_searched_again(cfg, library, tmp_p
 
 
 # No candidates is reported, not silent
-def test_no_candidate_beside_a_listed_row_is_a_failing_check(cfg, library, tmp_path, monkeypatch):
+def test_no_candidate_beside_a_listed_row_is_a_failing_check(tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Mira Vale - Glass Hour")
     bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", "Aurora Bloom", "Sun Path")]}))
     envelope, summary = ok(path)
@@ -364,7 +354,7 @@ def test_no_candidate_beside_a_listed_row_is_a_failing_check(cfg, library, tmp_p
 
 
 def test_no_candidate_for_any_row_refuses_rather_than_reading_as_nothing_to_do(
-    cfg, library, tmp_path, monkeypatch
+    cfg, tmp_path, monkeypatch
 ):
     path = tracklist(tmp_path, "Mira Vale - Glass Hour")
     searching(monkeypatch, {GLASS: [Hit("7006", "Quite Another Act", "Wholly Different")]})
@@ -386,9 +376,7 @@ def test_a_provider_that_cannot_search_refuses_with_nothing_offered_or_written(
     assert not lists_dir(library).exists() or not list(lists_dir(library).glob("*"))
 
 
-def test_a_failure_on_the_second_row_leaves_the_first_row_unoffered(
-    cfg, library, tmp_path, monkeypatch
-):
+def test_a_failure_on_the_second_row_leaves_the_first_row_unoffered(cfg, tmp_path, monkeypatch):
     """Every answer is in hand before any offer, so a partial pass offers nothing."""
     class SecondFails(FakeCatalogue):
         def search_tracks(self, artist: str, title: str):
@@ -403,7 +391,7 @@ def test_a_failure_on_the_second_row_leaves_the_first_row_unoffered(
 
 
 # The library is asked first
-def test_an_owned_row_is_never_searched_for(cfg, library, tmp_path, monkeypatch):
+def test_an_owned_row_is_never_searched_for(library, tmp_path, monkeypatch):
     owned(library, "Aurora Bloom - Sun Path.flac")
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Nova Reef - Tide")
     fake = searching(monkeypatch, {SUN: [Hit("7001", *SUN)], TIDE: [Hit("7010", *TIDE)]})
@@ -437,7 +425,7 @@ def test_a_music_folder_that_is_not_there_refuses_rather_than_listing_everything
     assert fake.searched_for == []
 
 
-def test_the_same_line_twice_is_searched_once_and_listed_once(cfg, library, tmp_path, monkeypatch):
+def test_the_same_line_twice_is_searched_once_and_listed_once(tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Aurora Bloom - Sun Path")
     fake = bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN)]}))
     envelope = ok(path)[0]
@@ -451,13 +439,8 @@ def test_the_unlisted_list_is_read_and_its_found_list_sits_beside_the_jobs(
 ):
     out = lists_dir(library)
     wanted = match.read_text_lines("Aurora Bloom - Sun Path")
-    written = listdoc.write(
-        out,
-        "intake-j1",
-        (),
-        {},
-        handed_on=[listdoc.HandedOn(listdoc.rows_of(wanted)[0], "it carries no ISRC")],
-    )
+    handed = [listdoc.HandedOn(listdoc.rows_of(wanted)[0], "it carries no ISRC")]
+    written = listdoc.write(out, "intake-j1", (), {}, handed_on=handed)
     assert written.unlisted_path is not None
     bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN)]}))
     envelope = ok(written.unlisted_path)[0]
@@ -483,7 +466,7 @@ def test_the_found_list_is_named_for_its_input(given, named):
 
 
 def test_a_folder_that_cannot_be_written_is_a_refusal_and_not_an_internal_error(
-    cfg, library, tmp_path, monkeypatch
+    cfg, tmp_path, monkeypatch
 ):
     path = tracklist(tmp_path, "Nova Reef - Tide")
     bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
@@ -499,7 +482,7 @@ def test_a_folder_that_cannot_be_written_is_a_refusal_and_not_an_internal_error(
     assert envelope["cause"]["reason"] == "path-permission-denied"
 
 
-def test_a_disk_that_refuses_the_write_is_this_verbs_refusal(cfg, library, tmp_path, monkeypatch):
+def test_a_disk_that_refuses_the_write_is_this_verbs_refusal(tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Nova Reef - Tide")
     bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
     def full(*_args, **_kwargs):
@@ -510,7 +493,7 @@ def test_a_disk_that_refuses_the_write_is_this_verbs_refusal(cfg, library, tmp_p
     assert "could not be written" in envelope["cause"]["message"]
 
 
-def test_skip_failed_means_nothing_for_a_list_and_is_refused(cfg, library, tmp_path):
+def test_skip_failed_means_nothing_for_a_list_and_is_refused(tmp_path):
     envelope = refused(tracklist(tmp_path, "Aurora Bloom - Sun Path"), "--skip-failed")
     assert envelope["cause"]["reason"] == "intake-list-unusable"
 
@@ -525,15 +508,10 @@ def test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused(
 ):
     """The run after an answer lists more under a new name rather than being refused."""
     path = tracklist(tmp_path, "Nova Reef - Tide", "Aurora Bloom - Sun Path")
-    bind(
-        monkeypatch,
-        FakeCatalogue(
-            searches={
-                TIDE: [Hit("7010", *TIDE)],
-                SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")],
-            }
-        ),
-    )
+    searching(monkeypatch, {
+        TIDE: [Hit("7010", *TIDE)],
+        SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")],
+    })
     _code, first = found(path)
     # THE SAME WORK TWICE rewrites the same list.
     again = ok(path)[0]
@@ -559,22 +537,11 @@ def test_two_tracklists_of_one_file_name_in_two_folders_do_not_collide(
 
 
 def test_a_missing_row_of_another_services_list_is_searched_for_and_not_dropped(
-    cfg, library, tmp_path, monkeypatch
+    cfg, tmp_path, monkeypatch
 ):
     """Its ref is that service's id, which the emitter writes as none, so it is searched."""
-    path = tmp_path / "other.json"
-    path.write_text(
-        json.dumps(
-            {
-                "list": 1,
-                "origin": "spotify",
-                "tracks": [
-                    {"track": {"id": "sp1", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]}}
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    sun = {"id": "sp1", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]}
+    path = _spotify(tmp_path / "other.json", sun)
     fake = bind(monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN)]}))
     envelope = ok(path)[0]
     assert fake.searched_for == [SUN]
@@ -582,7 +549,7 @@ def test_a_missing_row_of_another_services_list_is_searched_for_and_not_dropped(
 
 
 def test_a_full_page_is_never_the_whole_answer_so_its_one_exact_hit_is_offered(
-    cfg, library, tmp_path, monkeypatch
+    cfg, tmp_path, monkeypatch
 ):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     filler = [
@@ -597,7 +564,7 @@ def test_a_full_page_is_never_the_whole_answer_so_its_one_exact_hit_is_offered(
     assert "filled its page" in item.payload["why"]
 
 
-def test_one_hit_short_of_a_full_page_is_a_whole_answer(cfg, library, tmp_path, monkeypatch):
+def test_one_hit_short_of_a_full_page_is_a_whole_answer(tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     filler = [
         Hit(str(8000 + n), "Quite Another Act", f"Wholly Different {n}")
@@ -617,15 +584,12 @@ def test_one_hit_short_of_a_full_page_is_a_whole_answer(cfg, library, tmp_path, 
     ids=["the-version-reading", "the-title-reading"],
 )
 def test_a_title_with_two_readings_is_never_listed_on_one_candidate(
-    hit, cfg, library, tmp_path, monkeypatch
+    hit, cfg, tmp_path, monkeypatch
 ):
     """The string cannot say which reading was meant, so no candidate is THE one."""
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path - Dub")
     wanted = match.read_text_lines("Aurora Bloom - Sun Path - Dub")[0]
-    bind(
-        monkeypatch,
-        FakeCatalogue(searches={(wanted.artist, candidates.query_title(wanted)): [hit]}),
-    )
+    searching(monkeypatch, {(wanted.artist, candidates.query_title(wanted)): [hit]})
     envelope = ok(path)[0]
     assert envelope["data"]["summary"]["written"] == 0
     item = the_item(cfg)
@@ -647,33 +611,15 @@ def test_a_failed_search_says_which_offers_it_did_not_make(cfg, library, tmp_pat
     assert "take the row out of the list" in " ".join(envelope["cause"]["remediation"]["steps"])
 
 
-def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(
-    cfg, library, tmp_path, monkeypatch
-):
-    path = tmp_path / "mixed.json"
-    path.write_text(
-        json.dumps(
-            {
-                "list": 1,
-                "origin": "spotify",
-                "tracks": [
-                    {
-                        "track": {
-                            "id": "sp1",
-                            "name": "Tide",
-                            "artists": [{"name": "Nova Reef"}],
-                            "external_ids": {"isrc": "QZAAA2600001"},
-                        }
-                    },
-                    {"track": {"id": "sp2", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]}},
-                ],
-            }
-        ),
-        encoding="utf-8",
+def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(cfg, tmp_path, monkeypatch):
+    path = _spotify(
+        tmp_path / "mixed.json",
+        {"id": "sp1", "name": "Tide", "artists": [{"name": "Nova Reef"}],
+         "external_ids": {"isrc": "QZAAA2600001"}},
+        {"id": "sp2", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]},
     )
-    fake = FakeCatalogue(
-        isrcs={"QZAAA2600001": [Hit("7010", *TIDE)]}, searches={SUN: [Hit("7001", *SUN)]}
-    )
+    isrcs = {"QZAAA2600001": [Hit("7010", *TIDE)]}
+    fake = FakeCatalogue(isrcs=isrcs, searches={SUN: [Hit("7001", *SUN)]})
     resolved: list[object] = []
     def resolve_once(cfg_):
         resolved.append(cfg_)
@@ -684,6 +630,13 @@ def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(
     summary = envelope["data"]["summary"]
     assert (summary["by_isrc"], summary["by_search"], summary["written"]) == (1, 1, 2)
     assert ids(summary) == ["7010", "7001"]
+
+
+def _spotify(path: Path, *tracks: dict) -> Path:
+    """A list another service's export wrote, one entry per track."""
+    body = {"list": 1, "origin": "spotify", "tracks": [{"track": one} for one in tracks]}
+    path.write_text(json.dumps(body), encoding="utf-8")
+    return path
 
 
 # The proposal, below the verb
@@ -707,10 +660,8 @@ def test_more_candidates_than_the_screen_holds_are_truncated_and_counted(cfg):
 def test_an_exact_candidate_under_the_floor_of_nothing_is_still_first():
     """Exact outranks score, so a near miss scoring 100 never leads an exact one."""
     wanted, answer = answer_of(
-        "Aurora Bloom - Sun Path",
-        Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix"),
-        Hit("7001", "Aurora Bloom", "Sun Path"),
-        Hit("7009", "Aurora Bloom", "Sun Path"),
+        "Aurora Bloom - Sun Path", Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix"),
+        Hit("7001", "Aurora Bloom", "Sun Path"), Hit("7009", "Aurora Bloom", "Sun Path"),
     )
     assert [one.track.ref for one in candidates.shown(answer)] == ["7001", "7009", "7002"]
     assert candidates.sole_exact(answer) is None
@@ -718,11 +669,7 @@ def test_an_exact_candidate_under_the_floor_of_nothing_is_still_first():
 
 def test_the_only_exact_candidate_carrying_no_identifier_is_not_listed():
     """Two exact hits with no id share ONE id, the empty one, and must still not be listed."""
-    wanted, answer = answer_of(
-        "Aurora Bloom - Sun Path",
-        Hit("", "Aurora Bloom", "Sun Path"),
-        Hit("", "Aurora Bloom", "Sun Path"),
-    )
+    wanted, answer = answer_of("Aurora Bloom - Sun Path", Hit("", *SUN), Hit("", *SUN))
     assert candidates.sole_exact(answer) is None
 
 
@@ -739,17 +686,11 @@ def test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing(cfg)
     wanted = match.read_text_lines("Aurora Bloom - Sun Path")[0]
     other = match.read_row(Hit("9999", "Nova Reef", "Tide"), origin=match.TIDAL, position=1)
     with review.open_store(cfg) as items:
+        track = {"track": intake_cli.frozen(other)}
+        option = review.Option(option_id="7001", summary="one", detail=track)
         held = review.offer(
-            items,
-            queue=candidates.QUEUE,
-            kind=candidates.KIND,
-            identity=candidates.identity(wanted),
-            payload={},
-            options=[
-                review.Option(
-                    option_id="7001", summary="one", detail={"track": intake_cli.frozen(other)}
-                )
-            ],
+            items, queue=candidates.QUEUE, kind=candidates.KIND,
+            identity=candidates.identity(wanted), payload={}, options=[option],
             handler_key="intake.missing",
         )
         review.resolve(items, held.item_id, review.Verdict.ACCEPTED, option="7001", actor="suite")
@@ -759,8 +700,7 @@ def test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing(cfg)
 
 
 def test_the_identity_is_the_folded_row_and_not_its_spelling():
-    """Keyed on the folded row, and on a title's own identity, so an accepted ``💧`` is never
-    listed for a later ``🌊`` row (review round one's fourth finding)."""
+    """Keyed on the folded row and a title's identity (review round one's fourth finding)."""
     one = match.read_text_lines("Aurora Bloom - Sun Path (Original Mix)")[0]
     two = match.read_text_lines("AURORA  BLOOM - sun path")[0]
     other = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
@@ -790,26 +730,20 @@ def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkey
     ids=["another-emoji", "the-same-emoji"],
 )
 def test_a_search_answered_by_another_emoji_title_is_not_exact(line, title, exact):
-    """Two emoji titles by one artist fold to one recording token, so the exact flag compares the
-    recording's identity: ``🔥`` answering ``💧`` is never listed without a person."""
+    """Two emoji titles fold to one recording token, so exact compares the recording's identity."""
     _wanted, answer = answer_of(line, Hit("7001", "Aurora Bloom", title))
     assert [one.exact for one in answer.candidates] == [exact]
     assert (candidates.sole_exact(answer) is not None) is exact
 
 
-def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, monkeypatch):
+def test_two_emoji_rows_are_each_searched_and_listed(tmp_path, monkeypatch):
     """Two emoji titles by one artist share a match id, and each is still searched and listed."""
     drop, wave = "\U0001f4a7", "\U0001f30a"
     path = tracklist(tmp_path, f"Aurora Bloom - {drop}", f"Aurora Bloom - {wave}")
-    fake = bind(
-        monkeypatch,
-        FakeCatalogue(
-            searches={
-                ("Aurora Bloom", drop): [Hit("7001", "Aurora Bloom", drop)],
-                ("Aurora Bloom", wave): [Hit("7002", "Aurora Bloom", wave)],
-            }
-        ),
-    )
+    fake = searching(monkeypatch, {
+        ("Aurora Bloom", drop): [Hit("7001", "Aurora Bloom", drop)],
+        ("Aurora Bloom", wave): [Hit("7002", "Aurora Bloom", wave)],
+    })
     envelope = ok(path)[0]
     assert sorted(fake.searched_for) == sorted([("Aurora Bloom", drop), ("Aurora Bloom", wave)])
     body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())

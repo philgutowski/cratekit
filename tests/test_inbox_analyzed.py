@@ -96,6 +96,11 @@ def _screen(refused: dict) -> dict:
     return refused["cause"]["detail"]["shown"]
 
 
+def _refused_before_the_gate(code: int, refused: dict, reason: str) -> None:
+    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
+    assert refused["cause"]["reason"] == reason, refused
+
+
 FIVE = ("Alpha", "Bravo", "Charlie", "Delta", "Echo")
 TWO = ("Foxtrot", "Golf")
 
@@ -235,12 +240,8 @@ def test_after_an_analysis_of_three_the_clear_removes_exactly_three_and_no_track
     assert after == before
     assert _titles(cfg, str(batch)) == list(FIVE)
     # The removal is a soft delete: the rows stay, marked.
-    marked = _query(
-        cfg,
-        "SELECT COUNT(*) FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 1",
-        analyze_id,
-    )
-    assert marked == [(3,)]
+    sql = "SELECT COUNT(*) FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 1"
+    assert _query(cfg, sql, analyze_id) == [(3,)]
     record = [r for r in session.records(cfg) if r.workflow == analyzed.WORKFLOW]
     assert len(record) == 1 and record[0].state is session.SessionState.CLOSED
     assert record[0].detail[analyzed.RECORD_KEY]["playlist"]["id"] == analyze_id
@@ -300,9 +301,8 @@ def test_a_row_removed_from_the_collection_or_missing_from_it_stays_and_is_named
     assert item["action"] == analyzed.WAIT and item["why"] == analyzed.ROW_REMOVED
     (ghost,) = [item for item in acted["data"]["items"] if item["content_id"] == "ghost"]
     assert ghost["action"] == analyzed.WAIT and ghost["why"] == analyzed.NO_ROW
-    assert _query(
-        cfg, "SELECT rb_local_deleted FROM djmdSongPlaylist WHERE ID = 'sp-ghost'"
-    ) == [(0,)]
+    sql = "SELECT rb_local_deleted FROM djmdSongPlaylist WHERE ID = 'sp-ghost'"
+    assert _query(cfg, sql) == [(0,)]
     assert acted["data"]["totals"]["removed"] == 1
 
 
@@ -362,8 +362,7 @@ def test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused(nat
     # A BATCH NAMED ANALYZE is refused before the gate and nothing moves.
     _stage(cfg, silence, "Alpha.flac")
     code, refused = drive(["intake", "land", "--name", native.ANALYZE])
-    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
-    assert refused["cause"]["reason"] == "intake-list-unusable", refused
+    _refused_before_the_gate(code, refused, "intake-list-unusable")
     assert "no batch may take it" in refused["cause"]["message"]
     assert _analyze_nodes(cfg, root_id) == []
     staged = Path(cfg.paths.download_staging).glob("*.flac")
@@ -372,13 +371,11 @@ def test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused(nat
 
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
     code, refused = drive(VERB)
-    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
-    assert refused["cause"]["reason"] == "backup-acknowledgment-missing", refused
+    _refused_before_the_gate(code, refused, "backup-acknowledgment-missing")
     # Acknowledged, an intake tree on the bridge is refused naming the cutover.
     session.record_acknowledgment(machine, terminal=lambda: True)
     code, refused = drive(VERB)
-    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
-    assert refused["cause"]["reason"] == "tree-unconverged", refused
+    _refused_before_the_gate(code, refused, "tree-unconverged")
     assert "tree cutover" in str(refused["cause"])
 
 
@@ -413,9 +410,8 @@ def test_the_playlist_is_inbox_slash_analyze_and_no_account_playlist_takes_its_n
     named = batch_name.inbox_names(["Analyze", "Sunset"], ("Analyze",), batch="2026-10-28 x")
     assert named == ("Analyze 2026-10-03", "Sunset 2026-10-03")
     assert batch_name.ANALYZE not in named
-    assert batch_name.inbox_names(["Analyze"], ("Analyze 2026-10-03",), batch="b") == (
-        "Analyze 2026-10-03 2",
-    )
+    again = batch_name.inbox_names(["Analyze"], ("Analyze 2026-10-03",), batch="b")
+    assert again == ("Analyze 2026-10-03 2",)
 
 
 def test_inbox_refill_never_takes_analyze_for_an_account_playlist_of_that_name(
@@ -427,13 +423,9 @@ def test_inbox_refill_never_takes_analyze_for_an_account_playlist_of_that_name(
     cfg, root_id = native_library
     _owned(cfg, silence, ("Held1", "Held2"))
     analyze_id = _analyze_id(cfg, root_id)
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = ? WHERE Title LIKE 'Held%'",
-            (ANALYSIS_PATH,),
-        )
-    conn.close()
+    sql = "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = ? WHERE Title LIKE 'Held%'"
+    with contextlib.closing(sqlite3.connect(cfg.library.db_path)) as conn, conn:
+        conn.execute(sql, (ANALYSIS_PATH,))
     code, acted, _ = _clear_acts()
     assert code == int(ExitCode.OK) and acted["data"]["totals"]["removed"] == 2, acted
     swept(cfg, {"pl-a": (native.ANALYZE, ("Held1", "Held2"))})
@@ -453,14 +445,9 @@ def test_the_rotation_never_takes_analyze_for_a_batch_whatever_a_record_says():
     row = SimpleNamespace(ID="q", Name=native.ANALYZE, Attribute=0, rb_local_deleted=0)
     # A handle holding no membership, since a left playlist is counted (U214).
     empty = SimpleNamespace(get_playlist_songs=lambda **_where: [])
-    found = rotate._classify(
-        None,
-        empty,
-        row,
-        place="INBOX",
-        found=rotate.Landings(by_id={"q": date(2025, 1, 1)}, by_name={}, unreadable=0),
-        today=date(2026, 10, 28),
-    )
+    landings = rotate.Landings(by_id={"q": date(2025, 1, 1)}, by_name={}, unreadable=0)
+    today = date(2026, 10, 28)
+    found = rotate._classify(None, empty, row, place="INBOX", found=landings, today=today)
     assert isinstance(found, rotate.Left) and found.kind == "analyze", found
 
 
@@ -472,9 +459,8 @@ def test_a_removal_that_did_not_take_is_refused_after_the_commit(
     _land(cfg, silence, "2026-10-28_two", TWO)
     _analysed(cfg, *TWO)
     # A writer that answers the ids and marks nothing, so the commit holds no change.
-    monkeypatch.setattr(
-        analyzed.rb_writer, "remove_memberships", lambda db, playlist, ids: list(ids)
-    )
+    marks_nothing = lambda db, playlist, ids: list(ids)
+    monkeypatch.setattr(analyzed.rb_writer, "remove_memberships", marks_nothing)
     code, acted, _ = _clear_acts()
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "session-committed-unverified", acted

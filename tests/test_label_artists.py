@@ -27,8 +27,6 @@ QUEUE = str(Queue.LABEL_RELEASE)
 
 
 # ── Fixtures: ``library``, ``cfg`` and ``bind`` are the approved suite's ─────
-
-
 def offered(cfg: config.Config, *release_ids: str, artist: str = ADDRESS, **stamp) -> str:
     """Each release pending in review, as the sweep's own producer files it. The last item id."""
     with review.open_store(cfg) as items:
@@ -73,7 +71,6 @@ def artists() -> tuple[int, dict]:
 
 
 def repaired_ok(monkeypatch=None, fake=None) -> dict:
-    """Run the verb, after binding ``fake`` when given, which must succeed."""
     if fake is not None:
         bind(monkeypatch, fake)
     code, envelope = artists()
@@ -82,7 +79,6 @@ def repaired_ok(monkeypatch=None, fake=None) -> dict:
 
 
 def unasked(monkeypatch, release_artists: dict | None = None) -> dict:
-    """Run the verb over a fake that must never be asked. Its envelope."""
     fake = StrictCatalogue(release_artists=release_artists or {"r-1": "Harbour Act"})
     envelope = repaired_ok(monkeypatch, fake)
     assert fake.artists_asked_for == []
@@ -104,8 +100,6 @@ def check(envelope: dict, key: str) -> dict:
 
 
 # ── 1. What an address is ────────────────────────────────────────────────────
-
-
 @pytest.mark.parametrize("value", [
     ADDRESS, "<tidalapi.artist.Artist object at 0x10b77ec00>", "<Artist object at 0xABCDEF>",
     f"  {ADDRESS}  ",
@@ -124,36 +118,28 @@ def test_a_name_is_never_read_as_an_address(value):
 
 
 # ── 2. The brief's five scenarios ────────────────────────────────────────────
-
-
 def test_an_open_item_reading_an_address_is_given_the_name_and_nothing_else_moves(cfg, monkeypatch):
-    stamp = {
-        genre_gate.GATE_FIELD: "pass", genre_gate.GENRES_FIELD: ["Dance"],
-        genre_gate.GATE_ANSWER_FIELD: "matched",
-    }
+    stamp = {genre_gate.GATE_FIELD: "pass", genre_gate.GENRES_FIELD: ["Dance"],
+             genre_gate.GATE_ANSWER_FIELD: "matched"}
     item_id = offered(cfg, "r-1", **stamp)
     before = stored(cfg, item_id)
     envelope = repaired_ok(monkeypatch, StrictCatalogue(release_artists={"r-1": "Harbour Act"}))
     after = stored(cfg, item_id)
     assert after.payload["artist"] == "Harbour Act"
-    assert {k: v for k, v in after.payload.items() if k != "artist"} == {
-        k: v for k, v in before.payload.items() if k != "artist"
-    }
+    unchanged = {k: v for k, v in before.payload.items() if k != "artist"}
+    assert {k: v for k, v in after.payload.items() if k != "artist"} == unchanged
     assert set(after.payload) == set(before.payload)
     assert after.verdict is None
-    assert (after.ordinal, after.created, after.handler_key, after.kind) == (
-        before.ordinal, before.created, before.handler_key, before.kind,
-    )
+    kept = (before.ordinal, before.created, before.handler_key, before.kind)
+    assert (after.ordinal, after.created, after.handler_key, after.kind) == kept
     assert envelope["outcome"] == "ok"
     assert counts(envelope["data"]["summary"]) == zeroes(repaired=1)
-    assert envelope["data"]["summary"]["releases"] == [
-        {
-            "release_id": "r-1", "item_id": item_id, "label_id": "tide-works",
-            "label_name": "Tide Works", "title": "Release r-1", "outcome": "repaired",
-            "artist": "Harbour Act",
-            "said": "release r-1 ('Release r-1') on Tide Works now reads its artist, Harbour Act",
-        }
-    ]
+    assert envelope["data"]["summary"]["releases"] == [{
+        "release_id": "r-1", "item_id": item_id, "label_id": "tide-works",
+        "label_name": "Tide Works", "title": "Release r-1", "outcome": "repaired",
+        "artist": "Harbour Act",
+        "said": "release r-1 ('Release r-1') on Tide Works now reads its artist, Harbour Act",
+    }]
     assert envelope["data"]["summary"]["addresses"] == 1
     assert check(envelope, "release.r-1")["status"] == "ok"
     assert "Harbour Act" in check(envelope, "release.r-1")["detail"]
@@ -204,9 +190,8 @@ def test_the_provider_is_asked_once_for_each_repaired_item_and_never_for_the_oth
     settled = offered(cfg, "r-3")
     decided(cfg, settled, review.Verdict.ACCEPTED)
     second = offered(cfg, "r-4")
-    fake = StrictCatalogue(
-        release_artists={"r-1": "Harbour Act", "r-2": "X", "r-3": "Y", "r-4": "Quay Act"}
-    )
+    answers = {"r-1": "Harbour Act", "r-2": "X", "r-3": "Y", "r-4": "Quay Act"}
+    fake = StrictCatalogue(release_artists=answers)
     envelope = repaired_ok(monkeypatch, fake)
     assert fake.artists_asked_for == ["r-1", "r-4"]
     assert fake.releases_asked_for == []
@@ -220,8 +205,6 @@ def test_the_provider_is_asked_once_for_each_repaired_item_and_never_for_the_oth
 
 
 # ── 3. The queue with nothing to repair, and the second run ──────────────────
-
-
 def never_opened(cfg: object):
     raise AssertionError("the catalogue was opened with no release to read")
 
@@ -254,8 +237,6 @@ def test_a_second_run_asks_about_nothing_the_first_repaired(cfg, monkeypatch):
 
 
 # ── 4. An address is never replaced by nothing ───────────────────────────────
-
-
 @pytest.mark.parametrize("nothing", ["", "   "])
 def test_a_release_the_provider_names_no_artist_for_is_left_reading_what_it_read(
     cfg, monkeypatch, nothing
@@ -270,7 +251,6 @@ def test_a_release_the_provider_names_no_artist_for_is_left_reading_what_it_read
 
 
 def unread_refusal(monkeypatch, fake) -> dict:
-    """The refusal a run over ``fake`` ends on when the provider failed a read. Its cause."""
     bind(monkeypatch, fake)
     code, envelope = artists()
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
@@ -313,8 +293,6 @@ def test_a_lookup_error_that_is_not_the_seams_own_is_unread_and_never_not_served
 
 
 # ── 5. When the run stops ────────────────────────────────────────────────────
-
-
 def test_three_reads_failing_in_a_row_stop_the_run_and_say_what_was_left(cfg, monkeypatch):
     offered(cfg, "r-1", "r-2", "r-3", "r-4", "r-5")
     fake = UnreadableCatalogue()
@@ -338,8 +316,6 @@ def test_an_outage_over_the_last_releases_of_a_run_is_the_same_refusal(cfg, monk
 
 
 class Flaky(StrictCatalogue):
-    """Fails every read of a release named in ``failing`` and answers the rest."""
-
     def __init__(self, *args, failing: tuple[str, ...], **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.failing = failing
@@ -361,11 +337,8 @@ def test_an_answer_between_failures_keeps_the_run_going(cfg, monkeypatch):
     assert cause["detail"]["left"] == 0
     assert cause["remediation"]["steps"][-1].startswith("1 release(s) were given their artist")
     with review.open_store(cfg) as items:
-        repaired = [
-            item.payload["identity"]
-            for item in review.list_items(items, queue=QUEUE, limit=None).items
-            if item.payload["artist"] == "Harbour Act"
-        ]
+        listed = review.list_items(items, queue=QUEUE, limit=None).items
+        repaired = [i.payload["identity"] for i in listed if i.payload["artist"] == "Harbour Act"]
     assert repaired == ["r-3"], "a repair made before the refusal did not stay made"
 
 
@@ -378,8 +351,6 @@ def test_a_release_that_is_gone_does_not_count_towards_an_outage(cfg, monkeypatc
 
 
 class ExpiresAfter(StrictCatalogue):
-    """Answers ``answers`` reads and then refuses as the seam itself refuses."""
-
     def __init__(self, *args, answers: int, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.answers = answers
@@ -430,8 +401,6 @@ def test_a_catalogue_that_cannot_be_opened_refuses_and_repairs_nothing(cfg, monk
 
 
 # ── 6. What changes while a release is being read ────────────────────────────
-
-
 class Meanwhile(StrictCatalogue):
     """Runs ``during`` inside the read, as another process would act during it."""
 
@@ -458,9 +427,8 @@ def test_a_release_decided_while_it_was_being_read_is_not_rewritten(cfg, monkeyp
 
 def test_a_release_that_left_review_while_it_was_being_read_is_not_filed_again(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
-    during = Meanwhile(
-        release_artists={"r-1": "Harbour Act"}, during=lambda rid: withheld(cfg, item_id)
-    )
+    left = lambda rid: withheld(cfg, item_id)
+    during = Meanwhile(release_artists={"r-1": "Harbour Act"}, during=left)
     envelope = repaired_ok(monkeypatch, during)
     with review.open_store(cfg) as items:
         assert review.find(items, item_id) is None
@@ -509,14 +477,11 @@ def test_the_counts_always_sum_to_the_addresses_and_the_items_left_alone(cfg, mo
     summary = repaired_ok(monkeypatch, fake)["data"]["summary"]
     assert counts(summary) == zeroes(repaired=1, not_served=1, already_fine=2)
     assert summary["addresses"] == 2
-    assert summary["addresses"] == sum(
-        summary[word] for word in artists_cli.OUTCOMES if word != "already_fine"
-    )
+    addressed = [word for word in artists_cli.OUTCOMES if word != "already_fine"]
+    assert summary["addresses"] == sum(summary[word] for word in addressed)
 
 
 # ── 6b. The store: a rewrite made from the payload as it stands ──────────────
-
-
 def test_a_rewrite_given_a_function_is_handed_the_payload_and_writes_what_it_returns(cfg):
     item_id = offered(cfg, "r-1", stamped="by the sweep")
     seen: list[dict] = []
@@ -597,8 +562,6 @@ def test_a_rewrite_given_a_payload_still_replaces_it_whole(cfg):
 
 
 # ── 7. Items the verb cannot read a release for ──────────────────────────────
-
-
 def test_an_item_carrying_a_verdict_this_build_cannot_read_is_left_and_not_asked_about(
     cfg, monkeypatch
 ):
@@ -615,10 +578,8 @@ def test_an_item_carrying_a_verdict_this_build_cannot_read_is_left_and_not_asked
 def unidentified(cfg: config.Config, item_id: str, payload: dict) -> None:
     """Make an item one that arrived by import: no identity, and this payload."""
     with review.open_store(cfg) as items, items.immediate() as conn:
-        conn.execute(
-            "UPDATE review_items SET identity = NULL, payload = ? WHERE item_id = ?",
-            (json.dumps(payload), item_id),
-        )
+        sql = "UPDATE review_items SET identity = NULL, payload = ? WHERE item_id = ?"
+        conn.execute(sql, (json.dumps(payload), item_id))
 
 
 def test_an_item_that_names_no_release_is_left_and_nothing_is_read(cfg, monkeypatch):
@@ -707,8 +668,6 @@ def test_another_queues_item_reading_an_address_is_not_this_verbs(cfg, monkeypat
 
 
 # ── 8. What the verb declares, and what a person reads ───────────────────────
-
-
 def test_the_verb_declares_what_it_is():
     entry = registry.entry("label.artists")
     assert entry.output_schema == "diagnostic/1"

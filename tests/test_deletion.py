@@ -228,6 +228,10 @@ def _content(cfg, name, content_id, **columns):
     return _at(str(Path(cfg.library.root) / "Music" / name), content_id, **columns)
 
 
+def _kinds(items) -> list:
+    return [item.category for item in items]
+
+
 def _read(*rows):
     """The removed rows the reader takes from ``rows``."""
     return library.read_collection(FakeQuery(rows)).removed
@@ -266,9 +270,8 @@ def test_the_watermark_never_moves_backwards(cfg):
 def test_advancing_against_a_different_database_refuses(cfg):
     store = watermark.WatermarkStore(cfg)
     store.baseline(database_identity="db-1", sequence=40, actor="cli")
-    with pytest.raises(CratekitError) as excinfo:
-        store.advance(database_identity="db-2", sequence=41, actor="cli")
-    assert excinfo.value.cause.reason == "deletion-watermark-unusable"
+    cause = _refusal(store.advance, database_identity="db-2", sequence=41, actor="cli")
+    assert cause.reason == "deletion-watermark-unusable"
 
 
 @pytest.mark.parametrize(
@@ -288,9 +291,7 @@ def test_a_document_that_is_not_this_document_refuses_rather_than_reading_as_uns
     """The defect the decision stores shipped, in the file beside them."""
     store = watermark.WatermarkStore(cfg)
     config.atomic_write_bytes(document.encode(), store.path)
-    with pytest.raises(CratekitError) as excinfo:
-        store.read()
-    assert excinfo.value.cause.reason == "deletion-watermark-unusable"
+    assert _refusal(store.read).reason == "deletion-watermark-unusable"
 
 
 def test_a_correct_document_round_trips(cfg):
@@ -386,9 +387,8 @@ def test_a_volume_with_no_usable_trash_refuses_rather_than_deleting(tmp_path, mo
         raise OSError("read-only file system")
 
     monkeypatch.setattr(config, "mkdir_private", refuse_to_create)
-    with pytest.raises(CratekitError) as excinfo:
-        trash.assert_usable(source, home=home, platform="darwin")
-    assert excinfo.value.cause.reason == "trash-unavailable"
+    cause = _refusal(trash.assert_usable, source, home=home, platform="darwin")
+    assert cause.reason == "trash-unavailable"
     assert source.exists(), "the file must still be there after a refusal"
 
 
@@ -537,9 +537,8 @@ def test_an_unresolvable_active_row_makes_the_whole_run_refuse(cfg):
     """Absence of evidence is not evidence. The proof is over EVERY active row."""
     references = _references(cfg, [_active("/nowhere/known/x.flac")])
     assert not references.complete
-    with pytest.raises(CratekitError) as excinfo:
-        candidates.assert_complete(references)
-    assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
+    cause = _refusal(candidates.assert_complete, references)
+    assert cause.reason == "deletion-reference-set-incomplete"
 
 
 def test_an_active_row_that_will_not_stat_makes_the_run_refuse(cfg):
@@ -602,12 +601,11 @@ def test_a_prefix_rule_whose_target_is_not_there_refuses_rather_than_proving_not
     assert len(wrong.unanchored) == 50
     assert wrong.dead_anchors == (str(typo),)
     assert not wrong.complete
-    with pytest.raises(CratekitError) as excinfo:
-        candidates.assert_complete(wrong)
-    assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
-    assert excinfo.value.cause.detail["unanchored"] == 50
-    assert excinfo.value.cause.detail["dead_anchors"] == [str(typo)]
-    assert str(typo) in excinfo.value.cause.message
+    cause = _refusal(candidates.assert_complete, wrong)
+    assert cause.reason == "deletion-reference-set-incomplete"
+    assert cause.detail["unanchored"] == 50
+    assert cause.detail["dead_anchors"] == [str(typo)]
+    assert str(typo) in cause.message
 
 
 def test_a_mapped_volume_that_is_not_plugged_in_refuses(cfg, tmp_path):
@@ -772,7 +770,8 @@ def _confirmed_one(cfg, tmp_path, verdict=review.Verdict.ACCEPTED):
 
 def _baseline(cfg) -> None:
     """The watermark a first run over ``FakeDb([], usn=40)`` leaves, written directly."""
-    watermark.WatermarkStore(cfg).baseline(database_identity="db-identity-1", sequence=40, actor="cli")
+    store = watermark.WatermarkStore(cfg)
+    store.baseline(database_identity="db-identity-1", sequence=40, actor="cli")
 
 
 def _baselined(cfg, *names) -> None:
@@ -865,7 +864,7 @@ def test_a_confirmed_item_invalidated_before_the_move_is_refused_at_move_time(
     db.rows.append(_content(cfg, ONE, "99", deleted=False, usn=60))
     report = run.apply(cfg, db, actor="cli", home=home)
     assert report.trashed == ()
-    assert [one.category for one in report.refused] == [candidates.Category.COLLIDES_WITH_ACTIVE_ROW]
+    assert _kinds(report.refused) == [candidates.Category.COLLIDES_WITH_ACTIVE_ROW]
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
@@ -900,9 +899,7 @@ def test_an_unreadable_tombstone_store_refuses_before_the_first_file_moves(
     """R36 makes the tombstone part of the deletion, so it has to be writable first."""
     home, db = _confirmed_one(cfg, tmp_path)
     config.atomic_write_bytes(b"[]\n", config.state_path(tombstone.STORE_KEY, cfg))
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home)
-    assert excinfo.value.cause.reason == "review-file-unusable"
+    assert _refusal(run.apply, cfg, db, actor="cli", home=home).reason == "review-file-unusable"
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
@@ -916,10 +913,9 @@ def test_a_move_that_fails_refuses_with_a_cause_rather_than_a_bare_error(
         raise OSError("read-only file system")
 
     monkeypatch.setattr(trash, "move_to_trash", refuse_to_move)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home)
-    assert excinfo.value.cause.reason == "trash-unavailable"
-    assert excinfo.value.cause.code is ExitCode.PRECONDITION
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home)
+    assert cause.reason == "trash-unavailable"
+    assert cause.code is ExitCode.PRECONDITION
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
@@ -929,38 +925,30 @@ def test_a_move_that_fails_refuses_with_a_cause_rather_than_a_bare_error(
 def test_the_pass_refuses_while_rekordbox_or_its_agent_runs(cfg, gates_pass, monkeypatch, running):
     """Without it every identity assertion is evaluated against a stale view."""
     monkeypatch.setattr(rb_writer, running, lambda: True)
-    with pytest.raises(CratekitError) as excinfo:
-        run.plan(cfg, FakeDb([]), actor="cli")
-    assert excinfo.value.cause.code is ExitCode.REKORDBOX_OPEN
+    assert _refusal(run.plan, cfg, FakeDb([]), actor="cli").code is ExitCode.REKORDBOX_OPEN
 
 
 def test_a_decoy_volume_at_the_configured_path_refuses_before_anything_resolves(
     cfg, gates_pass, monkeypatch, tmp_path
 ):
     """R38: a restored clone mounted where the real library belongs is refused."""
-    monkeypatch.setattr(preflight, "default_identity_provider", lambda: lambda _path: "SOME-OTHER-ID")
+    monkeypatch.setattr(preflight, "default_identity_provider", lambda: lambda _: "SOME-OTHER-ID")
     _music(cfg, ONE)
     db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=50)
-    with pytest.raises(CratekitError) as excinfo:
-        run.plan(cfg, db, actor="cli")
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert _refusal(run.plan, cfg, db, actor="cli").code is ExitCode.LIBRARY_UNAVAILABLE
     assert watermark.WatermarkStore(cfg).read() is None, "the refusal came after a write"
 
 
 def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
     blind = FakeRow(ID="9", FolderPath="/x.flac")
-    with pytest.raises(CratekitError) as excinfo:
-        library.read_collection([blind])
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
+    assert _refusal(library.read_collection, [blind]).code is ExitCode.LIBRARY_UNREADABLE
 
 
 @pytest.mark.parametrize("value", [None, True, False, "not a number"], ids=str)
 def test_a_removed_row_with_no_usable_update_sequence_refuses(cfg, value):
     """A BOOLEAN is refused beside a missing value, and that is not fussiness."""
     blind = FakeRow(ID="9", FolderPath="/x.flac", rb_local_deleted=1, rb_local_usn=value)
-    with pytest.raises(CratekitError) as excinfo:
-        library.read_collection([blind])
-    assert excinfo.value.cause.reason == "removal-sequence-unreadable"
+    assert _refusal(library.read_collection, [blind]).reason == "removal-sequence-unreadable"
 
 
 class _VersionUnreadable(FakeRow):
@@ -988,10 +976,9 @@ def test_a_removed_row_broken_twice_reports_the_fault_the_base_order_reaches_fir
 @pytest.mark.parametrize("identity", ["", None], ids=["empty", "absent"])
 def test_a_database_that_names_no_identity_of_its_own_refuses(cfg, identity):
     """An unbound watermark is the state where a rebuild reports nothing forever."""
-    with pytest.raises(CratekitError) as excinfo:
-        library.database_identity(FakeDb([], identity=identity))
-    assert excinfo.value.cause.reason == "canary-read-failed"
-    assert excinfo.value.cause.detail["column"] == "DBID"
+    cause = _refusal(library.database_identity, FakeDb([], identity=identity))
+    assert cause.reason == "canary-read-failed"
+    assert cause.detail["column"] == "DBID"
 
 
 def test_a_database_that_cannot_report_its_update_counter_refuses(cfg):
@@ -1001,10 +988,9 @@ def test_a_database_that_cannot_report_its_update_counter_refuses(cfg):
         def get_local_usn(self):
             raise RuntimeError("the counter could not be read")
 
-    with pytest.raises(CratekitError) as excinfo:
-        library.current_sequence(Mute([]))
-    assert excinfo.value.cause.reason == "canary-read-failed"
-    assert excinfo.value.cause.detail["column"] == "localUpdateCount"
+    cause = _refusal(library.current_sequence, Mute([]))
+    assert cause.reason == "canary-read-failed"
+    assert cause.detail["column"] == "localUpdateCount"
 
 
 def test_the_apply_refuses_without_the_backup_acknowledgment(cfg, monkeypatch, tmp_path):
@@ -1012,9 +998,7 @@ def test_the_apply_refuses_without_the_backup_acknowledgment(cfg, monkeypatch, t
     _volume_agrees_and_rekordbox_is_shut(cfg, monkeypatch)
     _music(cfg, ONE)
     db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=50)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=tmp_path)
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    assert _refusal(run.apply, cfg, db, actor="cli", home=tmp_path).code is ExitCode.ACK_REQUIRED
 
 
 # Part 5: against a real disposable database
@@ -1163,7 +1147,9 @@ def test_the_preview_and_the_write_run_the_same_categoriser():
     """A destructive verb whose dry run and real run take different code paths."""
     tree = ast.parse((PACKAGE_ROOT / "candidates.py").read_text())
     recheck = next(
-        node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "recheck"
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "recheck"
     )
     calls = {
         node.func.id
@@ -1281,10 +1267,9 @@ def test_a_name_the_filesystem_will_not_take_refuses_for_that_one_file(tmp_path)
     directory.mkdir()
     name = "n" * 250 + ".flac"
     (directory / name).write_bytes(b"")
-    with pytest.raises(CratekitError) as excinfo:
-        trash._free_name(directory, name)
-    assert excinfo.value.cause.reason == "trash-unavailable"
-    assert excinfo.value.cause.scope is Scope.ITEM
+    cause = _refusal(trash._free_name, directory, name)
+    assert cause.reason == "trash-unavailable"
+    assert cause.scope is Scope.ITEM
 
 
 @pytest.mark.parametrize(
@@ -1355,9 +1340,7 @@ def test_a_trash_refusal_wider_than_one_name_stops_the_run(cfg, gates_pass, tmp_
         )
 
     monkeypatch.setattr(trash, "move_to_trash", refuse_the_volume)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home)
-    assert excinfo.value.cause.scope is Scope.RUN
+    assert _refusal(run.apply, cfg, db, actor="cli", home=home).scope is Scope.RUN
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
     assert (Path(cfg.library.root) / "Music" / TWO).exists()
 
@@ -1458,11 +1441,10 @@ def test_a_volume_that_goes_away_mid_walk_refuses_rather_than_shrinking_the_proo
     assert references.missing == ("e0", "e1", "e2"), "the shape the old cache produced"
     assert references.unstable_anchors == (str(volume),)
     assert not references.complete
-    with pytest.raises(CratekitError) as excinfo:
-        candidates.assert_complete(references)
-    assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
-    assert "two different filesystems" in excinfo.value.cause.message
-    assert excinfo.value.cause.detail["unstable_anchors"] == [str(volume)]
+    cause = _refusal(candidates.assert_complete, references)
+    assert cause.reason == "deletion-reference-set-incomplete"
+    assert "two different filesystems" in cause.message
+    assert cause.detail["unstable_anchors"] == [str(volume)]
 
 
 def test_a_rule_onto_the_filesystem_root_names_an_anchor_a_person_can_read(cfg):
@@ -1481,7 +1463,9 @@ def test_the_library_root_anchor_is_folded_the_way_a_rule_target_is(cfg):
     # Explicit escapes, so an editor that normalizes cannot make the forms equal.
     composed = "/library/Caf\u00e9"
     decomposed = "/library/Cafe\u0301"
-    under_root = locations.ResolvedPath(locations.Resolution.UNDER_ROOT, path=f"{decomposed}/Music/x.flac")
+    under_root = locations.ResolvedPath(
+        locations.Resolution.UNDER_ROOT, path=f"{decomposed}/Music/x.flac"
+    )
     rule = locations.PrefixRule(RECORDED_ELSEWHERE, composed)
     remapped = locations.ResolvedPath(
         locations.Resolution.REMAPPED, path=f"{composed}/Music/x.flac", rule_index=0
@@ -1524,9 +1508,8 @@ def test_a_revoke_that_cannot_reopen_the_item_leaves_the_decline_standing(
 
     # A flag, since ``monkeypatch.undo`` would also undo the gates fixture.
     monkeypatch.setattr(run.review, "clear", unreadable)
-    with pytest.raises(CratekitError) as excinfo:
-        run.revoke(cfg, held.suppression_id, actor="cli")
-    assert excinfo.value.cause.reason == "review-file-unusable"
+    cause = _refusal(run.revoke, cfg, held.suppression_id, actor="cli")
+    assert cause.reason == "review-file-unusable"
     assert len(stores.declines(cfg).suppressions()) == 1, (
         "the decline was lifted while its rejection stood"
     )
@@ -1549,31 +1532,27 @@ def test_a_refusal_naming_a_dead_anchor_says_which_directory_to_mount(cfg, tmp_p
     references = _references(
         cfg, _elsewhere(3), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(typo))]
     )
-    with pytest.raises(CratekitError) as excinfo:
-        candidates.assert_complete(references)
-    steps = excinfo.value.cause.remediation.steps
+    cause = _refusal(candidates.assert_complete, references)
+    steps = cause.remediation.steps
     assert steps, "the refusal carries no step at all"
     assert str(typo) in steps[0], "the step does not name the directory to mount"
-    assert "mount" in steps[0] and "prefix rule" in steps[0], (
-        "the step must say mount or fix the rule"
-    )
+    assert "mount" in steps[0] and "prefix rule" in steps[0], "say mount or fix the rule"
     # AND IT REACHES A PERSON.
     from cratekit.cli import render
 
-    assert any(str(typo) in line for line in render.render_cause(excinfo.value.cause))
+    assert any(str(typo) in line for line in render.render_cause(cause))
 
 
 def test_a_refusal_with_no_dead_anchor_offers_no_directory_to_mount(cfg):
     """The other branch, which is what stops the step being unconditional."""
     references = _references(cfg, [_active("/nowhere/known/x.flac")])
     assert references.dead_anchors == ()
-    with pytest.raises(CratekitError) as excinfo:
-        candidates.assert_complete(references)
-    steps = excinfo.value.cause.remediation.steps
+    cause = _refusal(candidates.assert_complete, references)
+    steps = cause.remediation.steps
     assert not any("mount the volume" in step for step in steps), "a step names no directories"
     # U243: the one step it does offer is the rule for the prefix it names.
     assert len(steps) == 1 and 'from = "/nowhere/known"' in steps[0]
-    assert excinfo.value.cause.remediation.remedy is Remedy.RUN_DOCTOR
+    assert cause.remediation.remedy is Remedy.RUN_DOCTOR
 
 
 # ── F3: the version-bearing column, and the identity that was not unique ──────
@@ -1642,7 +1621,9 @@ def test_the_real_binding_answers_the_version_columns_too(cfg, real_db):
     _write_rows(db_path, rows)
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute("INSERT INTO djmdArtist (ID, Name) VALUES (?, ?)", ("77", "Michael Woods Remix"))
+        conn.execute(
+            "INSERT INTO djmdArtist (ID, Name) VALUES (?, ?)", ("77", "Michael Woods Remix")
+        )
         conn.execute("UPDATE djmdContent SET RemixerID = ? WHERE ID = ?", ("77", "1"))
         conn.execute("UPDATE djmdContent SET Subtitle = ? WHERE ID = ?", ("Extended Mix", "2"))
         conn.commit()
@@ -1674,10 +1655,9 @@ def test_a_decline_whose_review_item_cannot_be_addressed_refuses(cfg, gates_pass
         payload={"artist": row.artist, "title": row.title},
         actor="cli",
     )
-    with pytest.raises(CratekitError) as excinfo:
-        run.revoke(cfg, drifted.suppression_id, actor="cli")
-    assert excinfo.value.cause.reason == "internal-error"
-    assert excinfo.value.cause.remediation.remedy is Remedy.REPORT_DEFECT
+    cause = _refusal(run.revoke, cfg, drifted.suppression_id, actor="cli")
+    assert cause.reason == "internal-error"
+    assert cause.remediation.remedy is Remedy.REPORT_DEFECT
     assert stores.declines(cfg).suppressions()[0].suppression_id == drifted.suppression_id, (
         "the decline was lifted anyway"
     )
@@ -1787,19 +1767,10 @@ def _tombstone_store_that_will_not_write(monkeypatch, *, raising=None):
     return broken
 
 
-def test_a_tombstone_that_cannot_be_written_puts_the_file_back(
-    cfg, gates_pass, tmp_path, monkeypatch
-):
-    """R36's worst reachable state, driven and then closed."""
-    home, db = _confirmed_one(cfg, tmp_path)
-    broken = _tombstone_store_that_will_not_write(monkeypatch)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home)
-    assert excinfo.value.cause.reason == "review-file-unusable", (
-        "the store's own refusal was replaced"
-    )
+def _put_back_then_redone(cfg, db, home, broken, why):
+    """The file is back where it was, recorded nowhere, and a mended store completes it."""
     original = Path(cfg.library.root) / "Music" / ONE
-    assert original.exists(), "the file is in the Trash with no tombstone"
+    assert original.exists(), why
     assert original.read_bytes() == b"audio bytes"
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
     assert list((home / ".Trash").iterdir()) == []
@@ -1810,6 +1781,17 @@ def test_a_tombstone_that_cannot_be_written_puts_the_file_back(
     finished = run.apply(cfg, db, actor="cli", home=home)
     assert len(finished.trashed) == 1, "re-running must complete the deletion"
     assert len(stores.list_tombstones(cfg)) == 1
+
+
+def test_a_tombstone_that_cannot_be_written_puts_the_file_back(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """R36's worst reachable state, driven and then closed."""
+    home, db = _confirmed_one(cfg, tmp_path)
+    broken = _tombstone_store_that_will_not_write(monkeypatch)
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home)
+    assert cause.reason == "review-file-unusable", "the store's refusal was replaced"
+    _put_back_then_redone(cfg, db, home, broken, "the file is in the Trash with no tombstone")
 
 
 def test_a_file_that_cannot_be_put_back_refuses_naming_both_paths(
@@ -1823,9 +1805,7 @@ def test_a_file_that_cannot_be_put_back_refuses_naming_both_paths(
         raise OSError("the volume went read only")
 
     monkeypatch.setattr(run.trash, "recover", no_way_back)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home)
-    cause = excinfo.value.cause
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home)
     assert cause.reason == "internal-error"
     assert str(Path(cfg.library.root) / "Music" / ONE) in cause.message
     assert cause.detail["trashed_to"]
@@ -1851,9 +1831,8 @@ def test_the_name_search_gives_up_at_a_bound_a_person_will_wait_for(tmp_path, mo
         raise FileExistsError()
 
     monkeypatch.setattr(os, "open", always_taken)
-    with pytest.raises(CratekitError) as excinfo:
-        trash._free_name(directory, ONE)
-    assert excinfo.value.cause.scope is Scope.ITEM, "running out of numbers is one file's problem"
+    cause = _refusal(trash._free_name, directory, ONE)
+    assert cause.scope is Scope.ITEM, "running out of numbers is one file's problem"
     # NOT THE PIN, AND IT IS WORTH SAYING SO OUT LOUD.
     assert tries["count"] == trash.MAX_NAME_ATTEMPTS, "the loop did not stop at the bound"
 
@@ -1873,27 +1852,21 @@ def test_the_name_search_gives_up_at_a_bound_a_person_will_wait_for(tmp_path, mo
 )
 def test_a_row_that_is_a_path_this_build_cannot_name_refuses(cfg, recorded):
     """The worst shape this unit has, closed from inside U24's own consumer."""
-    active = [trees.ContentRow(content_id="9", recorded=recorded, deleted=False)]
-    references = _references(cfg, active)
+    references = _references(cfg, [_active(recorded)])
     assert references.unnameable == ("9",)
     assert references.not_a_path == (), "a real file was excused as streamed"
     assert not references.complete
-    with pytest.raises(CratekitError) as excinfo:
-        candidates.assert_complete(references)
-    assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
-    assert excinfo.value.cause.detail["unnameable_rows"] == ["9"]
-    assert excinfo.value.cause.detail["unnameable"] == 1, "the detail's tally is not the refusal's"
-    assert excinfo.value.cause.remediation.steps
+    cause = _refusal(candidates.assert_complete, references)
+    assert cause.reason == "deletion-reference-set-incomplete"
+    assert cause.detail["unnameable_rows"] == ["9"]
+    assert cause.detail["unnameable"] == 1, "the detail's tally is not the refusal's"
+    assert cause.remediation.steps
 
 
 def test_a_genuinely_streamed_library_still_runs(cfg):
     """The case the excusal exists for, which the refusal above must not break."""
     _music(cfg, ONE)
-    active = [
-        trees.ContentRow(content_id="9", recorded="tidal:track:123", deleted=False),
-        trees.ContentRow(content_id="8", recorded="", deleted=False),
-    ]
-    references = _references(cfg, active)
+    references = _references(cfg, [_active("tidal:track:123"), _active("", "8")])
     assert references.unnameable == ()
     assert sorted(references.not_a_path) == ["8", "9"]
     assert references.complete
@@ -1910,9 +1883,7 @@ def test_a_genuinely_streamed_library_still_runs(cfg):
 @pytest.mark.parametrize(
     "recorded",
     [
-        "tidal://track/123",
-        "spotify://track/abc",
-        "beatport://12345",
+        "tidal://track/123", "spotify://track/abc", "beatport://12345",
         "https://api.tidal.com/v1/tracks/123",
     ],
     ids=["tidal", "spotify", "beatport", "https"],
@@ -1920,8 +1891,7 @@ def test_a_genuinely_streamed_library_still_runs(cfg):
 def test_a_streamed_row_spelled_as_a_url_is_excused_rather_than_stopping_the_run(cfg, recorded):
     """THE REGRESSION THE UNNAMEABLE SPLIT INTRODUCED, in every scheme that hits it."""
     _music(cfg, ONE)
-    active = [trees.ContentRow(content_id="9", recorded=recorded, deleted=False)]
-    references = _references(cfg, active)
+    references = _references(cfg, [_active(recorded)])
     assert references.unnameable == (), "a non path row was called unnameable"
     assert references.not_a_path == ("9",)
     assert references.complete
@@ -1942,18 +1912,7 @@ def test_an_interrupt_during_the_store_write_still_puts_the_file_back(
     broken = _tombstone_store_that_will_not_write(monkeypatch, raising=interrupt)
     with pytest.raises(interrupt):
         run.apply(cfg, db, actor="cli", home=home)
-    original = Path(cfg.library.root) / "Music" / ONE
-    assert original.exists(), "an interrupt left a file with no tombstone"
-    assert original.read_bytes() == b"audio bytes"
-    assert stores.list_tombstones(cfg, include_revoked=True) == ()
-    assert list((home / ".Trash").iterdir()) == []
-    # And the row is still live business, because GONE would have retired it.
-    broken["on"] = False
-    again = run.plan(cfg, db, actor="cli")
-    assert [item.category for item in again.candidates] == [candidates.Category.DELETABLE]
-    finished = run.apply(cfg, db, actor="cli", home=home)
-    assert len(finished.trashed) == 1
-    assert len(stores.list_tombstones(cfg)) == 1
+    _put_back_then_redone(cfg, db, home, broken, "an interrupt left a file with no tombstone")
 
 
 # ── R4-F3: a version contained in a title is not a version carried by it ─────
@@ -2000,30 +1959,30 @@ def test_a_square_bracketed_mix_name_keeps_its_brackets_which_is_R_19(cfg):
 
 
 def _subtitled(cfg, name, content_id, *, title, subtitle, usn=50):
-    row = _content(cfg, name, content_id, deleted=True, usn=usn, title=title)
-    row.RemixerName = ""
-    row.Subtitle = subtitle
-    return row
+    return _content(
+        cfg, name, content_id, deleted=True, usn=usn, title=title, RemixerName="", Subtitle=subtitle
+    )
+
+
+def _believed(cfg, subtitle) -> bool:
+    """Whether the reader takes ``subtitle`` as a version of a track titled Atlas."""
+    return bool(_read(_subtitled(cfg, ONE, "1", title="Atlas", subtitle=subtitle))[0].version)
 
 
 def test_a_subtitle_that_is_not_a_mix_name_leaves_the_identity_the_provider_spells(cfg):
     """rekordbox's ``Subtitle`` is ID3 ``TIT3`` and holds a label as readily as a mix."""
-    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep")
-    seen = library.read_collection(FakeQuery([row]))
-    assert seen.removed[0].version == ""
-    assert stores.version_of(seen.removed[0])["title"] == "atlas"
-    stores.record_tombstone(cfg, seen.removed[0], actor="cli")
-    assert stores.suppressed_version(cfg, artist=ARTIST, title="Atlas"), (
-        "the tombstone's title is never asked about"
-    )
+    (seen,) = _read(_subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep"))
+    assert seen.version == ""
+    assert stores.version_of(seen)["title"] == "atlas"
+    stores.record_tombstone(cfg, seen, actor="cli")
+    assert stores.suppressed_version(cfg, artist=ARTIST, title="Atlas"), "the title is never asked"
 
 
 def test_a_subtitle_that_is_a_mix_name_is_still_composed(cfg):
     """The other direction, which is the collision the Subtitle column exists to close."""
     original = _subtitled(cfg, ONE, "1", title="Strobe", subtitle="")
     extended = _subtitled(cfg, TWO, "2", title="Strobe", subtitle="Extended Mix", usn=51)
-    seen = library.read_collection(FakeQuery([original, extended]))
-    by_id = {row.content_id: row for row in seen.removed}
+    by_id = {row.content_id: row for row in _read(original, extended)}
     assert by_id["2"].version == "Extended Mix"
     assert stores.version_of(by_id["1"]) != stores.version_of(by_id["2"])
     written = stores.record_tombstone(cfg, by_id["2"], actor="cli")
@@ -2036,33 +1995,22 @@ def test_a_subtitle_that_is_a_mix_name_is_still_composed(cfg):
 @pytest.mark.parametrize(
     ("subtitle", "believed"),
     [
-        ("Extended Mix", True),
-        ("Nightwave Remix", True),
-        ("Radio Edit", True),
-        ("Live at a Venue", True),
-        ("Instrumental", True),
-        ("Anjunadeep", False),
-        ("feat. A Guest", False),
-        ("Toolroom Records", False),
-        ("ripped from vinyl", False),
+        ("Extended Mix", True), ("Nightwave Remix", True), ("Radio Edit", True),
+        ("Live at a Venue", True), ("Instrumental", True), ("Anjunadeep", False),
+        ("feat. A Guest", False), ("Toolroom Records", False), ("ripped from vinyl", False),
         ("Mixmag Records", False),
     ],
 )
 def test_which_subtitles_read_as_a_version(cfg, subtitle, believed):
     """The vocabulary, in both directions, because a word list nothing drives rots."""
-    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle=subtitle)
-    seen = library.read_collection(FakeQuery([row]))
-    assert bool(seen.removed[0].version) is believed
+    assert _believed(cfg, subtitle) is believed
 
 
 def test_a_remixer_name_is_believed_without_reading_as_a_version(cfg):
     """``RemixerName`` is not free text, so the vocabulary must not be applied to it."""
-    row = _content(cfg, ONE, "1", deleted=True, usn=50, title="Strobe")
-    row.RemixerName = "Michael Woods"
-    row.Subtitle = ""
-    seen = library.read_collection(FakeQuery([row]))
-    assert seen.removed[0].version == "Michael Woods"
-    assert seen.removed[0].version_kind == library.VERSION_IS_AN_ARTIST
+    seen = _remixed_row(cfg, ONE, "1", title="Strobe", remixer="Michael Woods")
+    assert seen.version == "Michael Woods"
+    assert seen.version_kind == library.VERSION_IS_AN_ARTIST
 
 
 def test_a_bracketed_group_that_merely_contains_the_version_is_not_a_carry(cfg):
@@ -2090,8 +2038,7 @@ def test_an_interrupt_while_putting_the_file_back_still_names_both_paths(
             run.apply(cfg, db, actor="cli", home=home)
         except KeyboardInterrupt as escaped:
             raise AssertionError(
-                "the interrupt escaped the undo, so the one state where a person must be told "
-                "both paths and a manual step reaches them as a bare traceback"
+                "the interrupt escaped the undo and reached a person as a bare traceback"
             ) from escaped
     cause = excinfo.value.cause
     assert cause.reason == "internal-error"
@@ -2111,8 +2058,7 @@ def test_a_membership_walk_that_comes_back_short_refuses_rather_than_freeing_the
 ):
     """The one input in this pass with no assertion on it, driven end to end."""
     _home(tmp_path)
-    _music(cfg, ONE)
-    _baseline(cfg)
+    _baselined(cfg, ONE)
     rows = [_content(cfg, ONE, "1", deleted=True, usn=50)]
     # The plan's own walk answers, so the candidate is offered and confirmed.
     db = FakeDb(rows, [_membership("1")], usn=50, memberships_walk_once=True)
@@ -2123,34 +2069,23 @@ def test_a_membership_walk_that_comes_back_short_refuses_rather_than_freeing_the
     spent = FakeDb(rows, [_membership("1")], usn=50, memberships_walk_once=True)
     for _ in spent.get_playlist_songs():
         pass
-    with pytest.raises(CratekitError) as excinfo:
-        run.plan(cfg, spent, actor="cli")
-    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
+    assert _refusal(run.plan, cfg, spent, actor="cli").reason == "deletion-evidence-incomplete"
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
 def test_a_binding_that_cannot_say_how_many_memberships_it_holds_refuses(cfg, gates_pass):
     """There is no safe default, which is the rule this module already applies twice."""
-    _music(cfg, ONE)
-    _baseline(cfg)
-    db = FakeDb(
-        [_content(cfg, ONE, "1", deleted=True, usn=50)],
-        [_membership("1")],
-        usn=50,
-        memberships_cannot_count=True,
-    )
-    with pytest.raises(CratekitError) as excinfo:
-        run.plan(cfg, db, actor="cli")
-    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
+    _baselined(cfg, ONE)
+    rows = [_content(cfg, ONE, "1", deleted=True, usn=50)]
+    db = FakeDb(rows, [_membership("1")], usn=50, memberships_cannot_count=True)
+    assert _refusal(run.plan, cfg, db, actor="cli").reason == "deletion-evidence-incomplete"
 
 
 def test_a_library_whose_playlists_are_all_empty_still_runs(cfg, gates_pass):
     """An HONEST zero is accepted, and only an honest one."""
-    _music(cfg, ONE)
-    _baseline(cfg)
-    found = run.plan(
-        cfg, FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=50), actor="cli"
-    )
+    _baselined(cfg, ONE)
+    db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=50)
+    found = run.plan(cfg, db, actor="cli")
     assert [item.category for item in found.candidates] == [candidates.Category.DELETABLE]
 
 
@@ -2183,32 +2118,15 @@ def test_a_membership_rekordbox_removed_is_not_a_reference(cfg):
 def test_a_volume_that_goes_away_mid_categorization_refuses_rather_than_retiring(cfg, tmp_path):
     """The identical cache as the reference set's, and MORE at stake in this walk."""
     volume = tmp_path / "ejected-halfway"
-    volume.mkdir()
-    real = os.stat
-    asked = {"count": 0}
-
-    def ejects_after_the_first_look(path):
-        if path == str(volume):
-            asked["count"] += 1
-            if asked["count"] > 1:
-                raise FileNotFoundError(path)
-            return real(path)
-        raise FileNotFoundError(path)
-
+    stat = _ejecting(volume, nothing_else_exists=True)
     rules = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
     rows = [
-        replace(
-            _removed(cfg, ONE, str(index)),
-            recorded=f"{RECORDED_ELSEWHERE}/Music/Track {index}.flac",
-        )
-        for index in range(3)
+        replace(_removed(cfg, ONE, str(at)), recorded=f"{RECORDED_ELSEWHERE}/Music/Track {at}.flac")
+        for at in range(3)
     ]
-    with pytest.raises(CratekitError) as excinfo:
-        _categorize(
-            cfg, rows, _references(cfg, []), prefix_map=rules, stat=ejects_after_the_first_look
-        )
-    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
-    assert excinfo.value.cause.detail["unstable_anchors"] == [str(volume)]
+    cause = _refusal(_categorize, cfg, rows, _references(cfg, []), prefix_map=rules, stat=stat)
+    assert cause.reason == "deletion-evidence-incomplete"
+    assert cause.detail["unstable_anchors"] == [str(volume)]
 
 
 def test_a_volume_that_stays_put_categorizes_every_row(cfg, tmp_path):
@@ -2269,10 +2187,9 @@ def test_recover_refuses_to_overwrite_a_path_something_else_now_occupies(tmp_pat
     layout = trash.assert_usable(source, home=home, platform="darwin")
     target = trash.move_to_trash(source, layout=layout)
     source.write_bytes(b"a different recording the person put back")
-    with pytest.raises(CratekitError) as excinfo:
-        trash.recover(target, source)
-    assert excinfo.value.cause.reason == "trash-unavailable"
-    assert excinfo.value.cause.scope is Scope.ITEM
+    cause = _refusal(trash.recover, target, source)
+    assert cause.reason == "trash-unavailable"
+    assert cause.scope is Scope.ITEM
     assert source.read_bytes() == b"a different recording the person put back"
     assert target.read_bytes() == b"the deleted one", "the trashed copy was consumed"
 
@@ -2316,9 +2233,7 @@ def test_the_tombstone_store_is_proved_readable_before_any_file_is_touched(
 
     monkeypatch.setattr(trash, "move_to_trash", nothing_may_move)
     config.atomic_write_bytes(b"[]\n", config.state_path(tombstone.STORE_KEY, cfg))
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home)
-    assert excinfo.value.cause.reason == "review-file-unusable"
+    assert _refusal(run.apply, cfg, db, actor="cli", home=home).reason == "review-file-unusable"
 
 
 # ── S1-E: a corrected prefix rule must let the retry through ─────────────────
@@ -2362,17 +2277,14 @@ def test_a_corrected_prefix_rule_lets_the_confirmed_deletion_through_on_the_retr
 def test_a_recorded_value_that_merely_mentions_a_file_location_is_not_one(cfg):
     """The scheme test is ANCHORED, and unanchored it refuses a run it must not."""
     for recorded in ("a note about file:// locations", "ripped from D:\\ by somebody"):
-        mentions = trees.ContentRow(content_id="9", recorded=recorded, deleted=False)
-        references = _references(cfg, [mentions])
+        references = _references(cfg, [_active(recorded)])
         assert references.not_a_path == ("9",), recorded
         assert references.unnameable == () and references.complete, recorded
         candidates.assert_complete(references)
-    for content_id, recorded in (
-        ("8", "file:///Volumes/Music/Track.flac"),
-        ("7", "D:\\Music\\Track.flac"),
-    ):
-        spelled = trees.ContentRow(content_id=content_id, recorded=recorded, deleted=False)
-        assert _references(cfg, [spelled]).unnameable == (content_id,), recorded
+    spelled = {"8": "file:///Volumes/Music/Track.flac", "7": "D:\\Music\\Track.flac"}
+    for content_id, recorded in spelled.items():
+        named = _references(cfg, [_active(recorded, content_id)])
+        assert named.unnameable == (content_id,), recorded
 
 
 def test_a_row_that_recorded_a_zero_size_can_never_be_proved(cfg):
@@ -2380,10 +2292,9 @@ def test_a_row_that_recorded_a_zero_size_can_never_be_proved(cfg):
     empty = Path(cfg.library.root) / "Music" / ONE
     empty.write_bytes(b"")
     for recorded in (0, -1):
-        row = _content(cfg, ONE, "1", deleted=True, usn=50, size=recorded)
-        seen = library.read_collection(FakeQuery([row]))
-        assert seen.removed[0].size is None
-        answered = _categorize(cfg, [seen.removed[0]], _references(cfg, []))
+        (seen,) = _read(_content(cfg, ONE, "1", deleted=True, usn=50, size=recorded))
+        assert seen.size is None
+        answered = _categorize(cfg, [seen], _references(cfg, []))
         assert answered[0].category is candidates.Category.SIZE_MISMATCH
 
 
@@ -2394,10 +2305,10 @@ def test_a_row_that_recorded_a_zero_size_can_never_be_proved(cfg):
 
 
 def _remixed_row(cfg, name, content_id, *, title, remixer, usn=50):
-    row = _content(cfg, name, content_id, deleted=True, usn=usn, title=title)
-    row.RemixerName = remixer
-    row.Subtitle = ""
-    return library.read_collection(FakeQuery([row])).removed[0]
+    row = _content(
+        cfg, name, content_id, deleted=True, usn=usn, title=title, RemixerName=remixer, Subtitle=""
+    )
+    return _read(row)[0]
 
 
 def test_a_remix_filed_as_a_bare_artist_name_is_spelled_the_way_a_provider_spells_it(cfg):
@@ -2408,9 +2319,7 @@ def test_a_remix_filed_as_a_bare_artist_name_is_spelled_the_way_a_provider_spell
     assert stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)"), (
         "the tombstone was written under a spelling no provider will ever produce"
     )
-    assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe"), (
-        "the original was suppressed"
-    )
+    assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe"), "original suppressed"
 
 
 def test_the_two_conventions_one_collection_holds_now_reach_one_identity(cfg):
@@ -2497,33 +2406,10 @@ def test_the_version_vocabulary_is_exactly_this_set_and_no_other():
     """WIDENING WAS CAUGHT AND NARROWING WAS NOT, which is how a defect walks back."""
     assert tombstone.VERSION_WORDS == frozenset(
         {
-            "acapella",
-            "acoustic",
-            "alternate",
-            "bootleg",
-            "club",
-            "cut",
-            "demo",
-            "dub",
-            "edit",
-            "extended",
-            "flip",
-            "instrumental",
-            "interlude",
-            "live",
-            "mashup",
-            "mix",
-            "original",
-            "radio",
-            "remaster",
-            "remastered",
-            "remix",
-            "reprise",
-            "rework",
-            "session",
-            "unplugged",
-            "version",
-            "vip",
+            "acapella", "acoustic", "alternate", "bootleg", "club", "cut", "demo", "dub", "edit",
+            "extended", "flip", "instrumental", "interlude", "live", "mashup", "mix", "original",
+            "radio", "remaster", "remastered", "remix", "reprise", "rework", "session",
+            "unplugged", "version", "vip",
         }
     )
 
@@ -2532,35 +2418,23 @@ def test_the_version_vocabulary_is_exactly_this_set_and_no_other():
     ("subtitle", "believed"),
     [
         # One realistic phrase per word that carries the ordinary library.
-        ("Club Mix", True),
-        ("Dub", True),
-        ("VIP", True),
-        ("Acoustic", True),
-        ("Original Mix", True),
-        ("Radio Edit", True),
-        ("Extended Mix", True),
-        ("Instrumental", True),
-        ("Live", True),
-        ("Nightwave Remix", True),
-        ("2024 Remaster", True),
-        ("Piano Version", True),
+        ("Club Mix", True), ("Dub", True), ("VIP", True), ("Acoustic", True),
+        ("Original Mix", True), ("Radio Edit", True), ("Extended Mix", True),
+        ("Instrumental", True), ("Live", True), ("Nightwave Remix", True),
+        ("2024 Remaster", True), ("Piano Version", True),
         # A NON-WORD split rather than a whitespace one.
-        ("Re-Edit", True),
-        ("Extended/Club Mix", True),
+        ("Re-Edit", True), ("Extended/Club Mix", True),
     ],
 )
 def test_each_word_the_ordinary_library_leans_on_is_driven_by_a_real_phrase(
     cfg, subtitle, believed
 ):
-    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle=subtitle)
-    seen = library.read_collection(FakeQuery([row]))
-    assert bool(seen.removed[0].version) is believed
+    assert _believed(cfg, subtitle) is believed
 
 
 def test_a_subtitle_the_vocabulary_did_not_believe_is_still_recorded(cfg):
     """The measured failure direction may not be the one place it is invisible."""
-    row = _subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep")
-    seen = library.read_collection(FakeQuery([row])).removed[0]
+    (seen,) = _read(_subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep"))
     assert seen.version == "" and seen.version_unbelieved == "Anjunadeep"
     written = stores.record_tombstone(cfg, seen, actor="cli")
     assert written.payload["version"] == ""
@@ -2572,20 +2446,17 @@ def test_a_subtitle_the_vocabulary_did_not_believe_is_still_recorded(cfg):
 
 def test_a_removal_sitting_exactly_on_the_watermark_is_not_offered_again(cfg, gates_pass):
     """STRICTLY GREATER, and it is now written in exactly one place."""
-    for name in (ONE, TWO):
-        _music(cfg, name)
+    _baselined(cfg, ONE, TWO)
     on_the_mark = _content(cfg, ONE, "1", deleted=True, usn=40)
     above_it = _content(cfg, TWO, "2", deleted=True, usn=41)
-    _baseline(cfg)
     found = run.plan(cfg, FakeDb([on_the_mark, above_it], usn=41), actor="cli")
     assert [item.row.content_id for item in found.candidates] == ["2"]
 
 
 def test_the_collection_walk_hands_back_every_removal_it_saw(cfg):
     """The walk is unfiltered, because the baseline needs the highest sequence."""
-    rows = [_content(cfg, ONE, str(index), deleted=True, usn=index) for index in range(1, 6)]
-    seen = library.read_collection(FakeQuery(rows))
-    assert [row.sequence for row in seen.removed] == [1, 2, 3, 4, 5]
+    seen = _read(*(_content(cfg, ONE, str(at), deleted=True, usn=at) for at in range(1, 6)))
+    assert [row.sequence for row in seen] == [1, 2, 3, 4, 5]
 
 
 # Part 10: round six.
@@ -2596,12 +2467,7 @@ def test_the_collection_walk_hands_back_every_removal_it_saw(cfg):
 
 #: The artist and label names the vocabulary's measured false-positive set names.
 _FALSE_POSITIVE_REMIXERS = (
-    "Radio Slave",
-    "Dub Pistols",
-    "Cut Chemist",
-    "Mix Master Mike",
-    "Club Sweat",
-    "Original Gee",
+    "Radio Slave", "Dub Pistols", "Cut Chemist", "Mix Master Mike", "Club Sweat", "Original Gee"
 )
 
 
@@ -2646,23 +2512,18 @@ def test_the_only_remixer_left_verbatim_is_one_that_already_says_remix(cfg, remi
 
 def test_a_removed_row_with_no_identifier_of_its_own_is_refused_rather_than_named_None(cfg):
     """``str(None)`` is ``'None'``, which is truthy, so the guard never fired."""
-    with pytest.raises(CratekitError) as excinfo:
-        tombstone.removed_file_identity(content_id=None, recorded="/music/x.flac")
-    assert excinfo.value.cause.reason == "review-selection-invalid"
-    with pytest.raises(CratekitError):
-        tombstone.removed_file_identity(content_id="", recorded="/music/x.flac")
+    cause = _refusal(tombstone.removed_file_identity, content_id=None, recorded="/music/x.flac")
+    assert cause.reason == "review-selection-invalid"
+    _refusal(tombstone.removed_file_identity, content_id="", recorded="/music/x.flac")
     # Zero is a number: the emptiness test runs on the converted value.
     assert tombstone.removed_file_identity(content_id=0, recorded="/x")["content_id"] == "0"
 
 
 def test_a_collection_row_with_no_id_reaches_the_pass_as_unidentifiable(cfg, gates_pass):
     """The same defect end to end, which is where it actually bites."""
-    _music(cfg, ONE)
-    _baseline(cfg)
-    nameless = _content(cfg, ONE, "1", deleted=True, usn=50)
-    nameless.ID = None
-    seen = library.read_collection(FakeQuery([nameless]))
-    assert seen.removed[0].content_id == "", "a row with no identifier got 'None'"
+    _baselined(cfg, ONE)
+    nameless = _content(cfg, ONE, "1", deleted=True, usn=50, ID=None)
+    assert _read(nameless)[0].content_id == "", "a row with no identifier got 'None'"
     found = run.plan(cfg, FakeDb([nameless], usn=50), actor="cli")
     assert [item.category for item in found.candidates] == [candidates.Category.UNIDENTIFIABLE]
     assert run.present(cfg, found) == (), "an undeletable row was offered"
@@ -2673,10 +2534,8 @@ def test_a_collection_row_with_no_id_reaches_the_pass_as_unidentifiable(cfg, gat
 
 def test_a_row_that_could_never_carry_a_tombstone_is_not_offered_as_deletable(cfg, gates_pass):
     """``plan``'s ``identifiable`` wiring could be deleted with nothing noticing."""
-    _music(cfg, ONE)
-    _baseline(cfg)
-    anonymous = _content(cfg, ONE, "1", deleted=True, usn=50, title="")
-    anonymous.ArtistName = ""
+    _baselined(cfg, ONE)
+    anonymous = _content(cfg, ONE, "1", deleted=True, usn=50, title="", ArtistName="")
     found = run.plan(cfg, FakeDb([anonymous], usn=50), actor="cli")
     assert [item.category for item in found.candidates] == [candidates.Category.UNIDENTIFIABLE]
     assert found.candidates[0].problem
@@ -2687,87 +2546,64 @@ def test_a_row_that_could_never_carry_a_tombstone_is_not_offered_as_deletable(cf
 # ── F9: the discriminator the Subtitle vocabulary finding said nothing carried ─
 
 
-def _versioned(cfg, name, content_id, *, usn, title, isrc, subtitle="", remixer=""):
+def _versioned(cfg, name, content_id, *, usn, isrc, title="Strobe", subtitle="", remixer=""):
     """One removed collection row with a version column and an ISRC filled in."""
-    row = _content(cfg, name, content_id, deleted=True, usn=usn, title=title, isrc=isrc)
-    row.Subtitle = subtitle
-    row.RemixerName = remixer
-    return row
+    return _content(
+        cfg, name, content_id, deleted=True, usn=usn, title=title, isrc=isrc,
+        Subtitle=subtitle, RemixerName=remixer,
+    )
+
+
+def _acappella(cfg, *, usn=50):
+    """The first of two recordings that compose to one identity, with its own code."""
+    return _versioned(cfg, ONE, "1", usn=usn, isrc="AAAA11111111", subtitle="Acappella")
 
 
 def test_two_recordings_that_land_on_one_identity_are_refused_rather_than_suppressed(
     cfg, gates_pass
 ):
     """The indistinguishability claim is false as stated, and this is why."""
-    for name in (ONE, TWO):
-        _music(cfg, name)
-    _baseline(cfg)
-    rows = [
-        _versioned(
-            cfg, ONE, "1", usn=50, title="Strobe", isrc="AAAA11111111", subtitle="Acappella"
-        ),
-        _versioned(cfg, TWO, "2", usn=51, title="Strobe", isrc="BBBB22222222", subtitle="Refix"),
-    ]
-    seen = library.read_collection(FakeQuery(rows))
-    assert stores.version_of(seen.removed[0]) == stores.version_of(seen.removed[1]), (
+    _baselined(cfg, ONE, TWO)
+    refix = _versioned(cfg, TWO, "2", usn=51, isrc="BBBB22222222", subtitle="Refix")
+    rows = [_acappella(cfg), refix]
+    seen = _read(*rows)
+    assert stores.version_of(seen[0]) == stores.version_of(seen[1]), (
         "this row no longer exercises the collision it was written for"
     )
     found = run.plan(cfg, FakeDb(rows, usn=51), actor="cli")
-    assert [item.category for item in found.candidates] == [
-        candidates.Category.AMBIGUOUS_VERSION,
-        candidates.Category.AMBIGUOUS_VERSION,
-    ]
+    assert _kinds(found.candidates) == [candidates.Category.AMBIGUOUS_VERSION] * 2
     assert run.present(cfg, found) == (), "a suppression of two recordings was offered"
     assert found.candidates[0].problem
 
 
 def test_the_convergence_composition_exists_to_produce_is_still_deletable(cfg, gates_pass):
     """The half the discriminator may not cost, and it is the whole point of composing."""
-    for name in (ONE, TWO):
-        _music(cfg, name)
-    _baseline(cfg)
+    _baselined(cfg, ONE, TWO)
     rows = [
-        _versioned(
-            cfg, ONE, "1", usn=50, title="Strobe", isrc="AAAA11111111", remixer="Michael Woods"
-        ),
+        _versioned(cfg, ONE, "1", usn=50, isrc="AAAA11111111", remixer="Michael Woods"),
         _versioned(
             cfg, TWO, "2", usn=51, title="Strobe (Michael Woods Remix)", isrc="AAAA11111111"
         ),
     ]
     found = run.plan(cfg, FakeDb(rows, usn=51), actor="cli")
-    assert [item.category for item in found.candidates] == [
-        candidates.Category.DELETABLE,
-        candidates.Category.DELETABLE,
-    ]
+    assert _kinds(found.candidates) == [candidates.Category.DELETABLE] * 2
 
 
 def test_an_absent_isrc_is_read_as_agreement_rather_than_as_a_collision(cfg, gates_pass):
     """The check is inconclusive without a code, and inconclusive means proceed."""
-    for name in (ONE, TWO):
-        _music(cfg, name)
-    _baseline(cfg)
-    rows = [
-        _versioned(
-            cfg, ONE, "1", usn=50, title="Strobe", isrc="AAAA11111111", subtitle="Acappella"
-        ),
-        _versioned(cfg, TWO, "2", usn=51, title="Strobe", isrc=None, subtitle="Refix"),
-    ]
+    _baselined(cfg, ONE, TWO)
+    rows = [_acappella(cfg), _versioned(cfg, TWO, "2", usn=51, isrc=None, subtitle="Refix")]
     found = run.plan(cfg, FakeDb(rows, usn=51), actor="cli")
-    assert [item.category for item in found.candidates] == [
-        candidates.Category.DELETABLE,
-        candidates.Category.DELETABLE,
-    ]
+    assert _kinds(found.candidates) == [candidates.Category.DELETABLE] * 2
 
 
 def test_the_collision_is_looked_for_across_the_whole_walk_not_the_offered_rows(cfg, gates_pass):
     """The row a candidate collides with is very often one an earlier run retired."""
     for name in (ONE, TWO):
         _music(cfg, name)
-    below = _versioned(
-        cfg, ONE, "1", usn=10, title="Strobe", isrc="AAAA11111111", subtitle="Acappella"
-    )
+    below = _acappella(cfg, usn=10)
     run.plan(cfg, FakeDb([below], usn=40), actor="cli")
-    above = _versioned(cfg, TWO, "2", usn=50, title="Strobe", isrc="BBBB22222222", subtitle="Refix")
+    above = _versioned(cfg, TWO, "2", usn=50, isrc="BBBB22222222", subtitle="Refix")
     found = run.plan(cfg, FakeDb([below, above], usn=50), actor="cli")
     assert [item.row.content_id for item in found.candidates] == ["2"], (
         "a row below the watermark was offered"
@@ -2780,18 +2616,11 @@ def test_the_collision_is_looked_for_across_the_whole_walk_not_the_offered_rows(
 def test_a_confirmed_ambiguous_row_is_refused_at_move_time_too(cfg, gates_pass, tmp_path):
     """The re-check gets the same answer the review was made under."""
     home = _home(tmp_path)
-    for name in (ONE, TWO):
-        _music(cfg, name)
-    _baseline(cfg)
-    alone = _versioned(
-        cfg, ONE, "1", usn=50, title="Strobe", isrc="AAAA11111111", subtitle="Acappella"
-    )
-    db = FakeDb([alone], usn=50)
+    _baselined(cfg, ONE, TWO)
+    db = FakeDb([_acappella(cfg)], usn=50)
     _confirm_first(cfg, db)
     # The second recording is removed between the confirmation and the move.
-    db.rows.append(
-        _versioned(cfg, TWO, "2", usn=51, title="Strobe", isrc="BBBB22222222", subtitle="Refix")
-    )
+    db.rows.append(_versioned(cfg, TWO, "2", usn=51, isrc="BBBB22222222", subtitle="Refix"))
     db.usn = 51
     report = run.apply(cfg, db, actor="cli", home=home)
     assert report.trashed == ()
@@ -2850,21 +2679,14 @@ def test_an_unanswered_removal_whose_file_moved_is_retired_but_not_in_silence(
 
 def test_a_tombstone_an_earlier_build_wrote_is_still_recognised(cfg, gates_pass, tmp_path):
     """TWO COMMITS IN ONE ROUND, NEITHER RECORDING THAT THEY INTERACT."""
-    _music(cfg, ONE)
-    _baseline(cfg)
-    row = _versioned(
-        cfg, ONE, "1", usn=50, title="Strobe", isrc="AAAA11111111", remixer="Michael Woods"
-    )
-    removed = library.read_collection(FakeQuery([row])).removed[0]
+    _baselined(cfg, ONE)
+    row = _versioned(cfg, ONE, "1", usn=50, isrc="AAAA11111111", remixer="Michael Woods")
+    (removed,) = _read(row)
     # THE EARLIER SPELLING IS A LITERAL, AND IT HAS TO BE.
     earlier = tombstone.version_identity(artist=removed.artist, title="Strobe (Michael Woods)")
     assert earlier != stores.version_of(removed), "the row lost its spelling change"
-    stores.tombstones(cfg).record(
-        kind=tombstone.KIND_VERSION,
-        identity=earlier,
-        payload={"content_id": removed.content_id, "recorded": removed.recorded},
-        actor="cli",
-    )
+    held = {"content_id": removed.content_id, "recorded": removed.recorded}
+    _plant(cfg, removed, held, identity=earlier)
     assert stores.tombstone_predicate(cfg)(removed), "an earlier build's deletion is missed"
     # And the consult is not widened with it.
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)")
@@ -2883,35 +2705,6 @@ def test_a_tombstone_an_earlier_build_wrote_is_still_recognised(cfg, gates_pass,
 # ── F10: the completeness proof was one sided, and the walk could raise ───────
 
 
-class UndercountQuery:
-    """A query that DECLARES fewer rows than it hands back."""
-
-    def __init__(self, rows, declared):
-        self._rows = list(rows)
-        self._declared = declared
-
-    def __iter__(self):
-        return iter(self._rows)
-
-    def count(self):
-        return self._declared
-
-
-class FailingWalk:
-    """A query whose walk raises partway through. ``count()`` answers normally."""
-
-    def __init__(self, rows, declared):
-        self._rows = list(rows)
-        self._declared = declared
-
-    def __iter__(self):
-        yield from self._rows
-        raise RuntimeError("the cursor was closed underneath the walk")
-
-    def count(self):
-        return self._declared
-
-
 def test_a_membership_count_that_is_short_refuses_as_readily_as_a_short_walk(cfg):
     """Either side of the comparison being wrong is the same fault."""
     with pytest.raises(CratekitError) as excinfo:
@@ -2922,20 +2715,17 @@ def test_a_membership_count_that_is_short_refuses_as_readily_as_a_short_walk(cfg
 
 def test_a_membership_walk_that_raises_is_a_refusal_rather_than_a_traceback(cfg):
     """S4: an unstructured exception reaches the command line as an internal defect."""
-    with pytest.raises(CratekitError) as excinfo:
-        library.playlist_referenced(FailingWalk([_membership("1")], 5))
-    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
-    assert excinfo.value.cause.detail == {"walked": 1}
-    assert "cursor was closed" in excinfo.value.cause.message
+    cause = _refusal(library.playlist_referenced, FailingWalk([_membership("1")], 5))
+    assert cause.reason == "deletion-evidence-incomplete"
+    assert cause.detail == {"walked": 1}
+    assert "cursor was closed" in cause.message
 
 
 def test_a_live_membership_that_names_no_row_refuses_rather_than_freeing_the_file(cfg):
     """A reference this pass cannot address would read as no reference at all."""
-    with pytest.raises(CratekitError) as excinfo:
-        library.playlist_referenced(
-            FakeQuery([FakeRow(ID="m1", ContentID=None, rb_local_deleted=0)])
-        )
-    assert excinfo.value.cause.reason == "deletion-evidence-incomplete"
+    unaddressed = FakeQuery([FakeRow(ID="m1", ContentID=None, rb_local_deleted=0)])
+    cause = _refusal(library.playlist_referenced, unaddressed)
+    assert cause.reason == "deletion-evidence-incomplete"
 
 
 # ── Z: two round-four zero rows on the destructive path ──────────────────────
@@ -2954,9 +2744,8 @@ def test_a_trash_directory_this_account_cannot_write_to_is_not_usable(tmp_path):
         status = trash.probe(music, home=home, platform="darwin")
         assert not status.usable, "an unwritable Trash was reported usable"
         assert "not writable" in status.problem
-        with pytest.raises(CratekitError) as excinfo:
-            trash.assert_usable(music, home=home, platform="darwin")
-        assert excinfo.value.cause.reason == "trash-unavailable"
+        cause = _refusal(trash.assert_usable, music, home=home, platform="darwin")
+        assert cause.reason == "trash-unavailable"
     finally:
         files.chmod(0o700)
 
@@ -2970,10 +2759,9 @@ def test_a_name_the_filesystem_calls_invalid_costs_one_file_and_not_the_run(tmp_
         raise OSError(errno.EINVAL, "invalid argument")
 
     monkeypatch.setattr(os, "open", invalid)
-    with pytest.raises(CratekitError) as excinfo:
-        trash._free_name(directory, ONE)
-    assert excinfo.value.cause.reason == "trash-unavailable"
-    assert excinfo.value.cause.scope is Scope.ITEM, "one unacceptable name aborted the whole pass"
+    cause = _refusal(trash._free_name, directory, ONE)
+    assert cause.reason == "trash-unavailable"
+    assert cause.scope is Scope.ITEM, "one unacceptable name aborted the whole pass"
 
 
 # Round 7: an empty mount point is not a deletion, and a remixer is an artist
@@ -2981,16 +2769,10 @@ def test_a_name_the_filesystem_calls_invalid_costs_one_file_and_not_the_run(tmp_
 
 def _removed_elsewhere(count, *, usn=50):
     """``count`` REMOVED collection rows recorded under the mapped prefix."""
-    rows = []
-    for index in range(count):
-        row = _at(
-            f"{RECORDED_ELSEWHERE}/Music/Removed {index}.flac",
-            f"r{index}",
-            deleted=True,
-            usn=usn + index,
-        )
-        rows.append(row)
-    return rows
+    return [
+        _at(f"{RECORDED_ELSEWHERE}/Music/Removed {at}.flac", f"r{at}", deleted=True, usn=usn + at)
+        for at in range(count)
+    ]
 
 
 def _mapped_volume(cfg, tmp_path, *, active=50, removed=20, volume_id=None):
@@ -2999,11 +2781,7 @@ def _mapped_volume(cfg, tmp_path, *, active=50, removed=20, volume_id=None):
     volume.mkdir(parents=True)
     live = _elsewhere(active)
     gone = _removed_elsewhere(removed)
-    _populate(volume, live)
-    for row in gone:
-        target = Path(str(volume) + row.FolderPath[len(RECORDED_ELSEWHERE) :])
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"audio bytes")
+    _populate(volume, [*(row.recorded for row in live), *(row.FolderPath for row in gone)])
     rule = [
         locations.PrefixRule(RECORDED_ELSEWHERE, str(volume), volume_id or cfg.library.volume_id)
     ]
@@ -3037,9 +2815,7 @@ def test_a_stale_empty_mount_point_writes_no_tombstone_and_retires_no_row(
     assert report.plan.references.suspect_anchors == (str(volume),)
     assert len(report.plan.references.missing) == 50
     assert [item.category for item in report.refused] == [candidates.Category.GONE] * len(gone)
-    assert stores.list_tombstones(cfg, include_revoked=True) == (), (
-        "an unmounted drive's rows were recorded"
-    )
+    assert stores.list_tombstones(cfg, include_revoked=True) == (), "an unmounted drive's rows went"
     assert report.watermark.sequence == 40, "the watermark passed twenty unseen rows"
     assert str(volume) in caplog.text
 
@@ -3050,14 +2826,10 @@ def test_a_genuine_unmount_still_answers_unresolved_on_every_row(cfg, tmp_path):
     rule = [locations.PrefixRule(RECORDED_ELSEWHERE, str(volume))]
     rows = [
         library.RemovedRow(
-            content_id=f"r{index}",
-            recorded=f"{RECORDED_ELSEWHERE}/Music/Removed {index}.flac",
-            sequence=50 + index,
-            size=11,
-            artist=ARTIST,
-            title=f"Removed {index}",
+            content_id=f"r{at}", recorded=f"{RECORDED_ELSEWHERE}/Music/Removed {at}.flac",
+            sequence=50 + at, size=11, artist=ARTIST, title=f"Removed {at}",
         )
-        for index in range(20)
+        for at in range(20)
     ]
     answered = _categorize(cfg, rows, _references(cfg, []), prefix_map=rule)
     assert [item.category for item in answered] == [candidates.Category.UNRESOLVED] * 20
@@ -3100,79 +2872,28 @@ def test_one_file_deleted_by_hand_under_a_healthy_anchor_is_still_settled(
 
 #: 40 values that are genuine mix-name DESIGNATIONS.
 _DESIGNATIONS = (
-    "Extended Mix",
-    "Club Mix",
-    "Radio Edit",
-    "Original Mix",
-    "Michael Woods Remix",
-    "Instrumental Version",
-    "Acoustic Version",
-    "Extended Remix",
-    "Dub Mix",
-    "Radio Mix",
-    "Extended Club Mix",
-    "Remix Edit",
-    "Original Version",
-    "Extended Version",
-    "Radio Version",
-    "Acapella",
-    "Bootleg",
-    "Rework",
-    "Instrumental Dub",
-    "Live Session",
-    "Versión Extendida",
-    "Mezcla Extendida",
-    "Versão Estendida",
-    "Version Longue",
-    "Ao Vivo em Lisboa",
-    "Live aus Berlin",
-    "Studioversion 2",
-    "Versione Estesa",
-    "Live at Wembley",
-    "Mixed by Someone",
-    "Remix Edit 2024",
-    "Dub Mix Pt. 2",
-    "Alternate Take",
-    "Remastered 2019",
-    "Live in Tokyo",
-    "Demo Take 2",
-    "Extended Mix 2",
-    "Live Session at Maida Vale",
-    "Club Mix Pt. 2",
-    "Mezcla Ampliada",
+    "Extended Mix", "Club Mix", "Radio Edit", "Original Mix", "Michael Woods Remix",
+    "Instrumental Version", "Acoustic Version", "Extended Remix", "Dub Mix", "Radio Mix",
+    "Extended Club Mix", "Remix Edit", "Original Version", "Extended Version", "Radio Version",
+    "Acapella", "Bootleg", "Rework", "Instrumental Dub", "Live Session", "Versión Extendida",
+    "Mezcla Extendida", "Versão Estendida", "Version Longue", "Ao Vivo em Lisboa",
+    "Live aus Berlin", "Studioversion 2", "Versione Estesa", "Live at Wembley",
+    "Mixed by Someone", "Remix Edit 2024", "Dub Mix Pt. 2", "Alternate Take", "Remastered 2019",
+    "Live in Tokyo", "Demo Take 2", "Extended Mix 2", "Live Session at Maida Vale",
+    "Club Mix Pt. 2", "Mezcla Ampliada",
 )
 
 #: 15 artist names whose last word is in the vocabulary.
 _ARTISTS_WORD_LAST = (
-    "The Cut",
-    "Da Dub",
-    "Todd Terry Live",
-    "Bicep Live",
-    "Sasha Live",
-    "Group Therapy Radio",
-    "Anjunadeep Radio",
-    "Kaskade Radio",
-    "Rinse Club",
-    "Sub Club",
-    "Smoke Machine Dub",
-    "King Tubby Dub",
-    "Studio Session",
-    "Boiler Room Live",
-    "Defected Radio",
+    "The Cut", "Da Dub", "Todd Terry Live", "Bicep Live", "Sasha Live", "Group Therapy Radio",
+    "Anjunadeep Radio", "Kaskade Radio", "Rinse Club", "Sub Club", "Smoke Machine Dub",
+    "King Tubby Dub", "Studio Session", "Boiler Room Live", "Defected Radio",
 )
 
 #: 10 artist names carrying a vocabulary word anywhere but last.
 _ARTISTS_WORD_FIRST = (
-    "Radio Slave",
-    "Dub Pistols",
-    "Cut Chemist",
-    "Mix Master Mike",
-    "Club Sweat",
-    "Original Gee",
-    "Dub Phizix",
-    "Remix Artist Collective",
-    "Live Element",
-    "Cut Copy",
+    "Radio Slave", "Dub Pistols", "Cut Chemist", "Mix Master Mike", "Club Sweat", "Original Gee",
+    "Dub Phizix", "Remix Artist Collective", "Live Element", "Cut Copy",
 )
 
 #: The shipped rule's measured miss counts per class, pinned exactly.
@@ -3224,8 +2945,7 @@ def test_one_string_read_as_an_artist_and_as_a_designation_stays_two_identities(
     """F2: the fix's own safety claim, falsified on the docstring's own examples."""
     for value in ("The Cut", "Da Dub"):
         as_artist = _remixed_row(cfg, ONE, "1", title="Strobe", remixer=value)
-        subtitled = _subtitled(cfg, TWO, "2", title="Strobe", subtitle=value, usn=51)
-        as_designation = library.read_collection(FakeQuery([subtitled])).removed[0]
+        (as_designation,) = _read(_subtitled(cfg, TWO, "2", title="Strobe", subtitle=value, usn=51))
         assert stores.version_of(as_artist) != stores.version_of(as_designation), (
             f"{value!r} read as an artist and read as a designation are one "
             f"identity, so deleting either suppresses the other"
@@ -3242,9 +2962,7 @@ def test_a_listing_says_which_suppressions_moved_no_file(cfg, gates_pass, tmp_pa
     """A tombstone the tool HONOURED and one it ASSERTED were indistinguishable."""
     home = _home(tmp_path)
     db = _prepared(cfg, names=(ONE, TWO), usn=50)
-    found = run.plan(cfg, db, actor="cli")
-    offered = run.present(cfg, found)
-    _confirm_all(cfg, offered)
+    _confirm_every(cfg, db)
     (Path(cfg.library.root) / "Music" / TWO).unlink()
     run.apply(cfg, db, actor="cli", home=home)
     listed = {
@@ -3261,9 +2979,7 @@ def test_a_listing_says_which_suppressions_moved_no_file(cfg, gates_pass, tmp_pa
 
 def test_the_listing_carries_the_column_value_a_missed_tombstone_was_built_from(cfg):
     """The other half of the same claim, on the row where it is the whole answer."""
-    row = library.read_collection(
-        FakeQuery([_subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep")])
-    ).removed[0]
+    (row,) = _read(_subtitled(cfg, ONE, "1", title="Atlas", subtitle="Anjunadeep"))
     stores.record_tombstone(cfg, row, actor="cli", trashed_to="/x/.Trash/Atlas.flac")
     listed = stores.summarize(stores.list_tombstones(cfg)[0])
     assert listed["version"] == ""
@@ -3274,60 +2990,57 @@ def test_the_listing_carries_the_column_value_a_missed_tombstone_was_built_from(
 # ── F8 and F9: two low residuals on identity and on the discriminator ────────
 
 
-@pytest.mark.parametrize("blank", ["   ", "\t", "\n ", " "])
-def test_a_removed_row_identified_by_whitespace_is_refused(blank):
-    """The same shape as the ``'None'`` defect just closed, one step along."""
-    with pytest.raises(CratekitError) as excinfo:
-        tombstone.removed_file_identity(content_id=blank, recorded="/x.flac")
-    assert excinfo.value.cause.reason == "review-selection-invalid"
+@pytest.mark.parametrize(
+    "named",
+    [
+        # The same shape as the ``'None'`` defect just closed, one step along.
+        *(pytest.param(blank, id=f"whitespace-{blank!r}") for blank in ["   ", "\t", "\n ", " "]),
+        # Round 8: ``str(False)`` is ``'False'``, truthy, and strips to itself.
+        *(pytest.param(boolean, id=f"boolean-{boolean}") for boolean in [True, False]),
+    ],
+)
+def test_an_identifier_that_names_nothing_is_refused_rather_than_addressed(named):
+    cause = _refusal(tombstone.removed_file_identity, content_id=named, recorded="/x.flac")
+    assert cause.reason == "review-selection-invalid"
 
 
-def test_a_numeric_identifier_is_still_addressable():
-    """The half the stripped test may not cost: ``not 0`` would refuse a real row."""
-    assert tombstone.removed_file_identity(content_id=0, recorded="/x.flac")["content_id"] == "0"
+@pytest.mark.parametrize("number", [0, 1])
+def test_a_numeric_identifier_is_still_addressable(number):
+    """``not 0`` would refuse a real row, and the guard is ``isinstance``, not a comparison."""
+    identity = tombstone.removed_file_identity(content_id=number, recorded="/x.flac")
+    assert identity["content_id"] == str(number)
 
 
-def test_two_spellings_of_one_isrc_are_one_recording(cfg):
-    """F9: an ISRC is case-insensitive by specification and was compared raw."""
-    one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="gbaya1500001")
-    other = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="GBAYA1500001")
-    assert stores.version_of(one) == stores.version_of(other)
-    assert stores.ambiguous_versions([one, other]) == frozenset(), "case alone made two recordings"
-    third = replace(_removed(cfg, ACCENTED, "3"), title="Strobe", isrc="USRC17607839")
-    assert stores.ambiguous_versions([one, third]) == frozenset({"1", "3"}), (
-        "folding may not cost the discriminator the collision it exists for"
-    )
-
-
-# ── Round 8: three values whose own typing survived into an identity ─────────
-
-
-def test_the_display_form_of_one_isrc_is_not_two_recordings(cfg):
-    """Round 8: the case fix went green over a wider defect at the same site."""
-    one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="GBAYA1500001")
-    other = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="GB-AYA-15-00001")
-    assert stores.version_of(one) == stores.version_of(other)
-    assert stores.ambiguous_versions([one, other]) == frozenset(), (
-        "the display form is the same code"
-    )
-
-
-def test_a_placeholder_in_the_isrc_column_is_an_absent_code(cfg):
-    """A separator is not a code, and silence is read as agreement."""
-    real = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="GBAYA1500001")
-    placeholder = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="-")
-    assert stores.ambiguous_versions([real, placeholder]) == frozenset(), (
-        "a placeholder is an absent code"
-    )
-
-
-def test_folding_the_code_does_not_cost_the_collision_it_exists_for(cfg):
-    """The half a wider fold could cost: two real codes must still disagree."""
-    one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="GB-AYA-15-00001")
-    third = replace(_removed(cfg, ACCENTED, "3"), title="Strobe", isrc="US-RC1-76-07839")
-    assert stores.ambiguous_versions([one, third]) == frozenset({"1", "3"}), (
-        "two different recordings in display form must still read as a collision"
-    )
+@pytest.mark.parametrize(
+    ("ours", "theirs", "other", "one_version", "ambiguous"),
+    [
+        # F9: an ISRC is case-insensitive by specification and was compared raw.
+        pytest.param("gbaya1500001", "GBAYA1500001", (TWO, "2"), True, frozenset(), id="case"),
+        # Round 8: the case fix went green over a wider defect at the same site.
+        pytest.param(
+            "GBAYA1500001", "GB-AYA-15-00001", (TWO, "2"), True, frozenset(), id="display-form"
+        ),
+        # A separator is not a code, and silence is read as agreement.
+        pytest.param("GBAYA1500001", "-", (TWO, "2"), None, frozenset(), id="placeholder"),
+        # The half a fold could cost: two real codes must still disagree, in either form.
+        pytest.param(
+            "gbaya1500001", "USRC17607839", (ACCENTED, "3"), None, frozenset({"1", "3"}),
+            id="folded-codes-still-collide",
+        ),
+        pytest.param(
+            "GB-AYA-15-00001", "US-RC1-76-07839", (ACCENTED, "3"), None, frozenset({"1", "3"}),
+            id="display-codes-still-collide",
+        ),
+    ],
+)
+def test_one_isrc_however_spelled_is_one_recording_and_two_still_collide(
+    cfg, ours, theirs, other, one_version, ambiguous
+):
+    one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc=ours)
+    another = replace(_removed(cfg, *other), title="Strobe", isrc=theirs)
+    if one_version:
+        assert stores.version_of(one) == stores.version_of(another)
+    assert stores.ambiguous_versions([one, another]) == ambiguous
 
 
 @pytest.mark.parametrize(
@@ -3355,20 +3068,6 @@ def test_tidying_the_value_does_not_rewrite_the_persons_own_text():
     )
 
 
-@pytest.mark.parametrize("boolean", [True, False])
-def test_a_boolean_identifier_is_refused_rather_than_addressed_as_its_repr(boolean):
-    """Round 8: ``str(False)`` is ``'False'``, truthy, and strips to itself."""
-    with pytest.raises(CratekitError) as excinfo:
-        tombstone.removed_file_identity(content_id=boolean, recorded="/x.flac")
-    assert excinfo.value.cause.reason == "review-selection-invalid"
-
-
-def test_refusing_booleans_does_not_take_the_numeric_identifier_with_it():
-    """Why the guard is ``isinstance`` and not a comparison."""
-    assert tombstone.removed_file_identity(content_id=0, recorded="/x.flac")["content_id"] == "0"
-    assert tombstone.removed_file_identity(content_id=1, recorded="/x.flac")["content_id"] == "1"
-
-
 # ── Round 10: the era is stamped in the record, so history is a LOOKUP ───────
 
 
@@ -3381,42 +3080,33 @@ def test_the_folding_limb_of_the_tidy_is_covered_on_its_own(cfg):
     assert tombstone.version_title("Strobe", "()") == "Strobe"
 
 
+def _plant(cfg, row, payload, *, title="Strobe (Woods)", kind=tombstone.KIND_VERSION,
+           identity=None):
+    """A record written straight into the tombstone store, as ``payload`` spells it."""
+    if identity is None:
+        identity = tombstone.version_identity(artist=row.artist, title=title)
+    return stores.tombstones(cfg).record(kind=kind, identity=identity, payload=payload, actor="cli")
+
+
 def _record_an_earlier_build_wrote(cfg, row, *, title, stamp=None):
     """Plant the record a build with OTHER composition rules left on this disk."""
     payload = {
-        "artist": row.artist,
-        "title": row.title,
-        "version": row.version,
-        "version_unbelieved": row.version_unbelieved,
-        "isrc": row.isrc or "",
-        "content_id": row.content_id,
-        "recorded": row.recorded,
-        "trashed_to": "",
+        "artist": row.artist, "title": row.title, "version": row.version,
+        "version_unbelieved": row.version_unbelieved, "isrc": row.isrc or "",
+        "content_id": row.content_id, "recorded": row.recorded, "trashed_to": "",
     }
     if stamp is not None:
         payload[stores.IDENTITY_SCHEME_FIELD] = stamp
-    return stores.tombstones(cfg).record(
-        kind=tombstone.KIND_VERSION,
-        identity=tombstone.version_identity(artist=row.artist, title=title),
-        payload=payload,
-        actor="cli",
-    )
+    return _plant(cfg, row, payload, title=title)
 
 
 def _one_removed_row(cfg, *, title, subtitle="", remixer="", content_id="1"):
-    _music(cfg, ONE)
-    _baseline(cfg)
+    _baselined(cfg, ONE)
     row = _versioned(
-        cfg,
-        ONE,
-        content_id,
-        usn=50,
-        title=title,
-        isrc="AAAA11111111",
-        subtitle=subtitle,
+        cfg, ONE, content_id, usn=50, title=title, isrc="AAAA11111111", subtitle=subtitle,
         remixer=remixer,
     )
-    return library.read_collection(FakeQuery([row])).removed[0]
+    return _read(row)[0]
 
 
 @pytest.mark.parametrize(
@@ -3462,9 +3152,7 @@ def test_an_earlier_builds_record_retires_the_row_through_the_whole_pass(
         report = run.apply(cfg, db, actor="cli", home=home)
     assert [item.category for item in report.refused] == [candidates.Category.GONE]
     assert report.watermark.sequence == 50, "the row was held open"
-    assert len(stores.list_tombstones(cfg, include_revoked=True)) == 1, (
-        "a second tombstone was written"
-    )
+    assert len(stores.list_tombstones(cfg, include_revoked=True)) == 1, "a second tombstone written"
 
 
 def test_a_record_this_build_wrote_says_which_rules_composed_it(cfg, gates_pass):
@@ -3495,98 +3183,50 @@ def _fold_unnormalised(value):
     [
         # ── ADDITIVE DRIFTS.
         *(
-            pytest.param(
-                "tombstone",
-                "VERSION_WORDS",
-                tombstone.VERSION_WORDS | {word},
-                id=f"vocabulary-gains-{word}",
-            )
-            for word in (
-                "refix",
-                "redux",
-                "vocal",
-                "acappella",
-                "nightcore",
-                "slowed",
-                "rmx",
-                "dubplate",
-                "versión",
-                "bootie",
-            )
+            pytest.param("tombstone", "VERSION_WORDS", tombstone.VERSION_WORDS | {word},
+                         id=f"vocabulary-gains-{word}")
+            for word in ("refix", "redux", "vocal", "acappella", "nightcore", "slowed", "rmx",
+                         "dubplate", "versión", "bootie")
         ),
-        pytest.param(
-            "tombstone",
-            "_CREDIT_MARKERS",
-            tombstone._CREDIT_MARKERS | {"vs"},
-            id="credit-markers-gains-vs",
-        ),
-        pytest.param(
-            "tombstone",
-            "_CREDIT_MARKERS",
-            tombstone._CREDIT_MARKERS | {"x"},
-            id="credit-markers-gains-x",
+        *(
+            pytest.param("tombstone", "_CREDIT_MARKERS", tombstone._CREDIT_MARKERS | {marker},
+                         id=f"credit-markers-gains-{marker}")
+            for marker in ("vs", "x")
         ),
         pytest.param("tombstone", "fold", _fold_nfkc, id="the-fold-goes-nfkc"),
         pytest.param("tombstone", "fold", _fold_unnormalised, id="the-fold-stops-normalising"),
-        pytest.param(
-            "tombstone",
-            "_BRACKET_CHARACTERS",
-            re.compile(r"[()\[\]{}]+"),
-            id="the-tidy-covers-braces",
-        ),
-        pytest.param(
-            "tombstone",
-            "_BRACKETED",
-            re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]|\{([^{}]*)\}"),
-            id="the-carrying-test-covers-braces",
-        ),
+        pytest.param("tombstone", "_BRACKET_CHARACTERS", re.compile(r"[()\[\]{}]+"),
+                     id="the-tidy-covers-braces"),
+        pytest.param("tombstone", "_BRACKETED",
+                     re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]|\{([^{}]*)\}"),
+                     id="the-carrying-test-covers-braces"),
         pytest.param("tombstone", "REMIX_DESIGNATION", "Remix Edit", id="designation-gains-a-word"),
+        pytest.param("tombstone", "_WORD_SPLIT", re.compile(r"[^\w']+", re.UNICODE),
+                     id="the-word-split-keeps-apostrophes"),
         pytest.param(
-            "tombstone",
-            "_WORD_SPLIT",
-            re.compile(r"[^\w']+", re.UNICODE),
-            id="the-word-split-keeps-apostrophes",
-        ),
-        pytest.param(
-            "library",
-            "_VERSION_COLUMNS",
-            (
-                ("RemixerName", library.VERSION_IS_AN_ARTIST),
-                ("Subtitle", library.VERSION_IS_A_DESIGNATION),
-                ("Comments", library.VERSION_IS_A_DESIGNATION),
-            ),
+            "library", "_VERSION_COLUMNS",
+            (("RemixerName", library.VERSION_IS_AN_ARTIST),
+             ("Subtitle", library.VERSION_IS_A_DESIGNATION),
+             ("Comments", library.VERSION_IS_A_DESIGNATION)),
             id="a-third-column-below-the-two",
         ),
         # ── SUBTRACTIVE DRIFTS, the round 10 set ──
         pytest.param("tombstone", "_is_a_credit", lambda group: False, id="is-a-credit"),
         pytest.param("tombstone", "_CREDIT_MARKERS", frozenset(), id="credit-markers"),
-        pytest.param(
-            "tombstone",
-            "_already_carries",
-            lambda title, folded: folded in tombstone.fold(title),
-            id="already-carries",
-        ),
-        pytest.param(
-            "tombstone",
-            "already_spelled_as_a_remix",
-            lambda value: False,
-            id="already-spelled-as-a-remix",
-        ),
+        pytest.param("tombstone", "_already_carries",
+                     lambda title, folded: folded in tombstone.fold(title), id="already-carries"),
+        pytest.param("tombstone", "already_spelled_as_a_remix", lambda value: False,
+                     id="already-spelled-as-a-remix"),
         pytest.param("tombstone", "REMIX_DESIGNATION", "Rework", id="remix-designation"),
         pytest.param(
             "tombstone", "_as_a_bracketed_value", lambda version: str(version), id="the-tidy"
         ),
-        pytest.param(
-            "tombstone", "fold", lambda value: " ".join(str(value).split()), id="the-fold"
-        ),
+        pytest.param("tombstone", "fold", lambda text: " ".join(str(text).split()), id="the-fold"),
         pytest.param("tombstone", "VERSION_WORDS", frozenset({"remix"}), id="the-vocabulary"),
         pytest.param(
-            "library",
-            "_VERSION_COLUMNS",
-            (
-                ("Subtitle", library.VERSION_IS_A_DESIGNATION),
-                ("RemixerName", library.VERSION_IS_AN_ARTIST),
-            ),
+            "library", "_VERSION_COLUMNS",
+            (("Subtitle", library.VERSION_IS_A_DESIGNATION),
+             ("RemixerName", library.VERSION_IS_AN_ARTIST)),
             id="the-column-order",
         ),
     ],
@@ -3633,12 +3273,7 @@ def test_a_record_that_names_no_row_matches_no_row(cfg, gates_pass):
     """The row lookup is a lookup on a NAME, and an absent name is not a name."""
     removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
     nameless = replace(removed, content_id="")
-    stores.tombstones(cfg).record(
-        kind=tombstone.KIND_VERSION,
-        identity=tombstone.version_identity(artist=removed.artist, title="Strobe (Woods)"),
-        payload={"content_id": "", "recorded": removed.recorded},
-        actor="cli",
-    )
+    _plant(cfg, removed, {"content_id": "", "recorded": removed.recorded})
     assert not stores.tombstone_predicate(cfg)(nameless)
 
 
@@ -3655,12 +3290,7 @@ def test_a_record_naming_nothing_is_not_a_record_naming_the_string_of_nothing(
 ):
     """``str(None)`` is ``'None'``, and this module has now fixed that at four doors."""
     removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
-    stores.tombstones(cfg).record(
-        kind=tombstone.KIND_VERSION,
-        identity=tombstone.version_identity(artist=removed.artist, title="Strobe (Woods)"),
-        payload={"content_id": stored, "recorded": removed.recorded},
-        actor="cli",
-    )
+    _plant(cfg, removed, {"content_id": stored, "recorded": removed.recorded})
     assert not stores.tombstone_predicate(cfg)(replace(removed, content_id=spelled)), (
         "a record that names no row retired a row whose identifier happens to be "
         "the text that value stringifies to"
@@ -3673,12 +3303,7 @@ def test_the_row_lookup_reads_two_composition_forms_of_one_path_as_one_path(cfg,
     composed = "/Volumes/Music/Café Track.flac"
     decomposed = "/Volumes/Music/Café Track.flac"
     assert composed != decomposed
-    stores.tombstones(cfg).record(
-        kind=tombstone.KIND_VERSION,
-        identity=tombstone.version_identity(artist=removed.artist, title="Strobe (Woods)"),
-        payload={"content_id": removed.content_id, "recorded": decomposed},
-        actor="cli",
-    )
+    _plant(cfg, removed, {"content_id": removed.content_id, "recorded": decomposed})
     assert stores.tombstone_predicate(cfg)(replace(removed, recorded=composed)), (
         "one path spelled two ways read as two rows, so a completed deletion is "
         "unrecognisable and its row holds the whole queue"
@@ -3717,13 +3342,10 @@ def test_the_row_identity_composes_NFC_and_the_normal_form_is_pinned():
 def test_the_stamp_is_the_same_value_in_a_process_that_is_not_this_one():
     """It is written to a disk and compared by a LATER process, so it must not vary."""
     seeds = ("0", "1", "12345", "99999")
+    asks = "from cratekit.deletion import stores; print(stores.identity_scheme())"
     children = [
         subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                "from cratekit.deletion import stores; print(stores.identity_scheme())",
-            ],
+            [sys.executable, "-c", asks],
             stdout=subprocess.PIPE,
             text=True,
             env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": str(SRC_ROOT)},
@@ -3735,39 +3357,28 @@ def test_the_stamp_is_the_same_value_in_a_process_that_is_not_this_one():
         out, _err = child.communicate(timeout=120)
         assert child.returncode == 0
         answers.add(out.strip())
-    assert answers == {stores.identity_scheme()}, (
-        f"the stamp depends on the process hash seed: {answers}"
-    )
+    assert answers == {stores.identity_scheme()}, f"the stamp depends on the hash seed: {answers}"
 
 
 def test_the_stamp_reaches_every_rule_by_walking_rather_than_by_a_list():
     """The membership of what the stamp covers is COMPUTED, and this pins the result."""
     reached = stores._composition_rules()
-    for name in (
-        "cratekit.core.tombstone.VERSION_WORDS",
-        "cratekit.core.tombstone._CREDIT_MARKERS",
-        "cratekit.core.tombstone.REMIX_DESIGNATION",
-        "cratekit.core.tombstone._SPACING",
-        "cratekit.core.tombstone._BRACKETED",
-        "cratekit.core.tombstone._BRACKET_CHARACTERS",
-        "cratekit.core.tombstone._WORD_SPLIT",
-        "cratekit.deletion.library._VERSION_COLUMNS",
-    ):
+    tomb = "cratekit.core.tombstone"
+    values = [
+        f"{tomb}.{name}"
+        for name in ("VERSION_WORDS", "_CREDIT_MARKERS", "REMIX_DESIGNATION", "_SPACING",
+                     "_BRACKETED", "_BRACKET_CHARACTERS", "_WORD_SPLIT")
+    ]
+    for name in [*values, "cratekit.deletion.library._VERSION_COLUMNS"]:
         assert f"value:{name}" in reached, f"the walk stopped reaching {name}"
-    for name in (
-        "cratekit.core.tombstone.fold",
-        "cratekit.core.tombstone._already_carries",
-        "cratekit.core.tombstone._is_a_credit",
-        "cratekit.core.tombstone._as_a_bracketed_value",
-        "cratekit.core.tombstone.already_spelled_as_a_remix",
-        "cratekit.core.tombstone.reads_as_version",
-        "cratekit.core.tombstone.remixer_title",
-        "cratekit.core.tombstone.version_title",
-        "cratekit.core.tombstone.version_identity",
-        "cratekit.deletion.library._version_of",
-        "cratekit.deletion.library._text",
-        "cratekit.deletion.stores.version_of",
-    ):
+    codes = [
+        f"{tomb}.{name}"
+        for name in ("fold", "_already_carries", "_is_a_credit", "_as_a_bracketed_value",
+                     "already_spelled_as_a_remix", "reads_as_version", "remixer_title",
+                     "version_title", "version_identity")
+    ]
+    owned = ["library._version_of", "library._text", "stores.version_of"]
+    for name in [*codes, *(f"cratekit.deletion.{name}" for name in owned)]:
         assert f"code:{name}" in reached, f"the walk stopped reaching {name}"
     # The vocabulary is in there as its members, not as a name.
     encoded = json.dumps(reached["value:cratekit.core.tombstone.VERSION_WORDS"])
@@ -3801,12 +3412,9 @@ def test_prose_is_not_a_rule_and_a_reordered_call_is():
 def test_a_record_of_another_kind_does_not_answer_the_tombstone_question(cfg, gates_pass):
     """The kind is recognised POSITIVELY, so a record of another kind decides nothing."""
     removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
-    stores.tombstones(cfg).record(
-        kind=tombstone.KIND_REMOVED_FILE,
-        identity=stores.row_identity(removed),
-        payload={"content_id": removed.content_id, "recorded": removed.recorded},
-        actor="cli",
-    )
+    held = {"content_id": removed.content_id, "recorded": removed.recorded}
+    identity = stores.row_identity(removed)
+    _plant(cfg, removed, held, kind=tombstone.KIND_REMOVED_FILE, identity=identity)
     assert not stores.tombstone_predicate(cfg)(removed), "a non tombstone answered as one"
 
 
@@ -3853,12 +3461,7 @@ def test_nothing_reconstructs_a_former_builds_composition_any_more(cfg):
 @pytest.fixture
 def review_cli(library_root, gates_pass, monkeypatch):
     """A configured machine the delete.review verb can actually finish on."""
-    data = valid_data(
-        library_root,
-        profile={"name": "full"},
-        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "pin_validated_on": "2026-08-02"},
-    )
-    ready = config.from_dict(data)
+    ready = config.from_dict(_pinned(library_root, profile={"name": "full"}))
     _build_disposable_database(Path(ready.library.db_path))
     config.save(ready)
     config.reset_cache()
@@ -3867,11 +3470,41 @@ def review_cli(library_root, gates_pass, monkeypatch):
     return ready
 
 
+def _gated(*flags) -> dict:
+    """``delete review`` driven to its confirm gate; the refusal's envelope."""
+    code, out, err = _drive(["--output", "json", *flags, "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    return json.loads(out)
+
+
+def _answer(run_id: str, answer: str) -> None:
+    code, _, err = _drive(
+        ["run", "decide", run_id, "delete.review.confirm", answer, "--actor", "a-person"]
+    )
+    assert code == int(ExitCode.OK), err
+
+
+def _resumed(run_id: str) -> dict:
+    """The answered run driven again; its envelope."""
+    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    return json.loads(out)
+
+
+def _baseline_the_database(cfg) -> None:
+    """The watermark at 40, against the identity the disposable database names."""
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    try:
+        watermark.WatermarkStore(cfg).baseline(
+            database_identity=library.database_identity(handle), sequence=40, actor="cli"
+        )
+    finally:
+        rb_writer.close_db(handle)
+
+
 def test_delete_review_refuses_at_its_explicit_gate(review_cli):
     """First drive discovers the confirm gate and leaves the run resumable."""
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
-    envelope = json.loads(out)
+    envelope = _gated()
     assert envelope["resumable"] is True
     assert envelope["cause"]["detail"]["gate"] == "delete.review.confirm"
     assert envelope["cause"]["detail"]["explicit"] is True
@@ -3879,21 +3512,8 @@ def test_delete_review_refuses_at_its_explicit_gate(review_cli):
 
 def test_delete_review_refuses_an_inline_answer_and_does_not_record_it(review_cli):
     """R34: the same invocation cannot answer the gate it just discovered."""
-    code, out, _ = _drive(["--output", "json", "delete", "review"])
-    run_id = json.loads(out)["run_id"]
-    code, out, err = _drive(
-        [
-            "--output",
-            "json",
-            "-d",
-            "delete.review.confirm=trash",
-            "--run",
-            run_id,
-            "delete",
-            "review",
-        ]
-    )
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    run_id = _gated()["run_id"]
+    _gated("-d", "delete.review.confirm=trash", "--run", run_id)
     from cratekit.cli import gates
 
     assert "delete.review.confirm" not in gates.load(run_id).decisions
@@ -3901,31 +3521,18 @@ def test_delete_review_refuses_an_inline_answer_and_does_not_record_it(review_cl
 
 def test_delete_review_exits_ok_after_the_recorded_decision(review_cli):
     """The two-act path: refuse, record with an actor, resume, emit a review set."""
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
-    run_id = json.loads(out)["run_id"]
-    code, _, err = _drive(
-        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"]
-    )
-    assert code == int(ExitCode.OK), err
-    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
-    assert code == int(ExitCode.OK), err or out
-    envelope = json.loads(out)
+    run_id = _gated()["run_id"]
+    _answer(run_id, "trash")
+    envelope = _resumed(run_id)
     assert envelope["data"]["queue"] == "deletion"
     assert envelope["data"]["items"] == []
     assert envelope["data"]["unresolved"] == 0
 
 
 def test_delete_review_abort_moves_nothing(review_cli):
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    run_id = json.loads(out)["run_id"]
-    code, _, err = _drive(
-        ["run", "decide", run_id, "delete.review.confirm", "abort", "--actor", "a-person"]
-    )
-    assert code == int(ExitCode.OK), err
-    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
-    assert code == int(ExitCode.OK), err or out
-    assert json.loads(out)["outcome"] == "no_op"
+    run_id = _gated()["run_id"]
+    _answer(run_id, "abort")
+    assert _resumed(run_id)["outcome"] == "no_op"
 
 
 def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatch):
@@ -3933,38 +3540,19 @@ def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatc
     home = _home(tmp_path)
     monkeypatch.setattr("cratekit.deletion.trash.Path.home", lambda: home)
     music = _music(review_cli, ONE)
-    db_path = Path(review_cli.library.db_path)
-    handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
-    try:
-        watermark.WatermarkStore(review_cli).baseline(
-            database_identity=library.database_identity(handle), sequence=40, actor="cli"
-        )
-    finally:
-        rb_writer.close_db(handle)
+    _baseline_the_database(review_cli)
+    other = Path(review_cli.library.root) / "Music" / TWO
     _write_rows(
-        db_path,
+        Path(review_cli.library.db_path),
         [
             ("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem),
-            (
-                "2",
-                str(Path(review_cli.library.root) / "Music" / TWO),
-                False,
-                20,
-                11,
-                Path(TWO).stem,
-            ),
+            ("2", str(other), False, 20, 11, Path(TWO).stem),
         ],
     )
     _music(review_cli, TWO)
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
-    run_id = json.loads(out)["run_id"]
-    code, _, err = _drive(
-        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"]
-    )
-    assert code == int(ExitCode.OK), err
-    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
-    assert code == int(ExitCode.OK), err or out
+    run_id = _gated()["run_id"]
+    _answer(run_id, "trash")
+    _resumed(run_id)
     assert not music.exists()
     assert any(home.joinpath(".Trash").iterdir()), "the confirmed file never reached the Trash"
     # U60: what the inline pass owes, through the shipped verb.
@@ -3976,34 +3564,21 @@ def test_delete_review_honours_a_reject_recorded_before_the_gate(review_cli, tmp
     """The gate accepts only what nobody answered: a recorded reject is not trashed."""
     _fake_trash(tmp_path, monkeypatch)
     one, two = _music(review_cli, ONE), _music(review_cli, TWO, body=b"other bytes")
-    db_path = Path(review_cli.library.db_path)
-    handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
-    try:
-        watermark.WatermarkStore(review_cli).baseline(
-            database_identity=library.database_identity(handle), sequence=40, actor="cli"
-        )
-    finally:
-        rb_writer.close_db(handle)
+    _baseline_the_database(review_cli)
     _write_rows(
-        db_path,
+        Path(review_cli.library.db_path),
         [
             ("1", str(one), True, 50, one.stat().st_size, Path(ONE).stem),
             ("2", str(two), True, 51, two.stat().st_size, Path(TWO).stem),
         ],
     )
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
-    run_id = json.loads(out)["run_id"]
+    run_id = _gated()["run_id"]
     with review.open_store(review_cli) as store:
         offered = review.list_items(store, queue=review.Queue.DELETION).items
         rejected = next(item for item in offered if Path(item.payload["path"]).name == TWO)
         review.resolve(store, rejected.item_id, review.Verdict.REJECTED, actor="a-person")
-    code, _, err = _drive(
-        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"]
-    )
-    assert code == int(ExitCode.OK), err
-    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
-    assert code == int(ExitCode.OK), err or out
+    _answer(run_id, "trash")
+    _resumed(run_id)
     assert not one.exists()
     assert two.exists(), "a file a person rejected was trashed by the gate"
 
@@ -4011,10 +3586,8 @@ def test_delete_review_honours_a_reject_recorded_before_the_gate(review_cli, tmp
 def _history(cfg) -> Path:
     """A library whose collection already carries one removal nobody has reviewed."""
     music = _music(cfg, ONE)
-    _write_rows(
-        Path(cfg.library.db_path),
-        [("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem)],
-    )
+    row = ("1", str(music), True, 50, music.stat().st_size, Path(ONE).stem)
+    _write_rows(Path(cfg.library.db_path), [row])
     return music
 
 
@@ -4030,23 +3603,13 @@ def test_delete_review_says_on_the_refusal_that_a_first_run_accepted_history(
     """R-134, driven through the shipped verb, and what an abort can and cannot undo."""
     trash = _fake_trash(tmp_path, monkeypatch)
     music = _history(review_cli)
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
-    refused = json.loads(out)
-    assert refused["cause"]["detail"]["shown"] == {
-        "baselined": True,
-        "accepted_as_history": 1,
-        "offered": 0,
-    }
-    run_id = refused["run_id"]
-    _drive(["run", "decide", run_id, "delete.review.confirm", "abort", "--actor", "a-person"])
-    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
-    assert code == int(ExitCode.OK), err or out
-    assert json.loads(out)["outcome"] == "no_op"
+    refused = _gated()
+    shown = {"baselined": True, "accepted_as_history": 1, "offered": 0}
+    assert refused["cause"]["detail"]["shown"] == shown
+    _answer(refused["run_id"], "abort")
+    assert _resumed(refused["run_id"])["outcome"] == "no_op"
     assert music.exists() and not any(trash.iterdir())
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
-    second = json.loads(out)
+    second = _gated()
     assert second["cause"]["detail"]["shown"] == {
         "baselined": False,
         "accepted_as_history": 0,
@@ -4054,12 +3617,8 @@ def test_delete_review_says_on_the_refusal_that_a_first_run_accepted_history(
         # U243: the other row records no location, and the screen counts it.
         "ignored, not local files": 1,
     }
-    _drive(
-        ["run", "decide", second["run_id"], "delete.review.confirm", "trash", "--actor", "a-person"]
-    )
-    code, out, err = _drive(["--output", "json", "--run", second["run_id"], "delete", "review"])
-    assert code == int(ExitCode.OK), err or out
-    assert json.loads(out)["data"]["items"] == []
+    _answer(second["run_id"], "trash")
+    assert _resumed(second["run_id"])["data"]["items"] == []
     assert music.exists() and not any(trash.iterdir())
 
 
@@ -4069,13 +3628,9 @@ def test_delete_review_first_run_confirmed_reports_ok_and_trashes_nothing(
     """Conformance 3's other half: the gate fires on a baseline and a trash answer is OK."""
     trash = _fake_trash(tmp_path, monkeypatch)
     music = _history(review_cli)
-    code, out, err = _drive(["--output", "json", "delete", "review"])
-    assert code == int(ExitCode.DECISION_REQUIRED), err or out
-    run_id = json.loads(out)["run_id"]
-    _drive(["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"])
-    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
-    assert code == int(ExitCode.OK), err or out
-    envelope = json.loads(out)
+    run_id = _gated()["run_id"]
+    _answer(run_id, "trash")
+    envelope = _resumed(run_id)
     assert envelope["outcome"] == "ok"
     assert envelope["data"]["items"] == []
     assert music.exists() and not any(trash.iterdir())
@@ -4110,8 +3665,7 @@ ARCHIVE_ID = "AAAA-1111-the-archive"
 
 def _the_same_file_through_a_rule(cfg):
     """One real file, a REMOVED row on it, and an ACTIVE row on it through a rule."""
-    _music(cfg, ONE)
-    _baseline(cfg)
+    _baselined(cfg, ONE)
     still_referenced = _at(f"{RECORDED_ELSEWHERE}/{ONE}", "active-through-the-rule", usn=45)
     return FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50), still_referenced], usn=51)
 
@@ -4123,9 +3677,7 @@ def test_a_rule_onto_the_wrong_volume_refuses_rather_than_trashing_the_only_copy
     db = _the_same_file_through_a_rule(cfg)
     right = [locations.PrefixRule(RECORDED_ELSEWHERE, str(Path(cfg.library.root) / "Music"))]
     found = run.plan(cfg, db, actor="cli", prefix_map=right)
-    assert [item.category for item in found.candidates] == [
-        candidates.Category.COLLIDES_WITH_ACTIVE_ROW
-    ]
+    assert _kinds(found.candidates) == [candidates.Category.COLLIDES_WITH_ACTIVE_ROW]
     wrong = tmp_path / "Volumes" / "NOT THE ONE"
     wrong.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {wrong: "BBBB-some-other-disk"}, otherwise=cfg.library.volume_id)
@@ -4133,9 +3685,8 @@ def test_a_rule_onto_the_wrong_volume_refuses_rather_than_trashing_the_only_copy
         locations.PrefixRule(RECORDED_ELSEWHERE, str(wrong)),
         locations.PrefixRule(RECORDED_ELSEWHERE, str(wrong), ARCHIVE_ID),
     ):
-        with pytest.raises(CratekitError) as excinfo:
-            run.plan(cfg, db, actor="cli", prefix_map=[rule])
-        assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+        cause = _refusal(run.plan, cfg, db, actor="cli", prefix_map=[rule])
+        assert cause.reason == "mapped-volume-mismatch"
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
 
 
@@ -4159,9 +3710,8 @@ def test_a_different_disk_at_a_mapped_target_stops_the_apply_before_any_file_mov
     home = _home(tmp_path)
     _confirm_every(cfg, db, prefix_map=rule)
     _mounts.stand_in(monkeypatch, {volume: "BBBB-a-clone"}, otherwise=cfg.library.volume_id)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home, prefix_map=rule)
+    assert cause.reason == "mapped-volume-mismatch"
     assert len(list((volume / "Music").glob("Removed *.flac"))) == len(gone)
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
     assert not any((home / ".Trash").iterdir())
@@ -4181,12 +3731,9 @@ def test_a_volume_holding_only_removed_rows_does_not_settle_off_an_empty_mount_p
     _confirm_all(cfg, offered)
     _empty_the_mount_point(volume)
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
-    assert stores.list_tombstones(cfg, include_revoked=True) == (), (
-        "deletions recorded off an empty directory"
-    )
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home, prefix_map=rule)
+    assert cause.reason == "mapped-volume-mismatch"
+    assert stores.list_tombstones(cfg, include_revoked=True) == (), "recorded off an empty mount"
     assert watermark.WatermarkStore(cfg).read().sequence == 40
 
 
@@ -4225,9 +3772,8 @@ def test_a_disk_swapped_after_the_plan_stops_a_confirmed_move(
     home = _home(tmp_path)
     _confirm_every(cfg, db, prefix_map=rule)
     arm(1)  # the rebuilt plan, and nothing after it
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home, prefix_map=rule)
+    assert cause.reason == "mapped-volume-mismatch"
     assert (volume / "Music" / "Removed 0.flac").exists()
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
 
@@ -4250,9 +3796,7 @@ def test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions(
     # Unmounted, not mismatch: the eject took the file's own directory.
     assert excinfo.value.cause.reason == "mapped-volume-unmounted"
     assert reads["changed"], "the drive was never ejected, so this proved nothing"
-    assert stores.list_tombstones(cfg, include_revoked=True) == (), (
-        "an ejected drive's files were recorded"
-    )
+    assert stores.list_tombstones(cfg, include_revoked=True) == (), "an ejected drive's files went"
     assert watermark.WatermarkStore(cfg).read().sequence == 40
 
 
@@ -4267,9 +3811,8 @@ def test_a_disk_swapped_after_the_plan_retires_nothing_nobody_answered_for(
         path.unlink()
     home = _home(tmp_path)
     arm(1)  # the rebuilt plan, and nothing after it
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home, prefix_map=rule)
+    assert cause.reason == "mapped-volume-mismatch"
     assert watermark.WatermarkStore(cfg).read().sequence == 40
 
 
@@ -4279,18 +3822,13 @@ def test_a_file_in_a_volume_nested_under_the_rules_target_is_not_moved(
     """The fourth finding through the whole pass: the rule proves itself, the file does not."""
     volume = tmp_path / "Volumes" / "PORTABLE"
     inner = volume / "Music"
-    _mounts.stand_in(
-        monkeypatch,
-        {volume: ARCHIVE_ID, inner: "BBBB-inner"},
-        otherwise=cfg.library.volume_id,
-        enumerated=(),
-    )
+    held = {volume: ARCHIVE_ID, inner: "BBBB-inner"}
+    _mounts.stand_in(monkeypatch, held, otherwise=cfg.library.volume_id, enumerated=())
     volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=3, volume_id=ARCHIVE_ID)
     home = _home(tmp_path)
     _confirm_every(cfg, db, prefix_map=rule)
-    with pytest.raises(CratekitError) as excinfo:
-        run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
-    assert excinfo.value.cause.detail["probed"] == str(inner)
+    cause = _refusal(run.apply, cfg, db, actor="cli", home=home, prefix_map=rule)
+    assert cause.detail["probed"] == str(inner)
     assert len(list(inner.glob("Removed *.flac"))) == 3
     assert not any((home / ".Trash").iterdir())
 
@@ -4334,10 +3872,7 @@ def test_a_rule_nothing_uses_whose_directory_is_absent_does_not_stop_the_pass(
 
 def test_the_rules_the_pass_builds_from_configuration_carry_each_recorded_identity(library_root):
     """The join between the config key and the assertion, which no other test crosses."""
-    data = valid_data(
-        library_root,
-        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "pin_validated_on": "2026-08-02"},
-    )
+    data = _pinned(library_root)
     data["library"]["location_prefix_map"] = [
         {"from": "/mnt/music", "to": "/Volumes/MUSIC", "volume_id": ARCHIVE_ID},
         {"from": "/mnt/volume", "to": "{library.root}/Music"},

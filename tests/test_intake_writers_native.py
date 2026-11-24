@@ -1,9 +1,6 @@
-"""R-770: every intake writer chooses its medium by the intake tree's mode.
-
-``intake file`` on a native tree adds one row and one batch playlist and writes
-no export, and on the bridge is unchanged; the splice refuses a native tree in
-its own words; the verbs that never splice run the same on both media; and one
-switch reads the mode. D1.
+"""R-770: every intake writer chooses its medium by the intake tree's mode, read by one
+switch. A native ``intake file`` adds one row and one batch playlist and writes no export,
+the bridge is unchanged, and the splice refuses a native tree in its own words. D1.
 """
 
 from __future__ import annotations
@@ -99,7 +96,6 @@ def either(request, tmp_path, monkeypatch) -> config.Config:
 
 @pytest.fixture(params=(BRIDGE, NATIVE))
 def both(request, bridge_library) -> config.Config:
-    """The acknowledged machine on each medium in turn."""
     if request.param == NATIVE:
         _cut_over_intake(bridge_library)
     return bridge_library
@@ -116,31 +112,24 @@ def _music(cfg: config.Config) -> Path:
     return Path(cfg.library.root) / cfg.library.music_dir
 
 
-def _single(cfg: config.Config, silence: Path, name: str = "Single.flac") -> Path:
-    """One tagged file already in the library, where this verb finds its files."""
-    path = _music(cfg) / name
+def _tagged(silence: Path, path: Path, title: str) -> Path:
     shutil.copyfile(silence, path)
-    assert tags.write_tags(
-        path, {"title": f"01A - 124 - {Path(name).stem}", "artist": "Probe", "genre": "Deep House"},
-    )
+    assert tags.write_tags(path, {"title": title, "artist": "Probe", "genre": "Deep House"})
     return path
 
 
+def _single(cfg: config.Config, silence: Path, name: str = "Single.flac") -> Path:
+    """One tagged file already in the library, where this verb finds its files."""
+    return _tagged(silence, _music(cfg) / name, f"01A - 124 - {Path(name).stem}")
+
+
 def _outside(tmp_path: Path, silence: Path) -> Path:
-    """One tagged file in a folder outside the library."""
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    outside = elsewhere / "Out.flac"
-    shutil.copyfile(silence, outside)
-    assert tags.write_tags(outside, {"title": "Out", "artist": "Probe", "genre": "Deep House"})
-    return outside
+    (tmp_path / "elsewhere").mkdir()
+    return _tagged(silence, tmp_path / "elsewhere" / "Out.flac", "Out")
 
 
 def _staged_one(cfg: config.Config, silence: Path) -> Path:
-    staged = Path(cfg.paths.download_staging) / "One.flac"
-    shutil.copyfile(silence, staged)
-    assert tags.write_tags(staged, {"title": "One", "artist": "Probe", "genre": "Deep House"})
-    return staged
+    return _tagged(silence, Path(cfg.paths.download_staging) / "One.flac", "One")
 
 
 def _file(path: Path, *extra: str) -> list[str]:
@@ -149,11 +138,8 @@ def _file(path: Path, *extra: str) -> list[str]:
 
 def _rows(cfg: config.Config) -> list[tuple]:
     """Every content row beyond the two the disposable database is built with."""
-    return _query(
-        cfg,
-        "SELECT ID, Title, FolderPath FROM djmdContent WHERE ID NOT IN (?, ?) ORDER BY FolderPath",
-        *BASELINE,
-    )
+    sql = "SELECT ID, Title, FolderPath FROM djmdContent WHERE ID NOT IN (?, ?) ORDER BY FolderPath"
+    return _query(cfg, sql, *BASELINE)
 
 
 def _playlists(cfg: config.Config, name: str) -> list[tuple]:
@@ -162,11 +148,9 @@ def _playlists(cfg: config.Config, name: str) -> list[tuple]:
 
 def _xml_anywhere(cfg: config.Config, tmp_path: Path) -> list[str]:
     """Every xml document under the test's own tree except the ones it made."""
-    return sorted(
-        str(path.relative_to(tmp_path))
-        for path in tmp_path.rglob("*.xml")
-        if path.name not in ("fresh.xml", "collection.xml")
-    )
+    made = ("fresh.xml", "collection.xml")
+    found = tmp_path.rglob("*.xml")
+    return sorted(str(path.relative_to(tmp_path)) for path in found if path.name not in made)
 
 
 def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
@@ -212,9 +196,8 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     # The library's own device, and no analysis value on the row, column by
     # column, nor a cue, mixer or file row naming it.
     selected = ", ".join(native.LEFT_EMPTY)
-    ((device_id, master, *values),) = _query(
-        cfg, f"SELECT DeviceID, MasterDBID, {selected} FROM djmdContent WHERE ID = ?", content_id
-    )
+    sql = f"SELECT DeviceID, MasterDBID, {selected} FROM djmdContent WHERE ID = ?"
+    ((device_id, master, *values),) = _query(cfg, sql, content_id)
     assert (str(device_id), str(master)) == MY_DEVICE
     assert len(values) == len(native.LEFT_EMPTY) > 0
     for name, value in zip(native.LEFT_EMPTY, values):
@@ -256,9 +239,8 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert record.state is session.SessionState.CLOSED
     assert record.sources == {INTAKE: "committed"}
     # U166: the batch's one membership and INBOX / Analyze's one.
-    assert {change.tree: change.created for change in record.change.trees} == {
-        INTAKE: 2, rb_writer.CONTENT_TABLE: 1,
-    }
+    created = {change.tree: change.created for change in record.change.trees}
+    assert created == {INTAKE: 2, rb_writer.CONTENT_TABLE: 1}
 
 
 def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database(
@@ -284,16 +266,10 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     assert item["action"] == native.ADD
     assert item["to"] == str(path.resolve())
     assert set(item["row"]) == {
-        "Title",
-        "FolderPath",
-        "FileNameL",
-        "FileSize",
-        "FileType",
-        rb_writer.FILE_ID_COLUMN,
+        "Title", "FolderPath", "FileNameL", "FileSize", "FileType", rb_writer.FILE_ID_COLUMN,
         rb_writer.CONTENT_LINK_COLUMN,
         # U163: the file's artist and genre, each with the row it takes.
-        native.ARTIST_COLUMN,
-        native.GENRE_COLUMN,
+        native.ARTIST_COLUMN, native.GENRE_COLUMN,
     }
     # THE LIBRARY'S VALUE, shown with its count, never the binding's (U126).
     assert item["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
@@ -318,23 +294,23 @@ def _retitled(cfg: config.Config, path: Path) -> None:
 
 
 def _grown(cfg: config.Config, path: Path) -> None:
-    """The collection plan's half of the digest, alone: the size the row would
-    carry moved and nothing the verb's own plan lists did."""
+    """The plan's half of the digest alone: the row's size moved and nothing the verb lists did."""
     with path.open("ab") as handle:
         handle.write(b"\0" * 64)
     assert ingest.read_meta(path, cfg=cfg)["name"].startswith("01A - 124 - ")
 
 
 def _reartisted(cfg: config.Config, path: Path) -> None:
-    """The verb's own half of the digest, alone: the artist is on the plan the
-    person read and on no column the row sets."""
+    """The verb's own half alone: the artist is on the plan read and on no column the row sets."""
     size = path.stat().st_size
     tags.write_tags(path, {"artist": "Other"})
     assert path.stat().st_size == size, "the retag moved the size, so this proves nothing"
 
 
 @pytest.mark.parametrize("change", [_retitled, _grown, _reartisted])
-def test_an_answer_is_stale_once_the_file_changed_after_it(native_library, silence, tmp_path, change):
+def test_an_answer_is_stale_once_the_file_changed_after_it(
+    native_library, silence, tmp_path, change
+):
     cfg, _root = native_library
     path = _single(cfg, silence)
     _code, refused = drive(_file(path))
@@ -405,8 +381,7 @@ def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
 def test_an_export_on_a_native_tree_is_refused_by_name_and_not_as_a_defect(
     native_library, silence, export, tmp_path
 ):
-    """The residual's own sentence: this drive once reached the emitter guard,
-    ``tree-unconverged`` and ``report-defect``, over a cutover the person chose."""
+    """The residual's sentence: this once reached the emitter guard as ``report-defect``."""
     cfg, _root = native_library
     path = _single(cfg, silence)
     before = export.read_bytes()
@@ -433,16 +408,14 @@ def _untyped(cfg, silence, tmp_path, monkeypatch):
 
 
 def _unplaceable(cfg, silence, tmp_path, monkeypatch):
-    """The shipped taxonomy declares a sub for every file, so the check is driven
-    at its seam: this proves the native medium asks it at all."""
+    """Every file has a declared sub, so the check is driven at its seam to prove it is asked."""
     path = _single(cfg, silence)
     monkeypatch.setattr(ingest, "decide_placement", lambda meta, declared: None)
     return path, ("no declared sub",)
 
 
 def _outside_the_library(cfg, silence, tmp_path, monkeypatch):
-    """Once planned as an add and written, then never found again since the
-    matcher resolves under the root, so a second run planned a second row."""
+    """Once added, then never found under the root, so a second run planned a second row."""
     return _outside(tmp_path, silence), ("Out.flac", "outside the library", str(cfg.library.root))
 
 
@@ -493,8 +466,7 @@ def test_a_file_outside_the_library_is_still_spliced_on_the_bridge(
 def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
     native_library, silence, tmp_path
 ):
-    """Spelled under the root as configured, as the landing spells its targets, so it
-    matches the collection's rows however the file was reached."""
+    """Spelled under the configured root, as landing spells it, however the file was reached."""
     from dataclasses import replace
 
     cfg, _root = native_library
@@ -518,18 +490,15 @@ def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
 def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_add(
     native_library, silence, tmp_path
 ):
-    """Unasked is not absent: the matcher never looked for a row for a path it
-    could not put under the root, and the plan used to read that as no row."""
+    """Unasked is not absent: a path off the root once read as having no row."""
     cfg, _root = native_library
     outside = tmp_path / "elsewhere.flac"
     shutil.copyfile(silence, outside)
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
         with pytest.raises(CratekitError) as raised:
-            native.plan_rows(
-                cfg, db, tree_id=INTAKE, registry=tree_registry.read(cfg), batch="probe",
-                files=[(outside, outside)],
-            )
+            native.plan_rows(cfg, db, tree_id=INTAKE, registry=tree_registry.read(cfg),
+                             batch="probe", files=[(outside, outside)])
     finally:
         rb_writer.close_db(db)
     cause = raised.value.cause
@@ -559,9 +528,8 @@ def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_re
     assert _rows(cfg) == []
 
     def skewed(*args, **kwargs):
-        raise tree_registry.RegistrySkew(
-            "the adopted intake root could not be read back", tree_id=INTAKE, root_id=root_id
-        )
+        said = "the adopted intake root could not be read back"
+        raise tree_registry.RegistrySkew(said, tree_id=INTAKE, root_id=root_id)
 
     monkeypatch.setattr(native, "apply_rows", skewed)
     code, acted, _ = _two_acts(_file(path))
@@ -600,8 +568,7 @@ def test_on_the_bridge_the_export_is_spliced_as_before(bridge_library, silence, 
 
 
 def test_on_the_bridge_no_export_is_a_plan_and_asks_no_gate(bridge_library, silence, tmp_path):
-    """And the medium is read before the plan is shown, on the bridge too: an
-    unreadable registry is not read as "on the bridge", the verb says why."""
+    """The bridge reads the medium before its plan too: an unreadable registry says why."""
     cfg = bridge_library
     path = _single(cfg, silence)
     code, envelope = drive(_file(path))
@@ -624,8 +591,7 @@ def test_on_the_bridge_no_export_is_a_plan_and_asks_no_gate(bridge_library, sile
 def test_a_file_that_is_not_there_or_not_audio_refuses_from_the_vocabulary_on_either_medium(
     both, tmp_path
 ):
-    """The conformance sample held the verb to this until it needed a file that
-    exists, so it is held here, on both media."""
+    """Held here on both media since the conformance sample needed a file that exists."""
     cfg = both
     notes = _music(cfg) / "notes.txt"
     notes.write_text("not audio\n", encoding="utf-8")
@@ -652,8 +618,7 @@ def _assert_names_the_landing_and_no_defect(cause) -> None:
 def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
     native_library, silence, export, tmp_path
 ):
-    """The refusal sits in ``place_files``, the one xml intake path, before the export
-    is looked for, since re-exporting would be the wrong remedy."""
+    """The refusal sits in ``place_files`` before the export is looked for: no re-export helps."""
     cfg, _root = native_library
     path = _single(cfg, silence)
     destination = tmp_path / "direct_inboxed.xml"
@@ -672,8 +637,7 @@ def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
 def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_nothing(
     native_library, silence, export, tmp_path
 ):
-    """The pre-move check and the apply's second registry read (R-677) each say what
-    the splice says, unwrapped."""
+    """The pre-move check and the apply's registry read (R-677) say what the splice says."""
     cfg, _root = native_library
     staged = _staged_one(cfg, silence)
     planned = landing.plan(Path(cfg.paths.download_staging), cfg, "2026-09-30_batch")
@@ -690,7 +654,6 @@ def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_
     assert staged.exists() and not destination.exists()
     assert not (Path(cfg.library.root) / cfg.library.music_dir / "2026-09-30_batch").exists()
 def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_builder():
-    """Every caller builds its tree through the one function that refuses a native tree."""
     callers: dict[str, tuple[int, list[int]]] = {}
     builders: list[str] = []
     for module in sorted(SRC.rglob("*.py")):
@@ -705,26 +668,13 @@ def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_bu
                 continue
             key = f"{module.relative_to(SRC).as_posix()}::{function.name}"
             calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
-            builders += [
-                key
-                for node in calls
-                if isinstance(node.func, ast.Attribute) and node.func.attr == "intake_tree"
-            ]
-            emits = [
-                node.lineno
-                for node in calls
-                if isinstance(node.func, ast.Attribute)
-                and node.func.attr == "insert_intake_playlist"
-            ]
+            attrs = [(n.lineno, n.func.attr) for n in calls if isinstance(n.func, ast.Attribute)]
+            builders += [key for _line, attr in attrs if attr == "intake_tree"]
+            emits = [line for line, attr in attrs if attr == "insert_intake_playlist"]
             if not emits or module.name == "rbxml.py":
                 continue
-            asked = [
-                node.lineno
-                for node in calls
-                if isinstance(node.func, (ast.Attribute, ast.Name))
-                and getattr(node.func, "attr", getattr(node.func, "id", ""))
-                == "bridge_intake_tree"
-            ]
+            named = attrs + [(n.lineno, n.func.id) for n in calls if isinstance(n.func, ast.Name)]
+            asked = [line for line, name in named if name == "bridge_intake_tree"]
             callers[key] = (min(emits), asked)
 
     assert set(callers) == {"intake/ingest.py::place_files", "intake/landing.py::_check_export"}
@@ -734,14 +684,13 @@ def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_bu
             f"the function that refuses a native one first"
         )
     assert builders == ["intake/ingest.py::bridge_intake_tree"]
+    parsed = ast.parse(Path(ingest.__file__).read_text(encoding="utf-8"))
     (function,) = [
-        node
-        for node in ast.walk(ast.parse(Path(ingest.__file__).read_text(encoding="utf-8")))
+        node for node in ast.walk(parsed)
         if isinstance(node, ast.FunctionDef) and node.name == "bridge_intake_tree"
     ]
     first, second = [
-        node
-        for node in function.body
+        node for node in function.body
         if not (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant))
     ]
     assert isinstance(first, ast.Expr) and first.value.func.id == "assert_intake_on_the_bridge"
@@ -788,9 +737,8 @@ def test_the_composed_pass_queues_each_source_on_either_medium(either, monkeypat
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["gate"] == sync_cli.CONFIRM
-    decided, envelope = drive(
-        ["run", "decide", refused["run_id"], sync_cli.CONFIRM, "sync", "--actor", "a-person"]
-    )
+    decision = ["run", "decide", refused["run_id"], sync_cli.CONFIRM, "sync", "--actor", "a-person"]
+    decided, envelope = drive(decision)
     assert decided == int(ExitCode.OK), envelope
     code, passed = drive(["--run", refused["run_id"], *verb])
 
@@ -830,15 +778,11 @@ def test_the_switch_reads_the_recorded_mode_and_nothing_else(machine):
     assert medium.declared.intake.id == INTAKE
     assert medium.registry.record(INTAKE).root_id == root_id
     # ANOTHER TREE'S CUTOVER IS NOT THE INTAKE TREE'S.
-    tree_registry.write(
-        cfg,
-        tree_registry.Registry().with_record(
-            tree_registry.TreeRecord(
-                tree_id=DECLARED.tree.id, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY,
-                root_id="root-genre", source=tree_registry.DerivationSource.TAXONOMY,
-            )
-        ),
+    genre = tree_registry.TreeRecord(
+        tree_id=DECLARED.tree.id, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY,
+        root_id="root-genre", source=tree_registry.DerivationSource.TAXONOMY,
     )
+    tree_registry.write(cfg, tree_registry.Registry().with_record(genre))
     assert ingest.intake_medium(cfg).native is False
     # The registry lives under the root: with no root there is no record to read,
     # and the bridge path is taken as it was before the second medium.
@@ -847,8 +791,7 @@ def test_the_switch_reads_the_recorded_mode_and_nothing_else(machine):
     medium = ingest.intake_medium(cfg)
     assert (medium.declared, medium.registry, medium.native) == (None, None, False)
 def test_both_intake_verbs_read_the_one_switch_and_nothing_beside_it_reads_the_mode():
-    """No second switch: the recorded mode is read in one module, which both verbs
-    and the set playlist's backfill (U121) call."""
+    """No second switch: one module reads the mode, for both verbs and the backfill (U121)."""
     readers: set[str] = set()
     switched: set[str] = set()
     for module in sorted((SRC / "intake").glob("*.py")):

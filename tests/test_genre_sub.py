@@ -1,8 +1,7 @@
 """U155: a sub chosen by genre inside a bucket that splits by energy.
 
 A Rominimal track files into its band as before and into the sub as well; a
-Minimal track never reaches it. Expected values never come from the code under
-test.
+Minimal track never reaches it. Expected values never come from the code under test.
 """
 
 from __future__ import annotations
@@ -75,8 +74,7 @@ def _truth(genre: str | None, energy: int | None, name: str = "a.flac") -> rebui
 
 
 def _derive(declared, truth):
-    placements, gaps = rebuild.derive_from_taxonomy(declared, truth, vocal_threshold=None)
-    return placements, gaps
+    return rebuild.derive_from_taxonomy(declared, truth, vocal_threshold=None)
 
 
 # The brief's routing scenarios
@@ -116,9 +114,8 @@ def test_the_genre_sub_is_additive_so_it_never_competes(default, without):
     """Additive, pinned: the band a track files into is the same with the sub
     declared or not, and the sub is never one of the bucket's competing subs."""
     for level in (None, *range(1, default.energy.scale_max + 1)):
-        assert routing.energy_sub(
-            default, BUCKET, level, source_genre=GENRE
-        ) == routing.energy_sub(without, BUCKET, level, source_genre="Minimal")
+        filed = routing.energy_sub(default, BUCKET, level, source_genre=GENRE)
+        assert filed == routing.energy_sub(without, BUCKET, level, source_genre="Minimal")
     assert routing.competing_subs(default, BUCKET) == routing.competing_subs(without, BUCKET)
     assert SUB not in routing.competing_subs(default, BUCKET)[1]
 
@@ -133,18 +130,16 @@ def test_every_other_bucket_routes_exactly_as_before(default, without):
             continue
         assert bucket.genre_subs == ()
         assert bucket == without.bucket(bucket.id)
-        assert routing.competing_subs(default, bucket.id) == routing.competing_subs(
-            without, bucket.id
-        )
+        competing = routing.competing_subs(default, bucket.id)
+        assert competing == routing.competing_subs(without, bucket.id)
         sources = list(bucket.aliases)
         if bucket.sub_by_source is not None:
             sources += list(bucket.sub_by_source.map)
         for source in sources:
             assert routing.genre_sub(default, bucket.id, source) is None
             for level in (None, 1, 5, 10):
-                assert routing.energy_sub(
-                    default, bucket.id, level, source_genre=source
-                ) == routing.energy_sub(without, bucket.id, level, source_genre=source)
+                filed = routing.energy_sub(default, bucket.id, level, source_genre=source)
+                assert filed == routing.energy_sub(without, bucket.id, level, source_genre=source)
 
 
 def test_route_resort_moves_the_96_puls_tracks_additively(default, without):
@@ -203,9 +198,8 @@ def test_live_places_names_the_genre_sub(default):
 def test_a_former_place_naming_the_genre_sub_is_refused_through_that_list(default_raw):
     def former(data):
         data["schema_version"] = GENRE_SUB_SCHEMA_VERSION
-        _bucket(data, "techno").setdefault("formerly", []).append(
-            {"id": "old_rominimal", "bucket": BUCKET, "sub": SUB, "display": "Rominimal"}
-        )
+        place = {"id": "old_rominimal", "bucket": BUCKET, "sub": SUB, "display": "Rominimal"}
+        _bucket(data, "techno").setdefault("formerly", []).append(place)
 
     problems = _problems(default_raw, former)
     assert any("still declares the sub 'rominimal'" in p for p in problems)
@@ -257,9 +251,8 @@ def test_a_band_display_that_is_not_this_buckets_label_is_free(default_raw):
 def _second_named(data):
     bucket = _bucket(data, BUCKET)
     bucket["aliases"].append("Romanian Minimal")
-    bucket["genre_sub"].append(
-        {"id": "romanian", "display": "Rominimal", "sources": ["Romanian Minimal"]}
-    )
+    second = {"id": "romanian", "display": "Rominimal", "sources": ["Romanian Minimal"]}
+    bucket["genre_sub"].append(second)
 
 
 def _second_identified(data):
@@ -306,22 +299,13 @@ def _on_single_sub(data):
             lambda d: _genre(d).update(display=""),
             ("genre_sub", "display must be a non-empty string"),
         ),
-        (
-            _on_source_routed,
-            ("non_electronic: declares a genre sub and does not split by energy",),
-        ),
+        (_on_source_routed, ("non_electronic: declares a genre sub and does not split by energy",)),
         (_on_single_sub, ("chill_ambient: declares a genre sub and does not split by energy",)),
     ],
     ids=[
-        "two-of-one-name",
-        "two-of-one-identifier",
-        "one-source-in-two",
-        "source-not-an-alias",
-        "source-another-bucket-routes",
-        "identifier-not-one",
-        "empty-display",
-        "bucket-routes-by-source",
-        "bucket-with-one-sub",
+        "two-of-one-name", "two-of-one-identifier", "one-source-in-two", "source-not-an-alias",
+        "source-another-bucket-routes", "identifier-not-one", "empty-display",
+        "bucket-routes-by-source", "bucket-with-one-sub",
     ],
 )
 def test_a_genre_sub_that_is_not_a_place_of_its_own_is_refused_by_name(default_raw, mutate, said):
@@ -356,10 +340,8 @@ def test_a_genre_sub_under_an_older_schema_version_is_refused_by_name(default_ra
                 bucket.pop("formerly", None)
 
     problems = _problems(default_raw, older)
-    assert any(
-        f"declares a genre sub under schema_version {version}; write schema_version = 5" in p
-        for p in problems
-    ), problems
+    said = f"declares a genre sub under schema_version {version}; write schema_version = 5"
+    assert any(said in p for p in problems), problems
 
 
 @pytest.mark.parametrize(

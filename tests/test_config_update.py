@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.cli import doctor, gates, output, prompt
+from cratekit.cli import doctor, gates, prompt
 from cratekit.cli import setup as setup_verb
 from cratekit.cli.verbs import profile as profile_verb
 from cratekit.core import config, profiles
@@ -70,10 +70,8 @@ def configured(library, monkeypatch):
     config.save(config.from_dict(document_for(library)))
     config.reset_cache()
     cfg = config.load()
-    config.atomic_write_bytes(
-        setup_verb.template_text("default").encode("utf-8"),
-        config.state_path("taxonomy_active", cfg),
-    )
+    template = setup_verb.template_text("default").encode("utf-8")
+    config.atomic_write_bytes(template, config.state_path("taxonomy_active", cfg))
     monkeypatch.setattr(doctor, "Probes", lambda: doctor_machines.green())
     return cfg
 
@@ -135,15 +133,20 @@ def _another_writer(table: str, key: str, value):
     return write
 
 
-def _between_setup_read_and_write(monkeypatch, act) -> None:
+def _between_the_read_and_the_write(monkeypatch, owner, name: str, act) -> None:
+    """``owner.name`` patched so ``act`` runs, once, before the real one answers."""
     second_writer = once(act)
-    original = setup_verb._propose_pin
+    original = getattr(owner, name)
 
     def between_the_read_and_the_write(*args, **kwargs):
         second_writer()
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(setup_verb, "_propose_pin", between_the_read_and_the_write)
+    monkeypatch.setattr(owner, name, between_the_read_and_the_write)
+
+
+def _between_setup_read_and_write(monkeypatch, act) -> None:
+    _between_the_read_and_the_write(monkeypatch, setup_verb, "_propose_pin", act)
 
 
 # 1. Neither set of answers is lost.
@@ -157,7 +160,6 @@ def test_a_profile_change_made_while_the_wizard_was_deciding_survives_the_wizard
     _between_setup_read_and_write(
         monkeypatch, lambda: config.update(lambda document: profiles.apply(document, "slim"))
     )
-
     code, out, err = drive(["--output", "json", "setup", "--staging", elsewhere])
     assert code == int(ExitCode.OK), (out, err)
     written = on_disk()
@@ -170,15 +172,8 @@ def test_a_wizard_that_finished_while_a_profile_change_was_deciding_survives_it(
 ):
     """The same cycle from the other verb, which is why the lock is not setup's."""
     elsewhere = str(tmp_path / "elsewhere")
-    second_writer = once(_another_writer("paths", "download_staging", elsewhere))
-    original = output.digest_of
-
-    def between_the_read_and_the_write(payload):
-        second_writer()
-        return original(payload)
-
-    monkeypatch.setattr(profile_verb.output, "digest_of", between_the_read_and_the_write)
-
+    act = _another_writer("paths", "download_staging", elsewhere)
+    _between_the_read_and_the_write(monkeypatch, profile_verb.output, "digest_of", act)
     code, out, err = drive(PROFILE_SET_SLIM)
     assert code == int(ExitCode.OK), (out, err)
     written = on_disk()
@@ -194,7 +189,6 @@ def test_two_wizards_answering_one_key_differently_refuse_and_write_nothing(
 ):
     ours, theirs = str(tmp_path / "ours"), str(tmp_path / "theirs")
     _between_setup_read_and_write(monkeypatch, _another_writer("paths", "download_staging", theirs))
-
     code, out, _err = drive(["--output", "json", "setup", "--staging", ours])
     envelope = json.loads(out)
     assert code == int(ExitCode.PRECONDITION)
@@ -211,7 +205,6 @@ def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
     """A module toggled between the answer and the write makes the decision stale."""
     full, slim = profiles.resolve("full", {}), profiles.resolve("slim", {})
     toggled = sorted(full.modules - slim.modules)[0]
-
     second_writer = once(_another_writer("modules", toggled, False))
     original_require = gates.Gates.require
 
@@ -221,7 +214,6 @@ def test_a_profile_decision_is_stale_when_the_membership_moved_before_the_write(
         return chosen
 
     monkeypatch.setattr(gates.Gates, "require", answered_and_then_the_document_moves)
-
     code, out, _err = drive(PROFILE_SET_SLIM)
     envelope = json.loads(out)
     assert envelope["cause"]["reason"] == "decision-stale", envelope
@@ -246,7 +238,6 @@ def test_the_wizard_does_not_hold_the_write_lock_while_it_asks(library, monkeypa
     real_prompter = prompt.Prompter
     monkeypatch.setattr(setup_verb.prompt, "Prompter", lambda: real_prompter(
         read_line=answer, read_secret=lambda _q: "", write=lambda _text: None))
-
     drive([
         "--output", "json", "setup", "--library-root", str(library),
         "--db-path", str(library / "db" / "master.db"), "--volume-id", doctor_machines.VOLUME,
@@ -429,7 +420,6 @@ def test_three_real_processes_writing_at_once_all_keep_their_answers(configured,
             if worker.poll() is None:
                 worker.kill()
                 worker.wait()
-
     assert on_disk()["modules"] == {module: False for module in sorted(modules)}
 
 
@@ -520,17 +510,10 @@ def _calls_config_save(tree: ast.AST) -> list[int]:
             }
     found = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Name) and func.id in function_names:
-            found.append(node.lineno)
-        elif (
-            isinstance(func, ast.Attribute)
-            and func.attr == "save"
-            and isinstance(func.value, ast.Name)
-            and func.value.id in module_names
-        ):
+        func = node.func if isinstance(node, ast.Call) else None
+        named = isinstance(func, ast.Name) and func.id in function_names
+        held = isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+        if named or (held and func.attr == "save" and func.value.id in module_names):
             found.append(node.lineno)
     return found
 
@@ -548,17 +531,14 @@ def test_the_guard_below_can_see_every_spelling_of_the_call():
 
 
 def test_nothing_under_src_writes_the_whole_document_after_reading_it():
-    """Every shipped writer goes through ``config.update``, never ``config.save``
-    (R-116).
-
-    A file that never spells ``save`` as Python reads identifiers (NFKC) is not parsed.
-    """
+    """Every shipped writer goes through ``config.update``, never ``config.save`` (R-116)."""
     offenders = {}
     for path in sorted(SRC.rglob("*.py")):
         relative = path.relative_to(SRC).as_posix()
         if relative == "core/config.py" or relative.startswith("_vendor/"):
             continue
         text = path.read_text(encoding="utf-8")
+        # A file that never spells ``save`` as Python reads identifiers (NFKC) is not parsed.
         if "save" not in unicodedata.normalize("NFKC", text):
             continue
         found = _calls_config_save(parsed(text))

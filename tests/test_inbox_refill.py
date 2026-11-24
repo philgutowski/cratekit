@@ -48,6 +48,7 @@ GATE = refill_cli.APPROVE_GATE
 ACCOUNT = "Sunset Warmup"
 #: The INBOX playlist a landing on the pinned day makes for it, dated since U175.
 INBOX_NAME = "Sunset Warmup 2026-10-03"
+LIVE_TITLED = "FROM djmdContent WHERE Title = ? AND rb_local_deleted = 0"
 
 
 def _refill(pass_name: str = PASS) -> list[str]:
@@ -104,6 +105,13 @@ def _rewrite_entries(cfg: config.Config, rewrite) -> None:
             session.write_record(record, cfg)
 
 
+def _new_playlist(cfg: config.Config, name: str, parent_id: str) -> str:
+    with _handle(cfg) as handle:
+        row = handle.create_playlist(name, parent=handle.get_playlist(ID=parent_id))
+        handle.session.commit()
+        return str(row.ID)
+
+
 def _refills(cfg: config.Config) -> list[session.SessionRecord]:
     return [r for r in session.records(cfg) if r.workflow == refill.WORKFLOW]
 
@@ -152,10 +160,8 @@ def test_three_owned_and_two_new_refill_an_empty_playlist_in_account_order_and_o
     assert not [w for w in acted["warnings"] if w["code"] == refill_cli.LEFT_OUT]
     # Recorded under the intake tree, with the playlist named.
     (record,) = _refills(cfg)
-    assert record.detail[refill.RECORD_KEY] == {
-        "pass": PASS,
-        "playlists": [{"id": playlist_id, "name": INBOX_NAME, "added": 5}],
-    }
+    playlists = [{"id": playlist_id, "name": INBOX_NAME, "added": 5}]
+    assert record.detail[refill.RECORD_KEY] == {"pass": PASS, "playlists": playlists}
 
     # A SECOND RUN PLANS NOTHING and ends no_op, writing no second record.
     code, again, _ = _two_acts(_refill())
@@ -191,10 +197,7 @@ def test_a_recorded_playlist_moved_outside_inbox_is_refused_by_name_then_a_lost_
     # keeps a missing file's row, and the track is named and left.
     monkeypatch.setattr(missing_cli, "job_reports", reports)
     _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", root_id, playlist_id)
-    ((folder,),) = _query(
-        cfg,
-        "SELECT FolderPath FROM djmdContent WHERE Title = 'New2' AND rb_local_deleted = 0",
-    )
+    ((folder,),) = _query(cfg, f"SELECT FolderPath {LIVE_TITLED}", "New2")
     Path(folder).unlink()
     code, acted, _ = _two_acts(_refill())
     assert code == int(ExitCode.OK), acted
@@ -211,10 +214,7 @@ def test_two_playlists_of_the_accounts_name_are_neither_filled_and_one_is_found_
     playlist_id = _five_landed_and_emptied(cfg, silence)
     _named_before_u175(cfg, playlist_id)
     _rewrite_entries(cfg, lambda entries: [])
-    with _handle(cfg) as handle:
-        second = handle.create_playlist(ACCOUNT, parent=handle.get_playlist(ID=root_id))
-        handle.session.commit()
-        second_id = str(second.ID)
+    second_id = _new_playlist(cfg, ACCOUNT, root_id)
     code, acted, refused = _two_acts(_refill())
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op", acted
@@ -252,9 +252,7 @@ def test_a_playlist_changed_after_the_approval_is_refused_then_gets_only_what_it
     decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     # A track added in rekordbox between the approval and the apply.
-    ((held3,),) = _query(
-        cfg, "SELECT ID FROM djmdContent WHERE Title = 'Held3' AND rb_local_deleted = 0"
-    )
+    ((held3,),) = _query(cfg, f"SELECT ID {LIVE_TITLED}", "Held3")
     with _handle(cfg) as handle:
         rb_writer.add_memberships(handle, handle.get_playlist(ID=playlist_id), [str(held3)])
         handle.session.commit()
@@ -268,10 +266,7 @@ def test_a_playlist_changed_after_the_approval_is_refused_then_gets_only_what_it
     assert code == int(ExitCode.OK), acted
     actions = [(item["title"], item["action"]) for item in refused["cause"]["detail"]["shown"]["items"]]
     assert actions == [
-        ("Held1", refill.ADD),
-        ("New1", refill.ADD),
-        ("Held2", refill.ADD),
-        ("New2", refill.ADD),
+        ("Held1", refill.ADD), ("New1", refill.ADD), ("Held2", refill.ADD), ("New2", refill.ADD),
         ("Held3", refill.HELD),
     ]
     assert _live_members(cfg, playlist_id) == ["Held3", "Held1", "New1", "Held2", "New2"]
@@ -327,10 +322,7 @@ def test_a_recorded_playlist_that_is_gone_is_listed_and_no_name_is_guessed(
     playlist_id = _five_landed_and_emptied(cfg, silence)
     _sql(cfg, "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", playlist_id)
     # A live playlist of the account's name, which the record does not name.
-    with _handle(cfg) as handle:
-        other = handle.create_playlist(ACCOUNT, parent=handle.get_playlist(ID=root_id))
-        handle.session.commit()
-        other_id = str(other.ID)
+    other_id = _new_playlist(cfg, ACCOUNT, root_id)
     code, acted, _ = _two_acts(_refill())
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op", acted
@@ -350,9 +342,8 @@ def test_a_track_the_account_lists_twice_is_one_membership_and_counted_once(
     playlist_id = _emptied(cfg)
     # The account lists Held1 a second time, after New1.
     real = set_playlist.reports_of
-    monkeypatch.setattr(
-        set_playlist, "reports_of", lambda store, job: (*real(store, job), real(store, job)[0])
-    )
+    twice = lambda store, job: (*real(store, job), real(store, job)[0])
+    monkeypatch.setattr(set_playlist, "reports_of", twice)
     code, acted, refused = _two_acts(_refill())
     assert code == int(ExitCode.OK), acted
     actions = [(i["title"], i["action"]) for i in refused["cause"]["detail"]["shown"]["items"]]
@@ -405,16 +396,11 @@ def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id()
         # A record that no longer stands, and one of another workflow, name nothing.
         record("03", session.SessionState.ABANDONED, [entry("Abandoned 2026-10-03", "pl-a")]),
         record("04", closed, [entry("Elsewhere 2026-10-03", "pl-a")], workflow=refill.WORKFLOW),
-        record(
-            "01",
-            session.SessionState.AWAITING_IMPORT,
-            [
-                entry(INBOX_NAME, "pl-a"),
-                entry("Deep Cuts 2026-10-03", "pl-b"),
-                entry("Other pass 2026-10-03", "pl-a", "another_synced"),
-                entry("Native 2026-10-03", "pl-a", id="77"),
-            ],
-        ),
+        record("01", session.SessionState.AWAITING_IMPORT, [
+            entry(INBOX_NAME, "pl-a"), entry("Deep Cuts 2026-10-03", "pl-b"),
+            entry("Other pass 2026-10-03", "pl-a", "another_synced"),
+            entry("Native 2026-10-03", "pl-a", id="77"),
+        ]),
     ]
     found = refill.bridge_names(records, pass_name=PASS, account="pl-a")
     assert found == (INBOX_NAME, f"{INBOX_NAME} 2")
@@ -434,21 +420,15 @@ def test_a_pre_u128_record_matches_by_name_and_an_unlisted_log_is_named_as_one(
     playlist_id = _five_landed_and_emptied(cfg, silence)
     # A PRE U128 RECORD IS MATCHED BY THE ACCOUNT'S EXACT NAME, so the
     # twin a second landing of the pass made (U113's ``Name 2``) is left.
-    with _handle(cfg) as handle:
-        twin = handle.create_playlist(f"{ACCOUNT} 2", parent=handle.get_playlist(ID=root_id))
-        handle.session.commit()
-        twin_id = str(twin.ID)
+    twin_id = _new_playlist(cfg, f"{ACCOUNT} 2", root_id)
     # The landing record rewritten as a landing before U128 wrote it, and a
     # second record of the same pass naming the twin.
     (landing,) = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
     _named_before_u175(cfg, playlist_id)
     stripped = [{"id": one["id"], "name": ACCOUNT} for one in landing.detail[native.INBOX_PLAYLISTS_KEY]]
     stripped.append({"id": twin_id, "name": f"{ACCOUNT} 2"})
-    records = [
-        session.SessionRecord.from_json(
-            {**landing.to_json(), "detail": {**landing.detail, native.INBOX_PLAYLISTS_KEY: stripped}}
-        )
-    ]
+    detail = {**landing.detail, native.INBOX_PLAYLISTS_KEY: stripped}
+    records = [session.SessionRecord.from_json({**landing.to_json(), "detail": detail})]
     entries = refill.recorded_entries(records)
     found = refill.recorded_ids(entries, pass_name=PASS, account="pl-a", name=ACCOUNT)
     assert found == (playlist_id,)
@@ -458,9 +438,8 @@ def test_a_pre_u128_record_matches_by_name_and_an_unlisted_log_is_named_as_one(
     _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
     plan = refill_cli.planned(cfg, active_taxonomy.load(cfg), PASS)
     assert (plan.unreadable, plan.log_unlisted) == (1, True)
-    (warning,) = [
-        one for one in refill_cli.warnings_of(plan) if one["code"] == refill_cli.RECORDS_UNREADABLE
-    ]
+    warned = refill_cli.warnings_of(plan)
+    (warning,) = [one for one in warned if one["code"] == refill_cli.RECORDS_UNREADABLE]
     assert warning["message"] == (
         "the session log could not be listed, so no account playlist without a readable "
         "landing record was found by its name"
@@ -476,12 +455,9 @@ def test_a_dated_playlist_an_intake_file_recorded_by_name_alone_is_found_by_that
     # The record rewritten to the shape an intake file's landing writes: the
     # dated name, the batch folder, the account and the pass, and no id.
     batch = "2026-10-03 Tidal playlists"
-    _rewrite_entries(
-        cfg,
-        lambda entries: [
-            {**{k: v for k, v in one.items() if k != "id"}, "batch": batch} for one in entries
-        ],
-    )
+    _rewrite_entries(cfg, lambda entries: [
+        {**{k: v for k, v in one.items() if k != "id"}, "batch": batch} for one in entries
+    ])
     code, acted, refused = _two_acts(_refill())
     assert code == int(ExitCode.OK), acted
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]

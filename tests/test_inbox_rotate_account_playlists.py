@@ -26,11 +26,7 @@ BATCH = "2026-08-24 Tidal playlists"
 
 
 def _intake_record(
-    cfg: config.Config,
-    landed: date,
-    entries: list[dict],
-    *,
-    imported: bool = True,
+    cfg: config.Config, landed: date, entries: list[dict], *, imported: bool = True,
     tag: str = "landing",
 ) -> None:
     """An intake file's session record naming account playlists, imported or not."""
@@ -38,16 +34,12 @@ def _intake_record(
     detail: dict = {ingest.INBOX_PLAYLISTS_KEY: entries}
     if imported:
         detail[session.IMPORT_VERIFIED_KEY] = {"at": started.isoformat(), "evidence": "a test"}
-    session.write_record(
-        session.SessionRecord(
-            session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-{tag}",
-            workflow=native.WORKFLOW,
-            started=started.isoformat(),
-            state=session.SessionState.OPEN if imported else session.SessionState.AWAITING_IMPORT,
-            detail=detail,
-        ),
-        cfg,
+    state = session.SessionState.OPEN if imported else session.SessionState.AWAITING_IMPORT
+    record = session.SessionRecord(
+        session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-{tag}", workflow=native.WORKFLOW,
+        started=started.isoformat(), state=state, detail=detail,
     )
+    session.write_record(record, cfg)
 
 
 def _batch_folder(cfg: config.Config, name: str = BATCH) -> None:
@@ -97,12 +89,8 @@ def test_a_recorded_name_whose_batch_folder_is_gone_is_left_alone(
     _node(cfg, "Sunset Warmup", under=root_id, age=0)
     if folder:
         _batch_folder(cfg)
-    _intake_record(
-        cfg,
-        TODAY - timedelta(days=40),
-        [{**entry, "name": "Sunset Warmup", "batch": BATCH}],
-        imported=imported,
-    )
+    entries = [{**entry, "name": "Sunset Warmup", "batch": BATCH}]
+    _intake_record(cfg, TODAY - timedelta(days=40), entries, imported=imported)
     left = _shown(_plan(cfg))["Sunset Warmup"]
     assert isinstance(left, rotate.Left)
     assert left.kind == "playlist"

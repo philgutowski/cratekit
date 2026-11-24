@@ -124,15 +124,22 @@ def declared():
     return taxonomy.default_taxonomy()
 
 
+def _refused_by(act, *positional, **keyword):
+    """The cause ``act`` refuses with, failing when it does not."""
+    with pytest.raises(CratekitError) as caught:
+        act(*positional, **keyword)
+    return caught.value.cause
+
+
 def _music(cfg, name: str) -> str:
     return f"{cfg.library.root}/Music/{name}"
 
 
-def _destination(declared_taxonomy):
-    """The first bucket the shipped template declares, and a sub it really has (R19)."""
-    bucket = declared_taxonomy.buckets[0]
+def _destination(declared_taxonomy, index: int = 0):
+    """A bucket the shipped template declares, DERIVED rather than named, and a sub it has (R19)."""
+    bucket = declared_taxonomy.buckets[index]
     sub = routing.energy_sub(declared_taxonomy, bucket.id, declared_taxonomy.energy.scale_max)
-    assert sub is not None, "the shipped template's first bucket declares no sub"
+    assert sub is not None, f"the shipped template's bucket {index} declares no sub"
     return bucket.id, sub.id
 
 
@@ -140,13 +147,8 @@ def _intent(cfg, declared_taxonomy, name: str, *, session_id: str = SESSION_ID):
     bucket_id, sub_id = _destination(declared_taxonomy)
     location = _music(cfg, name)
     return routing_pass.RoutingIntent(
-        track=routing_pass.track_id(location),
-        session_id=session_id,
-        location=location,
-        tree=TREE_ID,
-        bucket=bucket_id,
-        sub=sub_id,
-        decided="2026-08-02T00:00:00+00:00",
+        track=routing_pass.track_id(location), session_id=session_id, location=location,
+        tree=TREE_ID, bucket=bucket_id, sub=sub_id, decided="2026-08-02T00:00:00+00:00",
     )
 
 
@@ -177,7 +179,6 @@ def test_two_spellings_of_one_filename_are_one_record(cfg, declared):
     composed = _intent(cfg, declared, COMPOSED)
     decomposed = _intent(cfg, declared, DECOMPOSED)
     assert composed.track == decomposed.track
-
     routing_pass.record_intents(cfg, [composed])
     routing_pass.record_intents(cfg, [decomposed])
     assert len(routing_pass.read(cfg).for_session(SESSION_ID)) == 1
@@ -186,11 +187,9 @@ def test_two_spellings_of_one_filename_are_one_record(cfg, declared):
 def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(cfg, declared):
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
-
     assert [entry.track for entry in routing_pass.read(cfg).outstanding(SESSION_ID)] == [track]
     routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED, session_id=SESSION_ID)
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
-
     document = json.loads(routing_pass.path_for(cfg).read_text())
     record = document["intents"][0]
     assert "state" in record
@@ -210,7 +209,6 @@ def test_no_taxonomy_display_name_reaches_the_persisted_record(cfg, declared):
     """D5 and R19, asserted over the BYTES rather than over the shape."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     text = routing_pass.path_for(cfg).read_text()
-
     displays = {declared.tree.display, declared.intake.display}
     displays |= {bucket.display for bucket in declared.buckets}
     displays |= {band.display for band in declared.energy.bands}
@@ -230,7 +228,6 @@ def test_the_ledger_and_every_directory_above_it_are_private_under_any_umask(
         routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     finally:
         os.umask(previous)
-
     path = routing_pass.path_for(cfg)
     assert stat.S_IMODE(path.stat().st_mode) == config.PRIVATE_FILE_MODE
     root = config.library_state_dir(cfg)
@@ -265,12 +262,9 @@ def _index(cfg, rows, *, prefix_map=()):
 
 
 def _placements(cfg, declared_taxonomy, intents, rows, *, prefix_map=()):
+    index = _index(cfg, rows, prefix_map=prefix_map)
     return routing_pass.resolve_placements(
-        intents,
-        _index(cfg, rows, prefix_map=prefix_map),
-        declared_taxonomy,
-        root=cfg.library.root,
-        prefix_map=prefix_map,
+        intents, index, declared_taxonomy, root=cfg.library.root, prefix_map=prefix_map
     )
 
 
@@ -286,7 +280,6 @@ def test_every_sub_the_taxonomy_can_route_to_resolves_to_a_display_name(declared
         (bucket.id, entry.id) for bucket in declared.buckets for entry in declared.sub_classes
     }
     assert produced, "the shipped template routes nowhere; the derivation is broken"
-
     for bucket_id, sub_id in sorted(produced):
         folder, sub = routing_pass.destination(declared, bucket_id, sub_id)
         assert folder and sub
@@ -363,24 +356,17 @@ def test_a_partly_imported_run_is_ready_and_places_only_what_arrived(cfg, declar
     placed = _placements(cfg, declared, intents, [_row(cfg, PLAIN, "1")])
     assert routing_pass.readiness(placed) is routing_pass.Readiness.READY
     assert [item.placement for item in placed] == [
-        routing_pass.Placement.RESOLVED,
-        routing_pass.Placement.NOT_IMPORTED,
+        routing_pass.Placement.RESOLVED, routing_pass.Placement.NOT_IMPORTED
     ]
 
 
 def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
     if mode is tree_registry.Mode.DATABASE:
-        return tree_registry.Registry(
-            (
-                tree_registry.TreeRecord(
-                    tree_id=TREE_ID,
-                    mode=mode,
-                    cutover_on=date(2026, 8, 1),
-                    root_id=root_id,
-                    source=tree_registry.DerivationSource.TAXONOMY,
-                ),
-            )
+        record = tree_registry.TreeRecord(
+            tree_id=TREE_ID, mode=mode, cutover_on=date(2026, 8, 1), root_id=root_id,
+            source=tree_registry.DerivationSource.TAXONOMY,
         )
+        return tree_registry.Registry((record,))
     return tree_registry.Registry((tree_registry.TreeRecord(tree_id=TREE_ID, mode=mode),))
 
 
@@ -442,15 +428,9 @@ def _route(cfg, db, adopted, declared_taxonomy, *, rows=None, registry=None, ses
     if registry is None:
         registry = _registry(tree_registry.Mode.DATABASE, root_id=str(adopted.ID))
     return routing_pass.route(
-        cfg,
-        db,
-        session_id=session_id,
-        registry=registry,
-        declared=declared_taxonomy,
+        cfg, db, session_id=session_id, registry=registry, declared=declared_taxonomy,
         rows=routing_pass.content_rows(db) if rows is None else rows,
-        root_exists=lambda _root: True,
-        analysis_roots=[Path(cfg.library.root) / "Music"],
-        **kwargs,
+        root_exists=lambda _root: True, analysis_roots=[Path(cfg.library.root) / "Music"], **kwargs,
     )
 
 
@@ -464,7 +444,6 @@ def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(
     """The happy path, end to end: decide, import, route, and the mark follows."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     report = _route(cfg, db, adopted_root, declared)
-
     assert report.readiness is routing_pass.Readiness.READY
     assert len(report.routed) == 1
     assert report.memberships[0].added == 1
@@ -479,7 +458,6 @@ def test_the_track_lands_inside_the_tree_the_cutover_adopted(
     """Proved by walking UP from the membership row, never down by name."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     _route(cfg, db, adopted_root, declared)
-
     folder_display, sub_display = routing_pass.destination(declared, *_destination(declared))
     playlist, folder = _filed_under(db, "2")
     assert playlist.Name == sub_display
@@ -495,7 +473,6 @@ def test_the_pass_run_before_the_import_is_read_only(cfg, gates_pass, db, adopte
     before = _state_fingerprint(*roots)
     report = _route(cfg, db, adopted_root, declared)
     assert _state_fingerprint(*roots) == before, "the pass wrote before deciding it was ready"
-
     assert report.readiness is routing_pass.Readiness.NOT_READY
     assert report.routed == ()
     assert report.memberships == ()
@@ -515,11 +492,9 @@ def test_a_crash_between_the_commit_and_the_mark_converges(
     monkeypatch.setattr(routing_pass, "mark", die)
     with pytest.raises(RuntimeError, match="between the commit and the mark"):
         _route(cfg, db, adopted_root, declared)
-
     # The commit landed and the ledger did not move: what a kill in the window leaves.
     assert _memberships(db, "2") == 1
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
-
     # The restart puts back only the mark, keeping the platform seams.
     monkeypatch.setattr(routing_pass, "mark", real_mark)
     report = _route(cfg, db, adopted_root, declared)
@@ -548,7 +523,6 @@ def test_a_track_whose_membership_cannot_be_proved_is_not_marked(
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     monkeypatch.setattr(routing_pass, "membership_proven", lambda *args, **kwargs: False)
     report = _route(cfg, db, adopted_root, declared)
-
     assert report.routed == ()
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
@@ -572,9 +546,7 @@ def test_a_missing_acknowledgment_refuses_before_the_database_is_touched(
     """The session gates are the writer's, and the pass does not route around them."""
     _volume_agrees(cfg, monkeypatch)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-    with pytest.raises(CratekitError) as excinfo:
-        _route(cfg, db, adopted_root, declared)
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    assert _refused_by(_route, cfg, db, adopted_root, declared).code is ExitCode.ACK_REQUIRED
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
 
@@ -589,7 +561,6 @@ def test_content_rows_reads_the_soft_delete_marker_off_the_row(cfg, monkeypatch,
         rows = {row.content_id: row for row in routing_pass.content_rows(handle)}
     finally:
         rb_writer.close_db(handle)
-
     assert rows["2"].deleted is True
     assert rows["1"].deleted is False
     assert rows["2"].recorded == _music(cfg, PLAIN)
@@ -610,11 +581,9 @@ def test_a_run_with_nothing_to_route_closes(cfg, gates_pass):
 def test_a_run_with_a_pending_track_refuses_to_close(cfg, gates_pass, declared):
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-
-    with pytest.raises(CratekitError) as excinfo:
-        routing_pass.close_run(record, cfg)
-    assert excinfo.value.cause.reason == "routing-outstanding"
-    assert excinfo.value.cause.code is ExitCode.PENDING_HUMAN
+    cause = _refused_by(routing_pass.close_run, record, cfg)
+    assert cause.reason == "routing-outstanding"
+    assert cause.code is ExitCode.PENDING_HUMAN
     assert session.read_record(SESSION_ID, cfg).state is session.SessionState.OPEN
 
 
@@ -624,9 +593,7 @@ def test_a_run_closes_once_the_routing_pass_has_placed_its_track(
     """The same run, after the pass."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-    with pytest.raises(CratekitError):
-        routing_pass.close_run(record, cfg)
-
+    _refused_by(routing_pass.close_run, record, cfg)
     _route(cfg, db, adopted_root, declared)
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
@@ -638,17 +605,14 @@ def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(
     """The pass ran, said not-ready, and settled nothing. The run stays open."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_not_yet_there(cfg, declared)])
-
     assert _route(cfg, db, adopted_root, declared).readiness is routing_pass.Readiness.NOT_READY
-    with pytest.raises(CratekitError):
-        routing_pass.close_run(record, cfg)
+    _refused_by(routing_pass.close_run, record, cfg)
 
 
 def test_a_track_deleted_after_import_is_surfaced(cfg, gates_pass, db, adopted_root, declared):
     """Surfaced, never auto-skipped."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     report = _route(cfg, db, adopted_root, declared, rows=[_row(cfg, PLAIN, "2", deleted=True)])
-
     assert report.readiness is routing_pass.Readiness.READY
     assert [item.placement for item in report.withdrawn] == [routing_pass.Placement.WITHDRAWN]
     assert report.routed == ()
@@ -661,7 +625,6 @@ def test_the_routing_pass_never_acknowledges_a_track_by_itself(
     """The separation that makes surfacing mean anything."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     _route(cfg, db, adopted_root, declared, rows=[_row(cfg, PLAIN, "2", deleted=True)])
-
     states = {entry.state for entry in routing_pass.read(cfg).for_session(SESSION_ID)}
     assert states == {routing_pass.TrackState.INTENDED}
 
@@ -675,12 +638,9 @@ def test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged(
     removed = [_row(cfg, PLAIN, "2", deleted=True)]
     for _ in range(2):
         _route(cfg, db, adopted_root, declared, rows=removed)
-        with pytest.raises(CratekitError):
-            routing_pass.close_run(record, cfg)
-
+        _refused_by(routing_pass.close_run, record, cfg)
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
     routing_pass.acknowledge(cfg, [track], session_id=SESSION_ID, actor="a-person", note="removed in rekordbox")
-
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
     settled = routing_pass.read(cfg).for_session(SESSION_ID)[0]
@@ -709,23 +669,13 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
     _build_disposable_database(path)
     _record_locations(path, {"1": "", "2": ""})  # nothing imported yet
     _unlocked_integrity(monkeypatch)
-
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
 
     def drive(handle):
         adopted = rb_writer.ensure_folder(handle, TREE_DISPLAY)
         handle.session.commit()
-        return routing_pass.route(
-            cfg,
-            handle,
-            session_id=SESSION_ID,
-            registry=_registry(tree_registry.Mode.DATABASE, root_id=str(adopted.ID)),
-            declared=declared,
-            rows=routing_pass.content_rows(handle),
-            root_exists=lambda _root: True,
-            analysis_roots=[Path(cfg.library.root) / "Music"],
-        ), adopted
+        return _route(cfg, handle, adopted, declared), adopted
 
     # Before the import nothing resolves or is marked, and the run refuses to close.
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
@@ -735,10 +685,7 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
         rb_writer.close_db(handle)
     assert early.readiness is routing_pass.Readiness.NOT_READY
     assert early.routed == ()
-    with pytest.raises(CratekitError) as excinfo:
-        routing_pass.close_run(record, cfg)
-    assert excinfo.value.cause.reason == "routing-outstanding"
-
+    assert _refused_by(routing_pass.close_run, record, cfg).reason == "routing-outstanding"
     # The person imports while this process holds nothing; the pass then places and marks.
     _record_locations(path, {"2": _music(cfg, PLAIN)})
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
@@ -747,14 +694,12 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
         assert late.readiness is routing_pass.Readiness.READY
         assert len(late.routed) == 1
         assert late.memberships[0].added == 1
-
         folder_display, sub_display = routing_pass.destination(declared, *_destination(declared))
         playlist, folder = _filed_under(handle, "2")
         assert (playlist.Name, folder.Name) == (sub_display, folder_display)
         assert str(folder.ParentID) == str(adopted.ID)
     finally:
         rb_writer.close_db(handle)
-
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
@@ -855,17 +800,9 @@ def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
     assert called, "the intake pipeline never records a routing intent"
 
 
-def _second_destination(declared_taxonomy):
-    """A second bucket the shipped template declares, DERIVED rather than named."""
-    bucket = declared_taxonomy.buckets[1]
-    sub = routing.energy_sub(declared_taxonomy, bucket.id, declared_taxonomy.energy.scale_max)
-    assert sub is not None, "the shipped template's second bucket declares no sub"
-    return bucket.id, sub.id
-
-
 def _elsewhere(cfg, declared_taxonomy, session_id: str):
     """PLAIN's intent for ``session_id``, sent to the second destination."""
-    other_bucket, other_sub = _second_destination(declared_taxonomy)
+    other_bucket, other_sub = _destination(declared_taxonomy, 1)
     return replace(_intent(cfg, declared_taxonomy, PLAIN, session_id=session_id), bucket=other_bucket, sub=other_sub)
 
 
@@ -888,15 +825,12 @@ def test_a_second_run_deferring_one_file_does_not_take_over_the_first_runs_recor
     first = session.open_session(cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one")
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-two")])
-
     ledger = routing_pass.read(cfg)
     owners = sorted(entry.session_id for entry in ledger.intents)
     assert owners == ["run-one", "run-two"], f"one run's decision replaced the other's: {owners}"
     assert len(ledger.outstanding("run-one")) == 1
     assert len(ledger.outstanding("run-two")) == 1
-    with pytest.raises(CratekitError) as excinfo:
-        routing_pass.close_run(first, cfg)
-    assert excinfo.value.cause.reason == "routing-outstanding"
+    assert _refused_by(routing_pass.close_run, first, cfg).reason == "routing-outstanding"
 
 
 def test_marking_one_runs_track_leaves_another_runs_record_alone(cfg, declared):
@@ -904,7 +838,6 @@ def test_marking_one_runs_track_leaves_another_runs_record_alone(cfg, declared):
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-two")])
     track = routing_pass.read(cfg).for_session("run-two")[0].track
-
     routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED, session_id="run-two")
     assert routing_pass.read(cfg).outstanding("run-two") == ()
     assert len(routing_pass.read(cfg).outstanding("run-one")) == 1
@@ -919,19 +852,14 @@ def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     routing_pass.record_intents(cfg, [_elsewhere(cfg, declared, "run-two")])
     first_destination = routing_pass.destination(declared, *_destination(declared))
-    second_destination = routing_pass.destination(declared, *_second_destination(declared))
+    second_destination = routing_pass.destination(declared, *_destination(declared, 1))
     assert first_destination != second_destination
-
     # Run one places its track while run two still owes its own.
     _route(cfg, db, adopted_root, declared, session_id="run-one")
     assert routing_pass.close_run(first, cfg).state is session.SessionState.CLOSED
-    with pytest.raises(CratekitError) as excinfo:
-        routing_pass.close_run(second, cfg)
-    assert excinfo.value.cause.reason == "routing-outstanding"
-
+    assert _refused_by(routing_pass.close_run, second, cfg).reason == "routing-outstanding"
     _route(cfg, db, adopted_root, declared, session_id="run-two")
     assert routing_pass.close_run(second, cfg).state is session.SessionState.CLOSED
-
     landed = sorted(_where(db, "2"))
     assert landed == sorted([first_destination, second_destination]), f"the library holds {landed}"
 
@@ -951,9 +879,7 @@ def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg, marker):
         def get_content(self):
             return [Row()]
 
-    with pytest.raises(CratekitError) as excinfo:
-        list(routing_pass.content_rows(Blind()))
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
+    assert _refused_by(list, routing_pass.content_rows(Blind())).code is ExitCode.LIBRARY_UNREADABLE
 
 
 def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(cfg, declared):
@@ -972,9 +898,7 @@ def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(
     good = _intent(cfg, declared, PLAIN)
     stale = replace(_intent(cfg, declared, COMPOSED), sub="a-sub-this-library-dropped")
     routing_pass.record_intents(cfg, [good, stale])
-
     report = _route(cfg, db, adopted_root, declared)
-
     assert _memberships(db, "2") == 1, "the good track was blocked by the stale one"
     assert report.routed == (good.track,)
     reasons = {item.intent.track: item.placement for item in report.placed}
@@ -1021,10 +945,8 @@ def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating
     # The node map the pass wrote is what makes a rename converge; wiped, the refusal stands.
     convergence.record_nodes(cfg, TREE_ID, (), replace_all=True)
     _rename_bucket_folder(db, declared)
-
-    with pytest.raises(CratekitError) as excinfo:
-        _route(cfg, db, adopted_root, declared)
-    assert excinfo.value.cause.reason == "routing-destination-renamed"
+    cause = _refused_by(_route, cfg, db, adopted_root, declared)
+    assert cause.reason == "routing-destination-renamed"
     assert _memberships(db, "2") == 1, "the recovery run duplicated the membership"
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
@@ -1044,7 +966,6 @@ def test_a_recovery_run_after_a_taxonomy_rename_converges_rather_than_duplicatin
     _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
     renamed = _taxonomy_with_the_first_bucket_renamed("A Bucket Renamed")
     assert renamed.buckets[0].id == declared.buckets[0].id
-
     report = _route(cfg, db, adopted_root, renamed)
     assert len(report.routed) == 1
     assert _memberships(db, "2") == 1
@@ -1057,7 +978,6 @@ def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
     """P5's countdown for the refusal above, so it cannot become permanent."""
     _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
     _rename_bucket_folder(db, declared)
-
     report = _route(cfg, db, adopted_root, declared)
     assert len(report.routed) == 1
     assert _memberships(db, "2") == 1, "the recovery run duplicated the membership"
@@ -1071,7 +991,6 @@ def test_a_bucket_folder_that_does_not_exist_yet_is_not_mistaken_for_a_rename(
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     _route(cfg, db, adopted_root, declared, session_id="run-one")
     routing_pass.record_intents(cfg, [_elsewhere(cfg, declared, "run-two")])
-
     report = _route(cfg, db, adopted_root, declared, session_id="run-two")
     assert len(report.routed) == 1
     assert _memberships(db, "2") == 2
@@ -1088,9 +1007,7 @@ def test_two_playlists_of_the_destinations_name_leave_its_node_unrecorded(
     db.create_playlist(sub_display, parent=folder)
     db.session.commit()
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-
     report = _route(cfg, db, adopted_root, declared)
-
     assert report.memberships[0].added == 1
     record = convergence.read(cfg).tree(TREE_ID)
     assert record is None or record.node(bucket_id, sub_id) is None
@@ -1110,20 +1027,11 @@ count = int(sys.argv[3])
 cfg = config.from_dict(valid_data(root))
 for index in range(count):
     location = f"{root}/Music/{run}-{index}.flac"
-    routing_pass.record_intents(
-        cfg,
-        [
-            routing_pass.RoutingIntent(
-                track=routing_pass.track_id(location),
-                session_id=run,
-                location=location,
-                tree="a_tree",
-                bucket="a_bucket",
-                sub="a_sub",
-                decided="2026-08-02T00:00:00+00:00",
-            )
-        ],
+    intent = routing_pass.RoutingIntent(
+        track=routing_pass.track_id(location), session_id=run, location=location, tree="a_tree",
+        bucket="a_bucket", sub="a_sub", decided="2026-08-02T00:00:00+00:00",
     )
+    routing_pass.record_intents(cfg, [intent])
 '''
 
 
@@ -1134,7 +1042,6 @@ def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_pat
     each = 60
     environment = dict(os.environ)
     environment["PYTHONPATH"] = os.pathsep.join([str(SRC_ROOT), str(REPO_ROOT)])
-
     processes = [
         subprocess.Popen(
             [sys.executable, str(script), str(library), run, str(each)],
@@ -1147,7 +1054,6 @@ def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_pat
     for process in processes:
         _out, errors = process.communicate(timeout=300)
         assert process.returncode == 0, errors.decode()
-
     recorded = routing_pass.read(cfg).intents
     assert len(recorded) == 2 * each, f"{len(recorded)} of {2 * each} decisions survived"
 
@@ -1169,17 +1075,13 @@ def test_everything_this_module_creates_is_private_under_any_umask(cfg, declared
         routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED, session_id=SESSION_ID)
     finally:
         os.umask(previous)
-
     root = config.library_state_dir(cfg)
     permissive: list[str] = []
     for current, directories, files in os.walk(root):
-        for name in directories:
+        expected = [(name, config.PRIVATE_DIR_MODE) for name in directories]
+        for name, mode in [*expected, *((name, config.PRIVATE_FILE_MODE) for name in files)]:
             path = Path(current) / name
-            if stat.S_IMODE(path.stat().st_mode) != config.PRIVATE_DIR_MODE:
-                permissive.append(f"{path} is {oct(stat.S_IMODE(path.stat().st_mode))}")
-        for name in files:
-            path = Path(current) / name
-            if stat.S_IMODE(path.stat().st_mode) != config.PRIVATE_FILE_MODE:
+            if stat.S_IMODE(path.stat().st_mode) != mode:
                 permissive.append(f"{path} is {oct(stat.S_IMODE(path.stat().st_mode))}")
     assert stat.S_IMODE(root.stat().st_mode) == config.PRIVATE_DIR_MODE
     assert not permissive, f"created under umask 000 at a permissive mode: {permissive}"
@@ -1189,10 +1091,8 @@ def _awaiting_import(cfg) -> None:
     """An intake run left waiting on an import of its export."""
     record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
     pending = session.pending_import(
-        record,
-        artifact=cfg.library.root / "an-export.xml",
-        summary="import this export into rekordbox",
-        verify_verb="a-verify-verb",
+        record, artifact=cfg.library.root / "an-export.xml",
+        summary="import this export into rekordbox", verify_verb="a-verify-verb",
     )
     session.mark_awaiting_import(record, pending, cfg)
 
@@ -1200,19 +1100,17 @@ def _awaiting_import(cfg) -> None:
 def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass):
     """The other state in which somebody still owes an act."""
     _awaiting_import(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        routing_pass.close_run(session.read_record(SESSION_ID, cfg), cfg)
-    assert excinfo.value.cause.reason == "awaiting-import"
-    assert excinfo.value.cause.code is ExitCode.PENDING_HUMAN
+    cause = _refused_by(routing_pass.close_run, session.read_record(SESSION_ID, cfg), cfg)
+    assert cause.reason == "awaiting-import"
+    assert cause.code is ExitCode.PENDING_HUMAN
     assert session.read_record(SESSION_ID, cfg).state is session.SessionState.AWAITING_IMPORT
 
 
 def test_abandoning_a_run_whose_export_was_never_imported_is_still_allowed(cfg, gates_pass):
     """The escape stays open, for the reason the routing gate leaves it open."""
     _awaiting_import(cfg)
-    abandoned = routing_pass.close_run(
-        session.read_record(SESSION_ID, cfg), cfg, state=session.SessionState.ABANDONED
-    )
+    held = session.read_record(SESSION_ID, cfg)
+    abandoned = routing_pass.close_run(held, cfg, state=session.SessionState.ABANDONED)
     assert abandoned.state is session.SessionState.ABANDONED
 
 
@@ -1225,7 +1123,6 @@ def _write_ledger(cfg, text: str) -> None:
 def test_an_unreadable_ledger_carries_its_remedy_to_the_boundary(cfg):
     """Read through a tolerant reader the gate fails open, and a non-structured refusal is a defect (S4)."""
     _write_ledger(cfg, "{ not json")
-
     with pytest.raises(routing_pass.RoutingLedgerUnreadable) as excinfo:
         routing_pass.read(cfg)
     assert isinstance(excinfo.value, CratekitError)
@@ -1236,9 +1133,7 @@ def test_an_unreadable_ledger_carries_its_remedy_to_the_boundary(cfg):
 def test_a_ledger_from_a_newer_build_carries_the_upgrade_remedy(cfg):
     """The same slug, a different remedy, which is why the remedy travels on the cause."""
     _write_ledger(cfg, json.dumps({"schema_version": routing_pass.SCHEMA_VERSION + 1, "intents": []}))
-    with pytest.raises(CratekitError) as excinfo:
-        routing_pass.read(cfg)
-    assert excinfo.value.cause.remediation.remedy is Remedy.UPGRADE_CRATEKIT
+    assert _refused_by(routing_pass.read, cfg).remediation.remedy is Remedy.UPGRADE_CRATEKIT
 
 
 def test_every_refusal_this_module_raises_is_a_structured_cause():
@@ -1251,7 +1146,6 @@ def test_every_refusal_this_module_raises_is_a_structured_cause():
         name = _called_name(thrown.func if isinstance(thrown, ast.Call) else thrown)
         if name:
             raised.add(name)
-
     # ``ValueError`` guards a constructor; ``refuse`` already returns a structured cause.
     exempt = {"refuse", "ValueError"}
     checked = 0

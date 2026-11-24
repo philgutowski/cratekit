@@ -1,11 +1,7 @@
-"""Every ``crate`` command imports only the verb it runs (U248).
-
-A verb's module is imported when argparse selects it, and a help listing asks a module
-only when its line could read differently. These tests hold: the saving, counted in
-modules in a fresh interpreter, never a wall clock; every help screen and parser refusal
-the same as the eager parsers'; the stub listing and refusing a missing extra; one
-broken module failing only its own verb; and every landed entry resolving its builder.
-"""
+"""Every ``crate`` command imports only the verb it runs (U248): a verb's module loads when
+argparse selects it, a help listing asks one only when its line could differ. Held here: the
+saving in modules, never a clock; help and refusals as the eager parsers'; the stub; one broken
+module failing only its verb; every landed entry resolving its builder."""
 
 from __future__ import annotations
 
@@ -80,8 +76,6 @@ def _closure(module: str) -> dict:
 
 
 # ═══ 1. The saving, counted in modules ═════════════════════════════════════
-
-
 @pytest.mark.parametrize("argv", [["--version"], ["--help"], []], ids=["version", "help", "bare"])
 def test_the_version_and_the_top_level_help_load_no_verb_module(argv):
     result = _probe(argv)
@@ -118,8 +112,6 @@ def test_a_group_help_loads_no_verb_module_when_none_of_its_verbs_declares_an_ex
 
 
 # ═══ 2. Nothing a person reads changed: lazy against eager ═════════════════
-
-
 def _paths(membership: profiles.Membership) -> list[tuple[str, ...]]:
     """The top level, every group and every verb the preset lists."""
     found = {()}
@@ -199,27 +191,34 @@ def test_a_group_named_with_no_verb_prints_the_same_screen(monkeypatch):
 
 
 # ═══ 3 and 4. The stub, and a broken module ════════════════════════════════
-
-
 def _fake(name: str, module: str, **kwargs) -> registry.Entry:
     return registry.Entry(
-        name=name,
-        summary=f"the {name} verb",
-        module=module,
-        builder="build",
-        handler_key=name,
-        **kwargs,
+        name=name, summary=f"the {name} verb", module=f"tests.cli_fixtures.{module}",
+        builder="build", handler_key=name, **kwargs,
     )
 
 
 def _with_extra(name: str, module: str) -> registry.Entry:
-    return _fake(
-        name,
-        module,
-        module_id="analysis",
-        extras="analysis",
-        extras_modules=("a_third_party_analysis_library",),
-    )
+    extra = {"extras": "analysis", "extras_modules": ("a_third_party_analysis_library",)}
+    return _fake(name, module, module_id="analysis", **extra)
+
+
+_BUILD_PARSER = cli.build_parser
+
+
+def _full(entries: list[registry.Entry], **kwargs) -> argparse.ArgumentParser:
+    """A fresh parser over ``entries`` on the full preset, by the real builder."""
+    return _BUILD_PARSER(entries, membership=profiles.resolve("full"), **kwargs)
+
+
+def _recording(asked: list[str]):
+    """An importer that records each module it is asked for, then imports it."""
+
+    def importer(name):
+        asked.append(name)
+        return importlib.import_module(name)
+
+    return importer
 
 
 def _help(parser: argparse.ArgumentParser, argv: list[str]) -> str:
@@ -230,14 +229,10 @@ def _help(parser: argparse.ArgumentParser, argv: list[str]) -> str:
 
 
 def test_a_blocked_extra_still_lists_the_stub_line_and_refuses_with_the_install_command():
-    entries = [_with_extra("analyze.demo", "tests.cli_fixtures.needs_extra")]
-    parser = cli.build_parser(entries, membership=profiles.resolve("full"))
-    listed = _help(parser, ["analyze", "--help"])
+    entries = [_with_extra("analyze.demo", "needs_extra")]
+    listed = _help(_full(entries), ["analyze", "--help"])
     assert "the analyze.demo verb (requires the 'analysis' extra)" in listed
-
-    args = cli.build_parser(entries, membership=profiles.resolve("full")).parse_args(
-        ["analyze", "demo"]
-    )
+    args = _full(entries).parse_args(["analyze", "demo"])
     assert args._stub is not None and args._handler is None
     cause = cli._stub_cause(args._entry, args._stub)
     assert cause.reason == "module-extras-missing"
@@ -246,69 +241,47 @@ def test_a_blocked_extra_still_lists_the_stub_line_and_refuses_with_the_install_
 
 def test_a_verb_that_imports_its_extra_lazily_is_listed_plainly_as_it_was():
     """The five real entries that declare extras import them inside functions."""
-    entries = [_with_extra("analyze.demo", "tests.cli_fixtures.plain")]
-    listed = _help(cli.build_parser(entries, membership=profiles.resolve("full")), ["analyze", "--help"])
+    listed = _help(_full([_with_extra("analyze.demo", "plain")]), ["analyze", "--help"])
     assert "the analyze.demo verb" in listed
     assert "requires" not in listed
 
 
 def test_a_listing_asks_only_the_verbs_whose_line_could_differ():
     asked: list[str] = []
-
-    def importer(name):
-        asked.append(name)
-        return importlib.import_module(name)
-
-    entries = [
-        _fake("analyze.plain", "tests.cli_fixtures.plain"),
-        _with_extra("analyze.heavy", "tests.cli_fixtures.plain"),
-    ]
-    parser = cli.build_parser(entries, membership=profiles.resolve("full"), importer=importer)
+    entries = [_fake("analyze.plain", "plain"), _with_extra("analyze.heavy", "plain")]
+    parser = _full(entries, importer=_recording(asked))
     assert asked == []
     _help(parser, ["analyze", "--help"])
     assert asked == ["tests.cli_fixtures.plain"]
 
 
 def test_a_broken_module_fails_its_own_verb_and_leaves_every_other_one_working():
-    """U248's deliberate change: an import error escapes only for its own verb, as
-    itself, and a listing that would have asked it shows its plain summary.
-    """
-    entries = [
-        _with_extra("analyze.broken", "tests.cli_fixtures.broken_module"),
-        _fake("status", "tests.cli_fixtures.plain"),
-    ]
-    membership = profiles.resolve("full")
-    parser = cli.build_parser(entries, membership=membership)
-
-    assert parser.parse_args(["status"])._entry.name == "status"
-    assert "usage: crate status" in _help(cli.build_parser(entries, membership=membership), ["status", "--help"])
-    listed = _help(cli.build_parser(entries, membership=membership), ["analyze", "--help"])
+    """U248's deliberate change: an import error escapes only for its own verb, as itself, and a
+    listing that would have asked it shows its plain summary."""
+    entries = [_with_extra("analyze.broken", "broken_module"), _fake("status", "plain")]
+    assert _full(entries).parse_args(["status"])._entry.name == "status"
+    assert "usage: crate status" in _help(_full(entries), ["status", "--help"])
+    listed = _help(_full(entries), ["analyze", "--help"])
     assert "the analyze.broken verb" in listed and "requires" not in listed
-
     with pytest.raises(ImportError) as raised:
-        cli.build_parser(entries, membership=membership).parse_args(["analyze", "broken"])
+        _full(entries).parse_args(["analyze", "broken"])
     assert raised.value.name == "cratekit.this_module_does_not_exist"
 
 
 def test_a_module_that_raises_anything_at_import_is_listed_plainly_and_raises_for_its_verb():
     """The listing's swallow is not only for ImportError: any failure keeps the plain line."""
-    entries = [
-        _with_extra("analyze.odd", "tests.cli_fixtures.raises_at_import"),
-        _fake("analyze.fine", "tests.cli_fixtures.plain"),
-    ]
-    membership = profiles.resolve("full")
-    listed = _help(cli.build_parser(entries, membership=membership), ["analyze", "--help"])
+    entries = [_with_extra("analyze.odd", "raises_at_import"), _fake("analyze.fine", "plain")]
+    listed = _help(_full(entries), ["analyze", "--help"])
     assert "the analyze.odd verb" in listed and "requires" not in listed
     assert "the analyze.fine verb" in listed
     with pytest.raises(ValueError, match="a defect of our own"):
-        cli.build_parser(entries, membership=membership).parse_args(["analyze", "odd"])
+        _full(entries).parse_args(["analyze", "odd"])
 
 
 def test_a_defective_builder_is_a_defect_and_never_a_usage_error():
     """A builder's own ArgumentError is a traceback, never exit 2 blaming the person."""
-    entries = [_fake("status", "tests.cli_fixtures.conflicting_builder")]
-    membership = profiles.resolve("full")
-    parser = cli.build_parser(entries, membership=membership)
+    entries = [_fake("status", "conflicting_builder")]
+    parser = _full(entries)
     with pytest.raises(RuntimeError, match="building status from") as raised:
         parser.parse_args(["status"])
     assert isinstance(raised.value.__cause__, argparse.ArgumentError)
@@ -316,33 +289,24 @@ def test_a_defective_builder_is_a_defect_and_never_a_usage_error():
     with pytest.raises(RuntimeError, match="building status from"):
         parser.parse_args(["status"])
     with pytest.raises(argparse.ArgumentError):
-        cli.build_parser(entries, membership=membership, eager=True)
+        _full(entries, eager=True)
 
 
 def test_an_argument_error_raised_by_the_import_is_a_defect_too():
     """The same class one step earlier, from review round two."""
-    entries = [_fake("status", "tests.cli_fixtures.argument_error_at_import")]
-    membership = profiles.resolve("full")
     with pytest.raises(RuntimeError, match="building status from") as raised:
-        cli.build_parser(entries, membership=membership).parse_args(["status"])
+        _full([_fake("status", "argument_error_at_import")]).parse_args(["status"])
     assert isinstance(raised.value.__cause__, argparse.ArgumentError)
 
 
 def test_the_eager_parser_still_raises_a_broken_module_at_construction():
-    entries = [_with_extra("analyze.broken", "tests.cli_fixtures.broken_module")]
     with pytest.raises(ImportError):
-        cli.build_parser(entries, membership=profiles.resolve("full"), eager=True)
+        _full([_with_extra("analyze.broken", "broken_module")], eager=True)
 
 
 def test_a_verb_is_built_once_however_often_it_is_asked():
     calls: list[str] = []
-
-    def importer(name):
-        calls.append(name)
-        return importlib.import_module(name)
-
-    entries = [_with_extra("analyze.demo", "tests.cli_fixtures.plain")]
-    parser = cli.build_parser(entries, membership=profiles.resolve("full"), importer=importer)
+    parser = _full([_with_extra("analyze.demo", "plain")], importer=_recording(calls))
     _help(parser, ["analyze", "--help"])
     assert parser.parse_args(["analyze", "demo"])._entry.name == "analyze.demo"
     assert parser.parse_args(["analyze", "demo"])._entry.name == "analyze.demo"
@@ -350,8 +314,6 @@ def test_a_verb_is_built_once_however_often_it_is_asked():
 
 
 # ═══ 5. Every landed entry imports and resolves its builder ═════════════════
-
-
 @pytest.mark.parametrize("entry", registry.landed_entries(), ids=lambda e: e.name)
 def test_every_landed_entry_imports_and_resolves_its_builder(entry):
     module = importlib.import_module(entry.module)
@@ -362,12 +324,7 @@ def test_every_landed_entry_imports_and_resolves_its_builder(entry):
 
 def test_dispatch_in_process_still_builds_and_runs_the_verb_it_names(monkeypatch):
     """``run decide --continue`` and the tail call this with their own words."""
-    entries = [_fake("status", "tests.cli_fixtures.plain")]
-    real = cli.build_parser
-    monkeypatch.setattr(
-        cli, "build_parser", lambda: real(entries, membership=profiles.resolve("full"))
-    )
+    monkeypatch.setattr(cli, "build_parser", lambda: _full([_fake("status", "plain")]))
     envelope = cli.dispatch(["status"], stderr=io.StringIO())
     assert envelope.verb == "status"
     assert envelope.exit_code is ExitCode.OK
-

@@ -35,18 +35,12 @@ def cfg(tmp_path, monkeypatch) -> config.Config:
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-        }
-    )
+    db = str(root / "db" / "master.db")
+    library = {"root": str(root), "volume_id": "F1E2-D3C4", "db_path": db}
+    built = config.from_dict({
+        "schema_version": config.CURRENT_SCHEMA_VERSION, "library": library,
+        "paths": {"download_staging": str(tmp_path / "staging")}, "profile": {"name": "full"},
+    })
     config.save(built)
     config.reset_cache()
     return built
@@ -58,6 +52,20 @@ def queue(tmp_path):
     root.mkdir()
     with jobs.open_store(root / jobs.QUEUE_FILENAME) as store:
         yield store, root
+
+
+def _job(store, cfg: config.Config, *item_ids: str, handler_key: str = "master") -> jobs.Job:
+    return jobs.enqueue(store, handler_key=handler_key, payload={}, cfg=cfg, item_ids=item_ids)
+
+
+def _moved_on_disk(cfg: config.Config, tmp_path) -> config.Config:
+    """The configuration saved with its staging folder moved, after ``cfg`` was frozen."""
+    moved = config.from_dict(
+        {**json_roundtrip(cfg), "paths": {"download_staging": str(tmp_path / "somewhere-else")}}
+    )
+    config.save(moved)
+    config.reset_cache()
+    return moved
 
 
 # The declaration tables
@@ -76,12 +84,8 @@ def test_every_declared_handler_resolves_to_a_callable():
 
 def test_every_queued_verb_is_either_bound_or_named_as_unbound():
     """A verb added later without a handler fails HERE, not at a user's queue."""
-    missing = [
-        entry.handler_key
-        for entry in queued_entries()
-        if entry.handler_key not in handlers.HANDLERS
-        and entry.handler_key not in handlers.HANDLERS_NOT_YET_BOUND
-    ]
+    declared = {*handlers.HANDLERS, *handlers.HANDLERS_NOT_YET_BOUND}
+    missing = [entry.handler_key for entry in queued_entries() if entry.handler_key not in declared]
     assert not missing, (
         "these queued verbs declare no handler and are not recorded as unbound, "
         f"so their jobs would report cleanly and run nothing: {sorted(missing)}"
@@ -205,9 +209,7 @@ def test_a_job_whose_key_has_no_handler_refuses_rather_than_reporting_success(cf
     stops testing this the day somebody binds it."""
     store, _ = queue
     unbound = sorted(handlers.HANDLERS_NOT_YET_BOUND)[0]
-    job = jobs.enqueue(
-        store, handler_key=unbound, payload={}, cfg=cfg, item_ids=("one",)
-    )
+    job = _job(store, cfg, "one", handler_key=unbound)
     with pytest.raises(CratekitError) as caught:
         handlers.run_job(store, job)
     assert unbound in caught.value.cause.message
@@ -219,19 +221,8 @@ def test_the_handler_receives_the_frozen_configuration_and_not_the_current_one(
 ):
     """KTD9, driven. The setting is changed on disk between enqueue and drive."""
     store, root = queue
-    job = jobs.enqueue(
-        store, handler_key="master", payload={}, cfg=cfg, item_ids=("one",)
-    )
-
-    moved = config.from_dict(
-        {
-            **json_roundtrip(cfg),
-            "paths": {"download_staging": str(tmp_path / "somewhere-else")},
-        }
-    )
-    config.save(moved)
-    config.reset_cache()
-
+    job = _job(store, cfg, "one")
+    moved = _moved_on_disk(cfg, tmp_path)
     seen: list[config.Config] = []
 
     def spy(job_, item_, handed):
@@ -251,17 +242,8 @@ def test_a_configuration_that_moved_is_reported_as_drift_rather_than_chosen_betw
     cfg, queue, monkeypatch, tmp_path
 ):
     store, root = queue
-    job = jobs.enqueue(
-        store, handler_key="master", payload={}, cfg=cfg, item_ids=("one",)
-    )
-    moved = config.from_dict(
-        {
-            **json_roundtrip(cfg),
-            "paths": {"download_staging": str(tmp_path / "somewhere-else")},
-        }
-    )
-    config.save(moved)
-    config.reset_cache()
+    job = _job(store, cfg, "one")
+    _moved_on_disk(cfg, tmp_path)
 
     monkeypatch.setattr(handlers, "resolve", lambda key: (lambda j, i, c: None))
     result = handlers.run_job(store, job, root=root)
@@ -279,9 +261,7 @@ def test_no_drift_means_no_warning():
 def test_a_handler_that_produces_a_file_has_it_committed_and_recorded(cfg, queue, monkeypatch):
     """The artifact half of the driver's contract, exercised from the shipped site."""
     store, root = queue
-    job = jobs.enqueue(
-        store, handler_key="master", payload={}, cfg=cfg, item_ids=("one",)
-    )
+    job = _job(store, cfg, "one")
     final = root / "out" / "one.txt"
 
     def produce(job_, item_, cfg_):
@@ -338,16 +318,11 @@ def _config_aliases(tree: ast.AST) -> frozenset[str]:
     imports, since an aliased import names the same module differently."""
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith(
-            "cratekit.core"
-        ):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("cratekit.core"):
             names |= {a.asname or a.name for a in node.names if a.name == "config"}
         elif isinstance(node, ast.Import):
-            names |= {
-                a.asname or a.name.split(".")[0]
-                for a in node.names
-                if a.name == "cratekit.core.config"
-            }
+            bound = [a for a in node.names if a.name == "cratekit.core.config"]
+            names |= {a.asname or a.name.split(".")[0] for a in bound}
     return frozenset(names)
 
 
@@ -402,13 +377,9 @@ def test_the_fresh_configuration_guard_catches_every_spelling_it_claims(body):
 
 def test_the_fresh_configuration_guard_does_not_fire_on_a_handler_that_behaves():
     """P7: a guard that fires on correct code trains people to route around it."""
-    body = textwrap.dedent(
-        """
-        from cratekit.core import config
-
-        def handle(job, item, cfg):
-            return cfg.paths.download_staging
-        """
+    body = (
+        "from cratekit.core import config\n\n"
+        "def handle(job, item, cfg):\n    return cfg.paths.download_staging\n"
     )
     tree = ast.parse(body)
     assert not _reload_calls(tree, aliases=_config_aliases(tree))
@@ -433,34 +404,23 @@ def test_a_worker_naming_a_batch_form_is_driven_in_batches_against_the_frozen_co
     cfg, queue, monkeypatch, tmp_path
 ):
     store, root = queue
-    job = jobs.enqueue(
-        store, handler_key="master", payload={}, cfg=cfg, item_ids=("a", "b", "c")
-    )
-    moved = config.from_dict(
-        {
-            **json_roundtrip(cfg),
-            "paths": {"download_staging": str(tmp_path / "somewhere-else")},
-        }
-    )
-    config.save(moved)
-    config.reset_cache()
+    job = _job(store, cfg, "a", "b", "c")
+    _moved_on_disk(cfg, tmp_path)
     seen: list = []
     monkeypatch.setattr(handlers, "resolve", lambda key: _worker_with_batch(seen, 2))
 
     result = handlers.run_job(store, job, root=root)
 
     assert [ids for ids, _cfg, _stopped in seen] == [("a", "b"), ("c",)]
-    assert all(
-        handed.paths.download_staging == cfg.paths.download_staging
-        for _ids, handed, _stopped in seen
-    )
+    staging = cfg.paths.download_staging
+    assert all(handed.paths.download_staging == staging for _ids, handed, _stopped in seen)
     assert not any(stopped for _ids, _cfg, stopped in seen)
     assert result.processed == 3
 
 
 def test_a_worker_naming_no_batch_form_is_driven_one_item_at_a_time(cfg, queue, monkeypatch):
     store, root = queue
-    job = jobs.enqueue(store, handler_key="master", payload={}, cfg=cfg, item_ids=("a", "b"))
+    job = _job(store, cfg, "a", "b")
     seen: list[str] = []
 
     def single(job_, item_, cfg_):
@@ -498,9 +458,6 @@ def test_the_export_worker_names_its_batch_form_at_the_providers_add_limit():
     named = handlers.batching_of(handlers.resolve("export.playlist"))
     assert named == (export_cli.handle_batch, outbound_export.BATCH)
     assert outbound_export.BATCH == tidal_account.ADD_CHUNK == 100
-    batched = {
-        key
-        for key in handlers.HANDLERS
-        if handlers.batching_of(handlers.resolve(key)) is not None
-    }
+    batching = {key: handlers.batching_of(handlers.resolve(key)) for key in handlers.HANDLERS}
+    batched = {key for key, named in batching.items() if named is not None}
     assert batched == {"export.playlist"}

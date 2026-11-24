@@ -38,11 +38,8 @@ SMART = "Fresh this week"
 
 #: Each node the brief's INBOX leaves off, by name, to its kind.
 KINDS = {
-    OLD: rotate.LEFT_OLD,
-    native.ANALYZE: rotate.LEFT_ANALYZE,
-    FOLDER: rotate.LEFT_FOLDER,
-    LABELS: rotate.LEFT_UNRECOGNISED,
-    SMART: rotate.LEFT_SMART,
+    OLD: rotate.LEFT_OLD, native.ANALYZE: rotate.LEFT_ANALYZE, FOLDER: rotate.LEFT_FOLDER,
+    LABELS: rotate.LEFT_UNRECOGNISED, SMART: rotate.LEFT_SMART,
 }
 
 
@@ -53,10 +50,8 @@ def brief(native_library):
     ids: dict[str, str] = {}
     with _opened(cfg) as handle:
         def make(key, name, under, age=None, tracks=(), *, folder=False, smart=False):
-            parent = handle.get_playlist(ID=under)
-            made = (handle.create_playlist_folder if folder else handle.create_playlist)(
-                name, parent=parent
-            )
+            create = handle.create_playlist_folder if folder else handle.create_playlist
+            made = create(name, parent=handle.get_playlist(ID=under))
             if age is not None:
                 made.created_at = datetime.combine(TODAY - timedelta(days=age), datetime.min.time())
             for content_id in tracks:
@@ -91,9 +86,8 @@ def _opened(cfg):
 def _live(cfg, declared=None) -> rotate.Live:
     declared = declared or active_taxonomy.load(cfg)
     with _opened(cfg) as handle:
-        return rotate.live_batches(
-            cfg, handle, declared=declared, registry=tree_registry.read(cfg), today=TODAY
-        )
+        registry = tree_registry.read(cfg)
+        return rotate.live_batches(cfg, handle, declared=declared, registry=registry, today=TODAY)
 
 
 def _rotation(cfg) -> rotate.RotationPlan:
@@ -103,11 +97,16 @@ def _rotation(cfg) -> rotate.RotationPlan:
         )
 
 
+def _organized_rotation(cfg) -> tuple[Area, object]:
+    """The organize step's rotation over ``cfg``: its area, and the step it answers."""
+    area = Area(name="rekordbox")
+    return area, rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+
+
 def _inbox(cfg) -> mirror.Folder:
     with _opened(cfg) as handle:
-        _name, read = account_mirror._inbox(
-            cfg, handle, active_taxonomy.load(cfg), tree_registry.read(cfg), TODAY
-        )
+        declared, registry = active_taxonomy.load(cfg), tree_registry.read(cfg)
+        _name, read = account_mirror._inbox(cfg, handle, declared, registry, TODAY)
     assert isinstance(read, mirror.Folder), read
     return read
 
@@ -214,8 +213,7 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
         "aged from its playlist's creation date"
     )
     assert [one["message"] for one in rotate_cli.records_warnings(plan)] == [listed]
-    area = Area(name="rekordbox")
-    step = rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    _area, step = _organized_rotation(cfg)
     assert [one["message"] for one in step.warnings] == [listed]
 
 
@@ -264,8 +262,7 @@ def test_a_folder_named_old_inside_old_is_a_folder_and_listed_as_yours(brief):
     again = _rotation(cfg)
     (inside,) = [node for node in again.left if node.playlist_id == nested]
     assert (inside.kind, inside.place) == (rotate.LEFT_FOLDER, again.old_place)
-    area = Area(name="rekordbox")
-    rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    area, _step = _organized_rotation(cfg)
     assert [one["kind"] for one in area.yours if one["name"] == OLD] == [rotate.LEFT_FOLDER]
 
 
@@ -336,8 +333,7 @@ def test_a_renamed_left_playlist_still_moves_the_rotations_digest(brief):
 
 def test_the_organize_rotation_step_does_not_list_old_as_yours(brief):
     cfg, _root, _ids = brief
-    area = Area(name="rekordbox")
-    rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    area, _step = _organized_rotation(cfg)
     yours = {one["name"] for one in area.yours}
     assert OLD not in yours
     assert {FOLDER, LABELS, SMART, native.ANALYZE} <= yours
@@ -356,12 +352,9 @@ def _with_unmirrored(*batches: tuple[str, tuple[int, ...]]) -> mirror.Folder:
         mirror.Source(name=mirror.title("INBOX", name), rows=tuple(row(n) for n in numbers))
         for name, numbers in batches
     )
+    present = frozenset(source.name for source in sources)
     return mirror.Folder(
-        name="INBOX",
-        playlists=sources,
-        retire=True,
-        present=frozenset(source.name for source in sources),
-        unmirrored=UNMIRRORED,
+        name="INBOX", playlists=sources, retire=True, present=present, unmirrored=UNMIRRORED
     )
 
 
@@ -442,17 +435,13 @@ def test_a_rebuild_from_the_frozen_plan_still_names_them(installed, monkeypatch)
     world = World(installed, monkeypatch)
     world.mirror(_with_unmirrored((BATCH, (1,))))
     run = "2026-11-05T00:00:00Z-u215"
-    account_mirror.add_steps(
-        installed, Area(name="account"), lambda: world.account,
-        account_mirror.Run(run_id=run, record=True),
-    )
+    recorded = account_mirror.Run(run_id=run, record=True)
+    account_mirror.add_steps(installed, Area(name="account"), lambda: world.account, recorded)
     # The library now reads empty: a rebuild that named the nodes took the frozen one.
     world.mirror()
     area = Area(name="account")
-    account_mirror.add_steps(
-        installed, area, lambda: world.account,
-        account_mirror.Run(run_id=run, record=True, decided=True),
-    )
+    decided = account_mirror.Run(run_id=run, record=True, decided=True)
+    account_mirror.add_steps(installed, area, lambda: world.account, decided)
     step = _inbox_step(area)
     assert len(_named(step)) == 2
     assert "2 node(s) in INBOX not mirrored" in step.detail

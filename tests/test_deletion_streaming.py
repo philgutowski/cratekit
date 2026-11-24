@@ -34,9 +34,7 @@ from tests.test_deletion import library_root as library_root  # noqa: PLC0414 - 
 from tests.test_deletion import review_cli as review_cli  # noqa: PLC0414 - fixture
 
 STREAMED = (
-    "/v4/catalog/tracks/12345678/",
-    "/v4/catalog/tracks/87654321",
-    "/v4/catalog/tracks/AbC9/",
+    "/v4/catalog/tracks/12345678/", "/v4/catalog/tracks/87654321", "/v4/catalog/tracks/AbC9/"
 )
 
 

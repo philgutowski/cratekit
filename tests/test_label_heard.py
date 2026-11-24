@@ -48,6 +48,12 @@ def _made(cfg, fake, account, answers) -> str:
     return folder_id
 
 
+def _on_dated(kompakt, *releases: str) -> tuple:
+    """``kompakt`` with ``releases`` answered on DAY and made into its dated playlist."""
+    cfg, fake, account = kompakt
+    return cfg, fake, account, _made(cfg, fake, account, [_answer(list(releases), DAY)])
+
+
 def _ids(account, folder_id: str) -> dict[str, str]:
     return {account.titles[pid]: pid for pid, held in account.placed.items() if held == folder_id}
 
@@ -68,7 +74,6 @@ def _codes(envelope: dict) -> list[str]:
     return [one["code"] for one in envelope.get("warnings") or ()]
 
 
-# 1. The declaration
 def test_the_verb_writes_only_the_account_behind_one_explicit_gate():
     entry = registry.entry("label.heard")
     assert entry.landed
@@ -103,10 +108,8 @@ def test_nothing_on_the_heard_path_reaches_rekordbox_a_grid_a_tempo_or_a_rating(
         assert not {one for one in names if any(s in one for s in ("grid", "bpm", "tempo", "rating"))}
 
 
-# 2. Heard, merged and removed
 def test_heard_writes_the_ids_merges_and_removes_and_a_second_run_is_a_no_op(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3", "r4"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3", "r4")
     dated_id = _ids(account, folder_id)[DATED]
     assert ledger.product_made(cfg, dated_id)
     envelope = _exits(ExitCode.OK, _two_acts(VERB))
@@ -124,8 +127,7 @@ def test_heard_writes_the_ids_merges_and_removes_and_a_second_run_is_a_no_op(kom
 
 
 def test_the_merge_adds_only_what_the_year_lacks_and_never_a_duplicate(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3", "r4"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3", "r4")
     year_id = _ids(account, folder_id)[YEAR]
     # A person took two tracks off the year since it was built.
     account.playlists[year_id] = [one for one in account.playlists[year_id] if one not in ("t4", "t6")]
@@ -152,8 +154,7 @@ def test_a_release_not_in_the_dated_playlist_is_refused_by_name(kompakt):
 
 
 def test_some_releases_heard_take_their_tracks_off_and_the_last_removes_it(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3", "r4"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3", "r4")
     dated_id = _ids(account, folder_id)[DATED]
     _exits(ExitCode.OK, _two_acts([*VERB, "--release", "r3"]))
     assert _heard(cfg) == ["r3"]
@@ -167,8 +168,7 @@ def test_some_releases_heard_take_their_tracks_off_and_the_last_removes_it(kompa
 
 
 def test_a_named_release_already_heard_is_said_and_writes_nothing(kompakt):
-    cfg, fake, account = kompakt
-    _made(cfg, fake, account, [_answer(["r3", "r4"], DAY)])
+    cfg, fake, account, _ = _on_dated(kompakt, "r3", "r4")
     _two_acts([*VERB, "--release", "r3"])
     before = _writes(account)
     envelope = _exits(ExitCode.OK, _two_acts([*VERB, "--release", "r3"]))
@@ -179,8 +179,7 @@ def test_a_named_release_already_heard_is_said_and_writes_nothing(kompakt):
 
 
 def test_declined_nothing_is_written(kompakt):
-    cfg, fake, account = kompakt
-    _made(cfg, fake, account, [_answer(["r3", "r4"], DAY)])
+    cfg, fake, account, _ = _on_dated(kompakt, "r3", "r4")
     before = _state(cfg, account)
     envelope = _exits(ExitCode.OK, _two_acts(VERB, option="abort"))
     assert envelope["outcome"] == "no_op"
@@ -200,8 +199,7 @@ def test_no_dated_playlist_on_the_account_marks_heard_and_touches_nothing(kompak
 
 
 def test_every_run_says_the_record_labels_tree_is_not_changed(kompakt):
-    cfg, fake, account = kompakt
-    _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, _ = _on_dated(kompakt, "r3")
     code, refused = drive(VERB)
     assert refused["cause"]["detail"]["shown"]["rekordbox"] == heard.TREE_SAID
     code, envelope = _two_acts(VERB)
@@ -210,7 +208,6 @@ def test_every_run_says_the_record_labels_tree_is_not_changed(kompakt):
     assert heard_cli.TREE_UNCHANGED in _codes(again)
 
 
-# 3. Refused before the gate
 def test_a_dated_playlist_the_ledger_does_not_vouch_for_is_refused(kompakt):
     cfg, fake, account = kompakt
     _built(cfg, fake, account)
@@ -226,12 +223,9 @@ def test_a_dated_playlist_the_ledger_does_not_vouch_for_is_refused(kompakt):
 
 
 def test_a_date_no_go_took_anything_on_is_refused(kompakt):
-    cfg, fake, account = kompakt
-    _made(cfg, fake, account, [_answer(["r3"], DAY)])
-    code, refused = drive(["label", "heard", LABEL, "2023", "2026-10-08"])
-    assert refused["cause"]["reason"] == "label-heard-no-releases"
-    code, refused = drive(["label", "heard", LABEL, "2021", DAY])
-    assert refused["cause"]["reason"] == "label-heard-no-releases"
+    cfg, fake, account, _ = _on_dated(kompakt, "r3")
+    for argv in ([LABEL, "2023", "2026-10-08"], [LABEL, "2021", DAY]):
+        assert drive(["label", "heard", *argv])[1]["cause"]["reason"] == "label-heard-no-releases"
 
 
 @pytest.mark.parametrize(
@@ -243,8 +237,7 @@ def test_a_year_or_date_that_is_not_one_is_refused(kompakt, argv):
 
 
 def test_a_folder_with_no_year_playlist_refuses_when_there_is_something_to_add(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3")
     year_id = _ids(account, folder_id)[YEAR]
     account.placed.pop(year_id)
     code, refused = drive(VERB)
@@ -253,8 +246,7 @@ def test_a_folder_with_no_year_playlist_refuses_when_there_is_something_to_add(k
 
 
 def test_two_playlists_with_the_dated_name_refuse(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3")
     account.move_to_folder(account.create_playlist(DATED), folder_id)
     code, refused = drive(VERB)
     assert refused["cause"]["reason"] == "label-heard-ambiguous"
@@ -266,10 +258,8 @@ def test_a_label_nobody_follows_is_a_plan_of_nothing_still_gated(installed):
     assert refused["cause"]["detail"]["gate"] == GATE
 
 
-# 4. A write the account refuses
 def test_a_track_the_year_will_not_take_keeps_the_dated_playlist(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3")
     year_id = _ids(account, folder_id)[YEAR]
     account.playlists[year_id].remove("t4")
     account.unaddable.add("t4")
@@ -282,8 +272,7 @@ def test_a_track_the_year_will_not_take_keeps_the_dated_playlist(kompakt):
 
 
 def test_a_removal_refused_part_way_names_the_adds_marks_nothing_and_a_resume_finishes(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3")
     ids = _ids(account, folder_id)
     account.playlists[ids[YEAR]].remove("t5")
     account.fail_on = frozenset({ids[DATED]})
@@ -299,7 +288,6 @@ def test_a_removal_refused_part_way_names_the_adds_marks_nothing_and_a_resume_fi
     assert _heard(cfg) == ["r3"]
 
 
-# 5. The engine and the record
 def test_the_releases_of_a_dated_playlist_are_the_dated_plans_own(kompakt):
     cfg, fake, account = kompakt
     _built(cfg, fake, account)
@@ -314,23 +302,16 @@ def test_the_releases_of_a_dated_playlist_are_the_dated_plans_own(kompakt):
 
 
 def test_the_heard_list_is_added_to_never_replaced_and_kept_sorted(installed):
-    cfg = installed
-    sync_cli.write_record(
-        cfg,
-        {
-            "version": sync_cli.RECORD_VERSION,
-            "labels": {LABEL_ID: {"asked": ["x"], heard.HEARD: ["r9"]}}, "answers": [],
-        },
-    )
-    assert heard.record_heard(cfg, LABEL_ID, ["r3", "r9"]) == 1
-    held = sync_cli.load_record(cfg)["labels"][LABEL_ID]
+    record = {"labels": {LABEL_ID: {"asked": ["x"], heard.HEARD: ["r9"]}}, "answers": []}
+    sync_cli.write_record(installed, {"version": sync_cli.RECORD_VERSION, **record})
+    assert heard.record_heard(installed, LABEL_ID, ["r3", "r9"]) == 1
+    held = sync_cli.load_record(installed)["labels"][LABEL_ID]
     assert held[heard.HEARD] == ["r3", "r9"] and held["asked"] == ["x"]
-    assert heard.record_heard(cfg, LABEL_ID, ["r3"]) == 0
+    assert heard.record_heard(installed, LABEL_ID, ["r3"]) == 0
 
 
 def test_a_dated_playlist_made_by_the_dated_plan_is_vouched_for_and_one_reused_is_not(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3")
     made = _ids(account, folder_id)[DATED]
     assert ledger.product_made(cfg, made)
     ledger.forget_label_dated(cfg, LABEL_ID, made)
@@ -338,36 +319,30 @@ def test_a_dated_playlist_made_by_the_dated_plan_is_vouched_for_and_one_reused_i
 
 
 def test_an_adopted_year_still_wins_over_a_dated_entry_for_the_same_identifier(installed):
-    cfg = installed
-    ledger.reserve_label_year(cfg, LABEL_ID, "2023", YEAR, lambda: "never", adopt="pl-9")
-    assert ledger.reserve_label_dated(cfg, LABEL_ID, DATED, lambda: "pl-9") == "pl-9"
-    assert not ledger.product_made(cfg, "pl-9")
-    ledger.reserve_label_dated(cfg, LABEL_ID, DATED, lambda: "pl-10")
-    assert ledger.product_made(cfg, "pl-10")
+    ledger.reserve_label_year(installed, LABEL_ID, "2023", YEAR, lambda: "never", adopt="pl-9")
+    assert ledger.reserve_label_dated(installed, LABEL_ID, DATED, lambda: "pl-9") == "pl-9"
+    assert not ledger.product_made(installed, "pl-9")
+    ledger.reserve_label_dated(installed, LABEL_ID, DATED, lambda: "pl-10")
+    assert ledger.product_made(installed, "pl-10")
 
 
 def test_a_dated_entry_that_is_not_a_name_to_an_identifier_is_not_vouched_for(installed):
-    cfg = installed
-    path = config.state_path("outbound_writes", cfg)
+    path = config.state_path("outbound_writes", installed)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        '{"version": 1, "labels": {"kompakt": {"years": {}, "dated": {"a": "", "": "pl-3", "b": "pl-4"}}}}',
-        encoding="utf-8",
-    )
-    assert not ledger.product_made(cfg, "pl-3")
-    assert ledger.product_made(cfg, "pl-4")
+    labelled = {"kompakt": {"years": {}, "dated": {"a": "", "": "pl-3", "b": "pl-4"}}}
+    path.write_text(json.dumps({"version": 1, "labels": labelled}), encoding="utf-8")
+    assert not ledger.product_made(installed, "pl-3")
+    assert ledger.product_made(installed, "pl-4")
 
 
 def test_the_plan_refuses_through_the_engine_as_through_the_verb(kompakt):
-    cfg, fake, account = kompakt
-    _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, _ = _on_dated(kompakt, "r3")
     read = playlists_cli.read_catalogue(cfg, _entry(), fake)
     with pytest.raises(CratekitError) as caught:
         heard.plan(cfg, read, account, sync_cli.load_record(cfg), year="2023", day=DAY, named=["r4"])
     assert caught.value.cause.reason == "label-heard-not-in-playlist"
 
 
-# 6. The adapter's playlist removal, over a stand in for the client
 class ObjectNotFound(Exception):
     """Named as the client's own not found, which the adapter reads by name."""
 
@@ -470,14 +445,13 @@ def test_a_playlist_the_client_does_not_serve_as_owned_is_refused_in_words(insta
 
 
 def test_an_unreadable_ledger_refuses_a_dated_create_before_anything_exists(installed):
-    cfg = installed
-    path = config.state_path("outbound_writes", cfg)
+    path = config.state_path("outbound_writes", installed)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("not json", encoding="utf-8")
     def create() -> str:
         raise AssertionError("the playlist was created before the ledger was read")
     with pytest.raises(CratekitError) as caught:
-        ledger.reserve_label_dated(cfg, LABEL_ID, DATED, create)
+        ledger.reserve_label_dated(installed, LABEL_ID, DATED, create)
     assert caught.value.cause.reason == "outbound-ledger-unusable"
 
 
@@ -521,8 +495,7 @@ def test_a_track_an_unheard_release_also_carries_stays_on_the_dated_playlist(kom
 
 
 def test_what_the_merge_adds_to_a_recorded_year_is_recorded_on_it(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3")
     year_id = _ids(account, folder_id)[YEAR]
     account.playlists[year_id].remove("t4")
     shape = ledger.label_shape(cfg, LABEL_ID)
@@ -538,8 +511,7 @@ def test_what_the_merge_adds_to_a_recorded_year_is_recorded_on_it(kompakt):
 
 
 def test_a_year_known_only_by_the_marks_prefixed_name_is_the_year(kompakt):
-    cfg, fake, account = kompakt
-    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    cfg, fake, account, folder_id = _on_dated(kompakt, "r3")
     old_year = _ids(account, folder_id)[YEAR]
     account.placed.pop(old_year)
     marked = account.create_playlist(f"DOWNLOADED {YEAR}")

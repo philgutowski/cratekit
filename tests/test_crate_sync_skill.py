@@ -60,9 +60,7 @@ def _commands(text: str) -> list[str]:
 
 
 def _gate(name: str):
-    return next(
-        gate for entry in registry.ENTRIES for gate in entry.gates if gate.name == name
-    )
+    return next(gate for entry in registry.ENTRIES for gate in entry.gates if gate.name == name)
 
 
 def test_the_skill_passes_the_shipped_skills_lint(tmp_path):
@@ -81,14 +79,9 @@ def test_the_lint_reads_the_skills_commands_at_all(text):
 def test_it_runs_the_steps_the_brief_names_in_order(flat):
     """Preflight, the pass, the rehearsal and gate, the visit, the account, the report."""
     order = [
-        "crate job list --state running",
-        "crate --output json sync land",
-        "--rehearse",
-        "intake.land.native apply --actor session --continue",
-        "`rekordbox-visit` skill",
-        "organize --only marks",
-        "organize --only file",
-        "One closing report",
+        "crate job list --state running", "crate --output json sync land", "--rehearse",
+        "intake.land.native apply --actor session --continue", "`rekordbox-visit` skill",
+        "organize --only marks", "organize --only file", "One closing report",
     ]
     places = [flat.index(phrase) for phrase in order]
     assert places == sorted(places), dict(zip(order, places, strict=True))
@@ -104,11 +97,8 @@ def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
         spec = _gate(gate)
         assert option in spec.options and option != "abort", line
         assert "--actor session" in line and "--continue" in line, line
-    assert {line.split()[4] for line in decides} == {
-        tail.LAND_GATE,
-        organize_cli.ACCOUNT_GATE,
-        removed_cli.CONFIRM_GATE,
-    }
+    gates = {tail.LAND_GATE, organize_cli.ACCOUNT_GATE, removed_cli.CONFIRM_GATE}
+    assert {line.split()[4] for line in decides} == gates
     assert tail.LAND_OPTION == "apply" and organize_cli.APPLY == "apply"
 
 
@@ -191,10 +181,7 @@ def test_the_doctor_checks_it_reads_exist(flat):
     keys = {check.key for check in doctor.CHECKS}
     named = set(re.findall(r"`((?:backup|rekordbox|install)\.[a-z.]+)`", flat))
     assert named == {
-        "backup.age.files",
-        "backup.age.database",
-        "rekordbox.closed",
-        "install.release",
+        "backup.age.files", "backup.age.database", "rekordbox.closed", "install.release"
     }
     assert named <= keys
 
@@ -240,17 +227,14 @@ def test_step_three_re_planned_on_its_stopped_run_names_the_rehearsal_and_lands(
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
-
     # The live plan stops at its gate, as crate sync land leaves it.
     code, stopped = drive(_land())
     assert code == int(ExitCode.DECISION_REQUIRED), stopped
     assert stopped["cause"]["detail"]["gate"] == tail.LAND_GATE
     assert "rehearsal" not in stopped["cause"]["detail"]["shown"]
     gate_run = stopped["run_id"]
-
     code, rehearsed = drive(_land("--rehearse"))
     assert code == int(ExitCode.OK), rehearsed
-
     # The same run, planned again, now names the rehearsal and says equal.
     code, again = drive(["--run", gate_run, *_land()])
     assert code == int(ExitCode.DECISION_REQUIRED), again
@@ -259,11 +243,8 @@ def test_step_three_re_planned_on_its_stopped_run_names_the_rehearsal_and_lands(
     assert shown["rehearsal"].endswith("equal to this plan's"), shown["rehearsal"]
     assert rehearsed["run_id"] in shown["rehearsal"]
     assert _landed_rows(cfg) == []
-
-    code, landed = drive(
-        ["run", "decide", gate_run, tail.LAND_GATE, tail.LAND_OPTION,
-         "--actor", "session", "--continue"]
-    )
+    decide = ["run", "decide", gate_run, tail.LAND_GATE, tail.LAND_OPTION, "--actor", "session"]
+    code, landed = drive([*decide, "--continue"])
     assert code == int(ExitCode.OK), landed
     assert len(_landed_rows(cfg)) == 2
 
@@ -272,9 +253,8 @@ def test_the_night_fields_and_outcomes_it_reads_are_the_night_passs_own(flat):
     """U293: the record ``crate sync night --last`` prints, read by name."""
     from cratekit.cli import sync_night
 
-    record = sync_night._Firing(night="n", started=sync_night._clock(), run_id="r").record(
-        sync_night.NOTHING, "line"
-    )
+    firing = sync_night._Firing(night="n", started=sync_night._clock(), run_id="r")
+    record = firing.record(sync_night.NOTHING, "line")
     named = set(re.findall(r"`data\.summary\.night\.([a-z_]+)`", flat))
     assert {"outcome", "staging", "land_name", "gate_run", "pass_run", "line"} <= named
     assert named <= set(record), sorted(named - set(record))

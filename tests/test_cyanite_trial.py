@@ -56,15 +56,11 @@ class Recorded:
         self.events = events if events is not None else []
         self.requests: list[cyanite.Request] = []
         self.said = said if said is not None else SAID
-        self.processing = processing
-        self.preflight = preflight
+        self.processing, self.preflight = processing, preflight
         self.create_errors = create_errors or {}
-        self.upload_status = upload_status
-        self.never_start = never_start
-        self.graphql_status = graphql_status
-        self.upload_host = upload_host
-        self.interrupt_on_poll = interrupt_on_poll
-        self.echo = echo
+        self.upload_status, self.never_start = upload_status, never_start
+        self.graphql_status, self.upload_host = graphql_status, upload_host
+        self.interrupt_on_poll, self.echo = interrupt_on_poll, echo
         self.bodies: list[str] = []
         self.uploads: dict[str, str] = {}
         self.tracks: dict[str, str] = {}
@@ -101,11 +97,8 @@ class Recorded:
                 "createdLibraryTrack": {"id": track}, "enqueueResult": {}}})
         assert "CratekitTrialTrack" in query
         track = variables["id"]
-        if track == cyanite.PREFLIGHT_TRACK:
-            if self.preflight is not None:
-                return self.preflight
-            return self._data({"libraryTrack": {
-                "__typename": "LibraryTrackNotFoundError", "message": "not found"}})
+        if track == cyanite.PREFLIGHT_TRACK and self.preflight is not None:
+            return self.preflight
         if track not in self.tracks:
             return self._data({"libraryTrack": {
                 "__typename": "LibraryTrackNotFoundError", "message": "not found"}})
@@ -137,6 +130,11 @@ def refused_send(request):
     raise AssertionError(f"the trial sent {request.method} {request.url}")
 
 
+def _unsent(settings, declared, **given):
+    """A run whose every request fails the test, saying nothing."""
+    return cyanite.run(settings, declared, send=refused_send, say=lambda _l: None, **given)
+
+
 # Fixtures: real MP3s with a genre each, filed by hand
 
 
@@ -164,10 +162,9 @@ def _track(probe: Path, target: Path, genre: str | None) -> Path:
 def chosen(tmp_path, probe_mp3):
     """Four filed MP3s and one AIFF, in a folder of their own."""
     root = tmp_path / "chosen"
-    _track(probe_mp3, root / "deep.mp3", "Deep House")
-    _track(probe_mp3, root / "tech.mp3", "Tech House")
-    _track(probe_mp3, root / "jazzy.mp3", "Jazz")
-    _track(probe_mp3, root / "vague.mp3", "Deep House")
+    for name, genre in (("deep", "Deep House"), ("tech", "Tech House"), ("jazzy", "Jazz"),
+                        ("vague", "Deep House")):
+        _track(probe_mp3, root / f"{name}.mp3", genre)
     (root / "lossless.aiff").write_bytes(b"FORM not really")
     (root / "._deep.mp3").write_bytes(b"resource fork")
     return root
@@ -230,8 +227,7 @@ def test_the_count_and_the_estimate_are_said_before_the_first_request(chosen, tm
 @pytest.mark.parametrize("cap", [0, 3])
 def test_a_count_over_the_cap_refuses_before_anything_is_sent(chosen, tmp_path, declared, keyed, cap):
     with pytest.raises(cyanite.TrialRefused, match=f"4 file.*the cap is {cap}"):
-        cyanite.run(_settings(chosen, tmp_path / "t.tsv", send=True, cap=cap, price=0.1),
-                    declared, send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, tmp_path / "t.tsv", send=True, cap=cap, price=0.1), declared)
     assert not (tmp_path / "t.tsv").exists()
 
 
@@ -253,14 +249,12 @@ def test_a_count_at_the_cap_is_sent(chosen, tmp_path, declared, keyed):
 )
 def test_sending_needs_a_cap_and_a_price(chosen, tmp_path, declared, keyed, given, words):
     with pytest.raises(cyanite.TrialRefused, match=words):
-        cyanite.run(_settings(chosen, tmp_path / "t.tsv", **given), declared,
-                    send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, tmp_path / "t.tsv", **given), declared)
 
 
 def test_no_key_refuses_saying_how_to_record_one_and_sends_nothing(chosen, tmp_path, declared):
     with pytest.raises(secrets.CredentialMissing) as caught:
-        cyanite.run(_settings(chosen, tmp_path / "t.tsv", **SEND), declared,
-                    send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, tmp_path / "t.tsv", **SEND), declared)
     assert "crate login cyanite-key --from-file PATH" in str(caught.value)
     assert "nothing was sent" in str(caught.value)
     assert not (tmp_path / "t.tsv").exists()
@@ -643,7 +637,7 @@ def test_an_output_already_there_refuses_without_resume(chosen, tmp_path, declar
     taken = out if which == "table" else cyanite.summary_path(out)
     taken.write_text("someone's\n")
     with pytest.raises(cyanite.TrialRefused, match="never overwritten"):
-        cyanite.run(_settings(chosen, out, **SEND), declared, send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, out, **SEND), declared)
     assert taken.read_text() == "someone's\n"
 
 
@@ -651,11 +645,9 @@ def test_resume_refuses_a_table_this_trial_did_not_write(chosen, tmp_path, decla
     out = tmp_path / "t.tsv"
     out.write_text("a\tb\n1\t2\n")
     with pytest.raises(cyanite.TrialRefused, match="not a table this trial wrote"):
-        cyanite.run(_settings(chosen, out, resume=True, **SEND), declared,
-                    send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, out, resume=True, **SEND), declared)
     with pytest.raises(cyanite.TrialRefused, match="not there"):
-        cyanite.run(_settings(chosen, tmp_path / "none.tsv", resume=True, **SEND), declared,
-                    send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, tmp_path / "none.tsv", resume=True, **SEND), declared)
 
 
 def test_resume_uploads_only_the_files_with_no_answer(chosen, tmp_path, declared, keyed):
@@ -663,7 +655,6 @@ def test_resume_uploads_only_the_files_with_no_answer(chosen, tmp_path, declared
     first = Recorded(create_errors={"tech": (cyanite.LIBRARY_FULL, "full")})
     _run(_settings(chosen, out, **SEND), declared, first)
     assert set(_rows(out)) == {"deep.mp3", "jazzy.mp3"}
-
     again = Recorded()
     events: list = []
     ran = _run(_settings(chosen, out, resume=True, send=True, cap=2, price=0.25), declared,
@@ -681,7 +672,6 @@ def test_resume_asks_again_about_an_unfinished_analysis_without_uploading(chosen
     out = tmp_path / "t.tsv"
     slow = Recorded(processing=1000)
     _run(_settings(chosen, out, **SEND), declared, slow)
-
     later = Recorded(processing=0)
     later.tracks = dict(slow.tracks)
     ran = _run(_settings(chosen, out, resume=True, send=True, cap=0, price=0.25), declared, later)
@@ -746,9 +736,8 @@ def test_a_run_with_nothing_to_send_leaves_an_empty_table_and_asks_nothing(tmp_p
     root.mkdir()
     (root / "only.flac").write_bytes(b"fLaC")
     out = tmp_path / "t.tsv"
-    ran = cyanite.run(_settings(root, out, **SEND), declared, send=refused_send,
-                      key_reader=lambda: pytest.fail("the key was read with nothing to send"),
-                      say=lambda _l: None)
+    ran = _unsent(_settings(root, out, **SEND), declared,
+                  key_reader=lambda: pytest.fail("the key was read with nothing to send"))
     assert ran.uploaded == 0 and not ran.stopped
     assert cyanite.read_table(out) == {}
     assert _summary(out)[-1]["tracks"] == "0"
@@ -796,7 +785,6 @@ def test_an_interrupt_while_waiting_keeps_the_track_and_the_resume_does_not_uplo
     assert rows["jazzy.mp3"]["agreement"] == cyanite.NOT_READ
     assert "its analysis was not read before the run ended" in rows["jazzy.mp3"]["note"]
     assert cyanite.summary_path(out).is_file(), "the summary is written whatever ends the run"
-
     later = Recorded(processing=0)
     later.tracks = dict(first.tracks)
     ran = _run(_settings(chosen, out, resume=True, send=True, cap=2, price=0.25), declared, later)
@@ -833,8 +821,7 @@ def test_a_tab_or_a_line_break_in_an_answer_stays_in_its_cell(chosen, tmp_path, 
 
 def test_an_output_folder_that_is_not_there_refuses_before_any_request(chosen, tmp_path, declared, keyed):
     with pytest.raises(cyanite.TrialRefused, match="is not a folder"):
-        cyanite.run(_settings(chosen, tmp_path / "missing" / "t.tsv", **SEND), declared,
-                    send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, tmp_path / "missing" / "t.tsv", **SEND), declared)
 
 
 def test_an_unreadable_tag_is_shown_as_unreadable_not_as_no_folder(chosen, tmp_path, declared, keyed, monkeypatch):
@@ -868,15 +855,13 @@ def test_resume_refuses_a_table_that_is_not_text(chosen, tmp_path, declared, key
     out = tmp_path / "t.tsv"
     out.write_bytes(b"\xff\xfe\x00binary")
     with pytest.raises(cyanite.TrialRefused, match="could not be read as a table"):
-        cyanite.run(_settings(chosen, out, resume=True, **SEND), declared,
-                    send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, out, resume=True, **SEND), declared)
 
 
 @pytest.mark.parametrize("price", [float("nan"), float("inf")])
 def test_a_price_that_is_not_a_number_refuses(chosen, tmp_path, declared, keyed, price):
     with pytest.raises(cyanite.TrialRefused, match="a number not below zero"):
-        cyanite.run(_settings(chosen, tmp_path / "t.tsv", send=True, cap=10, price=price),
-                    declared, send=refused_send, say=lambda _l: None)
+        _unsent(_settings(chosen, tmp_path / "t.tsv", send=True, cap=10, price=price), declared)
 
 
 def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, template, keyed, capsys):

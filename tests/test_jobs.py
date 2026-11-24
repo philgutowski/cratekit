@@ -1,7 +1,5 @@
-"""U10: the job engine's properties, each named for the failure it prevents.
-
-Only a killed process leaves a claimed item with no driver and a lock the
-kernel released, so the subprocess tests are not slow copies of the others.
+"""U10: the job engine's properties, each named for the failure it prevents. Only a killed
+process leaves a claimed item with no driver, so the subprocess tests are not slow copies.
 """
 
 from __future__ import annotations
@@ -28,6 +26,8 @@ from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 
+DONE, FAILED = jobs.ItemState.DONE, jobs.ItemState.FAILED
+PENDING, SKIPPED = jobs.ItemState.PENDING, jobs.ItemState.SKIPPED
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 WORKER = Path(__file__).resolve().parent / "job_worker.py"
@@ -226,7 +226,7 @@ def test_an_unrecognized_state_on_disk_coerces_to_an_open_state_never_a_terminal
     store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", ("something-else", job.job_id))
     store.conn.execute("UPDATE job_items SET state = ? WHERE job_id = ?", ("nonsense", job.job_id))
     assert jobs.get(store, job.job_id).state is jobs.JobState.QUEUED
-    assert jobs.items(store, job.job_id)[0].state is jobs.ItemState.PENDING
+    assert jobs.items(store, job.job_id)[0].state is PENDING
 
 
 def test_a_queue_written_at_another_schema_refuses_to_resume(tmp_path):
@@ -307,11 +307,8 @@ def test_everything_the_queue_writes_is_owner_only_under_any_umask(tmp_path, cfg
 # Part 2: blocked needs a reason (KTD25)
 def _throttled() -> Cause:
     return Cause(
-        reason="unavailable-transient",
-        message="the provider asked us to slow down",
-        remediation=Remediation(remedy=Remedy.RETRY_LATER),
-        scope=Scope.SOURCE,
-        retryable=True,
+        reason="unavailable-transient", message="the provider asked us to slow down",
+        remediation=Remediation(remedy=Remedy.RETRY_LATER), scope=Scope.SOURCE, retryable=True,
     )
 
 
@@ -319,8 +316,7 @@ def _needs_acknowledgment() -> Cause:
     return Cause(
         reason="backup-acknowledgment-missing",
         message="this session has no recorded backup acknowledgment",
-        remediation=Remediation(remedy=Remedy.ACKNOWLEDGE_BACKUP),
-        scope=Scope.SESSION,
+        remediation=Remediation(remedy=Remedy.ACKNOWLEDGE_BACKUP), scope=Scope.SESSION,
     )
 
 
@@ -406,30 +402,24 @@ def test_a_partial_failure_fails_the_job_and_keeps_the_successes(store, root, cf
     result = jobs.drive(store, job.job_id, _failing(broken=("bad",)), root=root)
     assert (result.processed, result.failed) == (1, 1)
     assert result.job.state is jobs.JobState.FAILED
-    assert _states(store, job.job_id) == {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
+    assert _states(store, job.job_id) == {"good": DONE, "bad": FAILED}
 
 
 def _permanent_lookup() -> CratekitError:
     return refuse(
-        "sync-source-lookups-failed",
-        "the provider has no artist named for this label",
-        steps=("retry this source when the provider is reachable",),
-        origin=("test",),
+        "sync-source-lookups-failed", "the provider has no artist named for this label",
+        steps=("retry this source when the provider is reachable",), origin=("test",),
     )
 
 
 def _transient_outage() -> CratekitError:
     return refuse(
-        "unavailable-transient",
-        "the provider asked us to slow down",
-        remedy=Remedy.RETRY_LATER,
-        retryable=True,
-        origin=("test",),
+        "unavailable-transient", "the provider asked us to slow down",
+        remedy=Remedy.RETRY_LATER, retryable=True, origin=("test",),
     )
 
 
 def _failing(permanent=(), transient=(), broken=()):
-    """A handler raising the named kind of failure for each listed item."""
 
     def handle(_job, item):
         if item.item_id in permanent:
@@ -481,7 +471,7 @@ def test_a_partial_failure_whose_failures_are_permanent_is_not_resumable(store, 
     assert "permanent" in cause.message
     assert cause.inner is not None
     assert cause.inner.reason == "sync-source-lookups-failed"
-    settled = {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
+    settled = {"good": DONE, "bad": FAILED}
     assert _states(store, job.job_id) == settled
     # R-390: ``retry`` holds the verdict and re-arms nothing.
     refusal = _refused(lambda: jobs.retry(store, job.job_id))
@@ -511,7 +501,7 @@ def test_a_failed_job_with_no_recorded_cause_still_re_arms(store, cfg):
     assert recorded.cause is None
     retried = jobs.retry(store, job.job_id)
     assert retried.state is jobs.JobState.QUEUED
-    assert _states(store, job.job_id)["a"] is jobs.ItemState.PENDING
+    assert _states(store, job.job_id)["a"] is PENDING
 
 
 def test_resuming_a_job_of_permanent_failures_through_the_verb_refuses(cfg, default_queue):
@@ -525,8 +515,7 @@ def test_resuming_a_job_of_permanent_failures_through_the_verb_refuses(cfg, defa
     assert envelope["cause"]["inner"]["reason"] == "sync-source-lookups-failed"
     assert envelope["cause"]["remediation"]["remedy"] is None
     assert envelope["cause"]["remediation"]["steps"]
-    settled = {"good": jobs.ItemState.DONE, "bad": jobs.ItemState.FAILED}
-    assert _states(default_queue, job.job_id) == settled
+    assert _states(default_queue, job.job_id) == {"good": DONE, "bad": FAILED}
     assert jobs.get(default_queue, job.job_id).state is jobs.JobState.FAILED
 
 
@@ -621,7 +610,7 @@ def test_an_interrupt_between_the_work_and_the_commit_leaves_no_artifact(
     assert result.job.state is jobs.JobState.CANCELLED
     assert result.job.stage == "downloading"
     # Released, not failed: redone whole on resume.
-    assert set(_states(store, job.job_id).values()) == {jobs.ItemState.PENDING}
+    assert set(_states(store, job.job_id).values()) == {PENDING}
 
 
 def test_the_signal_handler_is_restored_afterwards(queue):
@@ -686,7 +675,7 @@ def test_a_running_row_with_no_live_driver_is_reconciled_back_to_queued(store, r
     reconciled = jobs.reconcile(store, job.job_id, root=root)
     assert reconciled.state is jobs.JobState.QUEUED
     assert reconciled.stage == "downloading"
-    assert jobs.items(store, job.job_id)[0].state is jobs.ItemState.PENDING
+    assert jobs.items(store, job.job_id)[0].state is PENDING
 
 
 def test_reconcile_leaves_a_genuinely_running_job_alone(store, root, cfg):
@@ -715,7 +704,7 @@ def test_two_processes_claiming_the_same_job_never_claim_one_item_twice(store, r
         assert worker.returncode == 0, err or out
     claimed = _attempts(left) + _attempts(right)
     assert sorted(claimed) == sorted(item_ids), "an item was claimed twice or not at all"
-    assert set(_states(store, job.job_id).values()) == {jobs.ItemState.DONE}
+    assert set(_states(store, job.job_id).values()) == {DONE}
     assert jobs.progress(store, job.job_id)["settled"] == len(item_ids)
     # Both processes did real work, or the test proved nothing about concurrency.
     assert _attempts(left) and _attempts(right)
@@ -792,11 +781,8 @@ def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importi
         registry, "ENTRIES", tuple(fake if e.name == fake.name else e for e in registry.ENTRIES)
     )
     monkeypatch.setattr(registry, "_BY_NAME", {**dict(registry._BY_NAME), fake.name: fake})
-    monkeypatch.setattr(
-        registry,
-        "_BY_HANDLER",
-        {**dict(getattr(registry, "_BY_HANDLER", {})), fake.handler_key: fake},
-    )
+    by_handler = {**dict(getattr(registry, "_BY_HANDLER", {})), fake.handler_key: fake}
+    monkeypatch.setattr(registry, "_BY_HANDLER", by_handler)
     job = _job(store, cfg, handler_key=fake.handler_key)
     cause = _refused(lambda: jobs_cli.argv_for(job))
     assert cause.reason == "internal-error"
@@ -884,16 +870,12 @@ def test_every_job_verb_refuses_an_unknown_identifier_with_the_same_code(cfg, de
 # Parking: the run stops, the item goes back, and nothing else is claimed
 def _blocked() -> Cause:
     return Cause(
-        reason="provider-blocked",
-        message="the provider refused this client",
-        remediation=Remediation(steps=("check the account",)),
-        scope=Scope.RUN,
-        retryable=False,
+        reason="provider-blocked", message="the provider refused this client",
+        remediation=Remediation(steps=("check the account",)), scope=Scope.RUN, retryable=False,
     )
 
 
 def _parking(park: set[str], seen: list[str] | None = None):
-    """A handler parking on every item in ``park``, recording each item it is given."""
 
     def handle(_job, item):
         if seen is not None:
@@ -923,7 +905,7 @@ def test_the_parked_item_is_released_rather_than_failed(store, root, cfg):
     """Failing it would strand it, since a blocked job is open and not retried."""
     job = _job(store, cfg, "a", "b")
     jobs.drive(store, job.job_id, _parking({"a"}), root=root)
-    assert _states(store, job.job_id) == {"a": jobs.ItemState.PENDING, "b": jobs.ItemState.PENDING}
+    assert _states(store, job.job_id) == {"a": PENDING, "b": PENDING}
     assert all(item.claimed_by is None for item in jobs.items(store, job.job_id))
     assert all(item.cause is None for item in jobs.items(store, job.job_id))
 
@@ -953,11 +935,7 @@ def test_parked_is_not_the_item_boundary(store, root, cfg):
         return None
 
     result = jobs.drive(store, job.job_id, handle, root=root)
-    assert _states(store, job.job_id) == {
-        "a": jobs.ItemState.FAILED,
-        "b": jobs.ItemState.DONE,
-        "c": jobs.ItemState.PENDING,
-    }
+    assert _states(store, job.job_id) == {"a": FAILED, "b": DONE, "c": PENDING}
     assert result.job.state is jobs.JobState.BLOCKED
     assert result.failed == 1
 
@@ -965,10 +943,8 @@ def test_parked_is_not_the_item_boundary(store, root, cfg):
 # Declining (U169): the item is settled as skipped, and the job can succeed
 def _lossy() -> Cause:
     return Cause(
-        reason="lossy-refused",
-        message="the provider offers this track lossy only",
-        remediation=Remediation(remedy=Remedy.RELAX_LOSSLESS_POLICY),
-        scope=Scope.ITEM,
+        reason="lossy-refused", message="the provider offers this track lossy only",
+        remediation=Remediation(remedy=Remedy.RELAX_LOSSLESS_POLICY), scope=Scope.ITEM,
         retryable=False,
     )
 
@@ -992,10 +968,10 @@ def test_a_declined_item_is_skipped_with_its_cause_and_the_job_succeeds(store, r
     assert result.job.cause is None
     assert (result.processed, result.failed, result.declined) == (3, 0, 1)
     held = {item.item_id: item for item in jobs.items(store, job.job_id)}
-    assert held["c"].state is jobs.ItemState.SKIPPED
+    assert held["c"].state is SKIPPED
     assert held["c"].cause is not None and held["c"].cause.reason == "lossy-refused"
     assert held["c"].claimed_by is None
-    assert all(held[key].state is jobs.ItemState.DONE for key in "abd")
+    assert all(held[key].state is DONE for key in "abd")
     assert jobs.progress(store, job.job_id)["settled"] == 4
 
 
@@ -1016,11 +992,7 @@ def test_a_real_failure_beside_a_declined_item_still_fails_the_job_and_names_bot
     assert cause.retryable is True
     assert cause.detail["declined"] == 1
     assert "1 more were declined and skipped" in cause.message
-    assert _states(store, job.job_id) == {
-        "a": jobs.ItemState.DONE,
-        "b": jobs.ItemState.SKIPPED,
-        "c": jobs.ItemState.FAILED,
-    }
+    assert _states(store, job.job_id) == {"a": DONE, "b": SKIPPED, "c": FAILED}
 
 
 def test_a_retry_re_arms_the_failure_and_leaves_the_declined_item_settled(store, root, cfg):
@@ -1028,11 +1000,7 @@ def test_a_retry_re_arms_the_failure_and_leaves_the_declined_item_settled(store,
     job = _job(store, cfg, "a", "b", "c")
     jobs.drive(store, job.job_id, _declining("a", failing=("b",)), root=root)
     jobs.retry(store, job.job_id)
-    assert _states(store, job.job_id) == {
-        "a": jobs.ItemState.SKIPPED,
-        "b": jobs.ItemState.PENDING,
-        "c": jobs.ItemState.DONE,
-    }
+    assert _states(store, job.job_id) == {"a": SKIPPED, "b": PENDING, "c": DONE}
 
 
 def test_a_job_with_no_decline_reports_no_declined_count(store, root, cfg):
@@ -1060,7 +1028,7 @@ def test_a_handler_that_declines_a_retryable_cause_fails_the_item_rather_than_sk
     with pytest.raises(CratekitError):
         jobs.drive(store, job.job_id, handle, root=root)
     (item,) = jobs.items(store, job.job_id)
-    assert item.state is jobs.ItemState.FAILED
+    assert item.state is FAILED
     assert item.cause is not None and item.cause.reason == "internal-error"
 
 
@@ -1202,8 +1170,7 @@ UUID = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
     ids=["another-open-job-holds-it", "url-typed-by-hand-holds-the-swept-id", "unparseable-url"],
 )
 def test_a_stale_cancel_says_what_it_frees(cfg, default_queue, queued, frees):
-    """A typed URL holds the playlist id it names; ``https://[::1``, which the URL
-    parser itself raises on, is kept as typed rather than a crash."""
+    """A typed URL holds the id it names; ``https://[::1``, which the parser raises on, is kept."""
     for number, spec in enumerate(queued):
         _intake_job(default_queue, cfg, tracks=(str(number),), **spec)
     envelope = _ok(["job", "cancel", "--stale-days", "30", "--dry-run"])
@@ -1308,8 +1275,7 @@ def test_a_dry_run_lists_a_queued_job_a_live_driver_holds_as_left(cfg, default_q
 
 
 def test_the_job_verbs_read_a_playlist_as_the_sweep_records_it(cfg, default_queue):
-    """``playlist_identity`` is ``recorded_as`` written again; the two must agree.
-    The hearts are the one intended difference."""
+    """``playlist_identity`` must agree with ``recorded_as``; the hearts are the one difference."""
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
     from cratekit.sync import playlists  # noqa: PLC0415
 
@@ -1335,4 +1301,4 @@ def test_releasing_one_drivers_claims_leaves_another_drivers_claim(store, cfg):
     jobs.claim(store, job.job_id, "second")
     assert jobs.release_claims(store, job.job_id, driver="first") == 1
     held = {item.item_id: (item.state, item.claimed_by) for item in jobs.items(store, job.job_id)}
-    assert held == {"a": (jobs.ItemState.PENDING, None), "b": (jobs.ItemState.CLAIMED, "second")}
+    assert held == {"a": (PENDING, None), "b": (jobs.ItemState.CLAIMED, "second")}

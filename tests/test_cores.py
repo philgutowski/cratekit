@@ -188,9 +188,7 @@ def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
 
 def _called(node: ast.AST) -> str | None:
     """The last name of what a call calls: ``pool.plan_pool(...)`` is ``plan_pool``."""
-    if not isinstance(node, ast.Call):
-        return None
-    func = node.func
+    func = node.func if isinstance(node, ast.Call) else None
     if isinstance(func, ast.Attribute):
         return func.attr
     if isinstance(func, ast.Name):
@@ -260,10 +258,7 @@ def test_every_shipped_use_of_the_core_ceiling_is_the_planners_ceiling():
         for path in shipped_modules()
         if path != CORES_PATH and (uses := ceilings_used_as_anything_else(path.read_text()))
     }
-    assert not offenders, (
-        f"the core ceiling is used as something other than plan_pool's ceiling: "
-        f"{offenders}"
-    )
+    assert not offenders, f"the core ceiling is used as other than plan_pool's: {offenders}"
     light = (PACKAGE_ROOT / "analysis" / "light.py").read_text()
     assert "worker_ceiling" in light, "the light pass no longer takes its ceiling from the cores"
 
@@ -279,24 +274,15 @@ def test_a_ceiling_from_many_cores_never_widens_what_memory_affords():
     ceiling = cores.worker_ceiling(reserved=2, read=lambda: 64)
     assert ceiling == 62
     afforded = pool.plan_pool(
-        worker_bytes=GIB,
-        items=500,
-        ceiling=ceiling,
-        headroom_percent=50,
-        read_available=lambda: 8 * GIB,
-        read_pressure=_calm,
+        worker_bytes=GIB, items=500, ceiling=ceiling, headroom_percent=50,
+        read_available=lambda: 8 * GIB, read_pressure=_calm,
     )
     # (8 less the 2 reserved) at half is three workers, not sixty two.
     assert afforded.workers == 3 and afforded.bound is pool.Bound.AVAILABLE_MEMORY
     refused = pool.plan_pool(
-        worker_bytes=GIB,
-        items=500,
-        ceiling=ceiling,
-        read_available=lambda: 512 * GIB,
+        worker_bytes=GIB, items=500, ceiling=ceiling, read_available=lambda: 512 * GIB,
         read_pressure=lambda: pool.Pressure(swap_used_bytes=2 * GIB, used_percent=10.0),
     )
     assert refused.workers == 1 and refused.bound is pool.Bound.MEMORY_PRESSURE
-    unread = pool.plan_pool(
-        worker_bytes=GIB, items=500, ceiling=ceiling, read_available=lambda: -1
-    )
+    unread = pool.plan_pool(worker_bytes=GIB, items=500, ceiling=ceiling, read_available=lambda: -1)
     assert unread.workers == 1 and unread.bound is pool.Bound.MEMORY_UNREADABLE

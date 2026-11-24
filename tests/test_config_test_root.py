@@ -1,21 +1,15 @@
 """R-926: under pytest, a state writer refuses a path outside the test root.
 
-On 2026-10-08 a probe run from outside ``tests/`` wrote a pytest library into
-the real ``config.toml``: the redirecting conftest never loaded. The guard reads
-no environment variable; it asks whether pytest is loaded and whether the
-resolved target sits under the root the isolation registered.
+On 2026-10-08 a probe outside ``tests/`` wrote a pytest library into the real ``config.toml``,
+since the redirecting conftest never loaded. The guard reads no environment variable: it asks
+whether pytest is loaded and the target resolves under the registered root. Clearing
+``config._TEST_WRITE_ROOT`` with the redirect left in place simulates removing the isolation, so
+a refusal comes only from the guard. The configuration is held to the test root alone;
+``atomic_write_bytes`` and ``exclusive_lock`` also accept the system temporary directory.
 
-Removing the isolation is simulated by clearing ``config._TEST_WRITE_ROOT`` with
-the redirected environment left in place, so a refusal can only come from the
-guard. The configuration is held to the test root alone; ``atomic_write_bytes``
-and ``exclusive_lock`` also accept the system temporary directory.
-
-Every write meant to be refused aims at ``outside``, a folder the fixture makes
-under the system temporary directory and removes whatever the test's outcome
-(R-1917). It was once a fixed name at the filesystem root, so a mutant that broke
-the guard left it there, and eight of these tests failed on that machine in every
-later run.
-"""
+A refused write aims at ``outside``, made under the system temporary directory and removed
+whatever the outcome (R-1917): a fixed name at the filesystem root, left by a mutant, once failed
+eight of these tests on that machine in every later run."""
 
 from __future__ import annotations
 
@@ -37,12 +31,8 @@ from tests.test_config_update import library as library  # noqa: PLC0414
 def outside(tmp_path_factory, monkeypatch):
     """A folder outside the test root and every allowance the guard knows, removed after.
 
-    The guard also allows the system temporary directory to the state writers, so
-    for this test that allowance is narrowed to a sibling folder in the same scratch,
-    by ``tempfile.tempdir``, which ``tempfile.gettempdir`` returns. A refusal still
-    comes from the guard alone, and whatever a broken guard lets land is removed with
-    the scratch.
-    """
+    The state writers' system temporary allowance is narrowed, by ``tempfile.tempdir``, to a
+    sibling in the same scratch, so whatever a broken guard lets land goes with the scratch."""
     scratch = Path(tempfile.mkdtemp(prefix="cratekit-r1917-"))
     narrowed = scratch / "system-temporary"
     narrowed.mkdir()
@@ -56,27 +46,28 @@ def outside(tmp_path_factory, monkeypatch):
         shutil.rmtree(scratch)
 
 
+def _save(library, *target):
+    """Save the configuration ``document_for(library)`` describes, to ``target`` if given."""
+    return config.save(config.from_dict(document_for(library)), *target)
+
+
 @pytest.fixture
 def unisolated(monkeypatch):
     """The state a probe outside ``tests/`` runs in: pytest loaded, no root."""
     monkeypatch.setattr(config, "_TEST_WRITE_ROOT", None)
 
 
-def test_with_the_isolation_removed_a_save_is_refused_and_names_the_path(
-    library, unisolated
-):
+def test_with_the_isolation_removed_a_save_is_refused_and_names_the_path(library, unisolated):
     target = config.config_path()
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
-        config.save(config.from_dict(document_for(library)))
+        _save(library)
     assert str(target) in str(refused.value)
     assert "no test root is registered" in str(refused.value)
     # Refused before the directory, the lock file or the document existed.
     assert not target.parent.exists()
 
 
-def test_with_the_isolation_removed_an_update_is_refused_and_writes_nothing(
-    library, unisolated
-):
+def test_with_the_isolation_removed_an_update_is_refused_and_writes_nothing(library, unisolated):
     target = config.config_path()
     revised = []
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
@@ -103,27 +94,24 @@ def test_with_the_isolation_removed_a_migration_write_back_is_refused(
     assert not path.with_name(path.name + ".v1.bak").exists()
 
 
-def test_with_the_isolation_a_save_lands_in_the_temporary_root(
-    library, tmp_path_factory
-):
-    target = config.save(config.from_dict(document_for(library)))
+def test_with_the_isolation_a_save_lands_in_the_temporary_root(library, tmp_path_factory):
+    target = _save(library)
     assert target == config.config_path()
     assert target.is_file()
-    root = tmp_path_factory.getbasetemp().resolve()
-    assert target.resolve().is_relative_to(root)
+    assert target.resolve().is_relative_to(tmp_path_factory.getbasetemp().resolve())
     assert config._TEST_WRITE_ROOT == tmp_path_factory.getbasetemp()
 
 
 def test_a_write_to_a_tmp_path_lands_as_it_always_has(library, tmp_path):
     target = tmp_path / "elsewhere" / "config.toml"
-    assert config.save(config.from_dict(document_for(library)), target) == target
+    assert _save(library, target) == target
     assert target.is_file()
 
 
 def test_a_path_outside_the_root_is_refused_with_the_isolation_in_place(library, outside):
     target = outside / "config.toml"
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
-        config.save(config.from_dict(document_for(library)), target)
+        _save(library, target)
     assert str(target) in str(refused.value)
     assert "outside the test root" in str(refused.value)
     assert not outside.exists()
@@ -133,7 +121,7 @@ def test_a_link_inside_the_root_aimed_outside_it_is_refused(library, tmp_path, o
     link = tmp_path / "looks-local"
     link.symlink_to(outside, target_is_directory=True)
     with pytest.raises(config.WriteOutsideTestRoot):
-        config.save(config.from_dict(document_for(library)), link / "config.toml")
+        _save(library, link / "config.toml")
     assert not outside.exists()
 
 
@@ -141,13 +129,12 @@ def test_a_path_resolution_that_leaves_the_root_is_refused(library, monkeypatch,
     """What a mutant of ``config_path`` or a missed redirect looks like to a save."""
     monkeypatch.setattr(config, "config_path", lambda: outside / "config.toml")
     with pytest.raises(config.WriteOutsideTestRoot):
-        config.save(config.from_dict(document_for(library)))
+        _save(library)
     assert not outside.exists()
 
 
-#: The state writers besides the configuration. U254's synced append never
-#: creates a file, so a refusal from ``os.open`` would be a FileNotFoundError
-#: and say nothing about the guard.
+#: The state writers besides the configuration. U254's synced append never creates a file,
+#: so a refusal from ``os.open`` would be a FileNotFoundError and say nothing of the guard.
 STATE_WRITERS = pytest.mark.parametrize(
     "write",
     [lambda target: config.atomic_write_bytes(b"{}", target),
@@ -167,9 +154,7 @@ def test_a_state_write_outside_every_temporary_folder_is_refused(unisolated, wri
 
 
 @STATE_WRITERS
-def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place(
-    write, outside
-):
+def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place(write, outside):
     with pytest.raises(config.WriteOutsideTestRoot) as refused:
         write(outside / "ledger.json")
     assert "outside the test root" in str(refused.value)
@@ -212,7 +197,7 @@ def test_the_configuration_is_not_allowed_the_system_temporary_folder(library):
     scratch = Path(tempfile.mkdtemp(prefix="cratekit-r926-"))
     try:
         with pytest.raises(config.WriteOutsideTestRoot):
-            config.save(config.from_dict(document_for(library)), scratch / "config.toml")
+            _save(library, scratch / "config.toml")
         assert list(scratch.iterdir()) == []
     finally:
         shutil.rmtree(scratch)
@@ -223,19 +208,15 @@ def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path, out
     child saves with no root registered, so a check that ran anyway fails it."""
     target = tmp_path / "shipped" / "config.toml"
     probe = (
-        "import sys\n"
-        "from pathlib import Path\n"
-        "from cratekit.core import config\n"
-        "assert 'pytest' not in sys.modules, sorted(m for m in sys.modules if 'pytest' in m)\n"
-        "assert config._TEST_WRITE_ROOT is None\n"
+        "import sys\nfrom pathlib import Path\nfrom cratekit.core import config\nassert 'pytest' "
+        "not in sys.modules, sorted(m for m in sys.modules if 'pytest' in m)\nassert "
+        "config._TEST_WRITE_ROOT is None\n"
         f"config._refuse_write_outside_test_root(Path({str(outside / 'config.toml')!r}))\n"
         f"document = {document_for(library)!r}\n"
         f"config.save(config.from_dict(document), Path({str(target)!r}))\n"
         "print('unchecked')\n"
     )
-    done = subprocess.run(
-        [sys.executable, "-I", "-c", probe], capture_output=True, text=True, check=False
-    )
+    done = subprocess.run([sys.executable, "-I", "-c", probe], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "unchecked"
     assert target.is_file()

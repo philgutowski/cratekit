@@ -1,13 +1,12 @@
-"""U113 on the native medium: each account playlist is its own INBOX playlist row.
+"""U113 on the native medium: each account playlist is its own INBOX playlist row, D1 applying.
 
-The bridge suite's scenarios on the disposable database, and the rotation, which
-ages an account playlist by its landing record, not its name. D1 applies.
-"""
+The bridge suite's scenarios on the disposable database, and the rotation, which ages an
+account playlist by its landing record, not its name."""
 
 from __future__ import annotations
 
 import shutil
-import sqlite3
+from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -26,7 +25,15 @@ from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_intake_land_native import (
-    DECLARED, INTAKE, TODAY, _members, _music, _query, _seed_binding_rows, _two_acts
+    DECLARED,
+    INTAKE,
+    TODAY,
+    _execute,
+    _members,
+    _music,
+    _query,
+    _seed_binding_rows,
+    _two_acts,
 )
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
 
@@ -53,9 +60,8 @@ _BUILT: dict[str, tuple[bytes, str | None]] = {}
 
 
 def _templated(key: str, cfg: config.Config, build) -> str | None:
-    """Build ``cfg``'s database the first time and copy those bytes in after, unless
-    the build left a sidecar, since the file alone would not be the whole database.
-    """
+    """Build ``cfg``'s database once and copy its bytes in after, unless the build left a
+    sidecar, since the file alone would not be the whole database."""
     db = Path(cfg.library.db_path)
     if key in _BUILT:
         data, answer = _BUILT[key]
@@ -69,13 +75,8 @@ def _templated(key: str, cfg: config.Config, build) -> str | None:
 
 def _machine(library: Path, monkeypatch, **data) -> config.Config:
     """A set-up machine: a disposable database, the binding rows, the identity seams."""
-    resolved = config.from_dict(
-        valid_data(
-            library,
-            rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
-            **data,
-        )
-    )
+    pinned = {"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"}
+    resolved = config.from_dict(valid_data(library, rekordbox=pinned, **data))
     config.save(resolved)
     config.reset_cache()
 
@@ -92,18 +93,10 @@ def _machine(library: Path, monkeypatch, **data) -> config.Config:
 
 def _cut_over(cfg: config.Config) -> tuple[config.Config, str]:
     """The intake tree recorded native, anchored to a root folder: ``_cut_over_intake``'s."""
-    root_id = str(
-        _templated(
-            f"native {cfg.profile.name}",
-            cfg,
-            lambda: cutover_fixtures.add_folder(cfg, DECLARED.intake.display),
-        )
-    )
+    made = lambda: cutover_fixtures.add_folder(cfg, DECLARED.intake.display)
+    root_id = str(_templated(f"native {cfg.profile.name}", cfg, made))
     record = tree_registry.TreeRecord(
-        tree_id=INTAKE,
-        mode=tree_registry.Mode.DATABASE,
-        cutover_on=TODAY,
-        root_id=root_id,
+        tree_id=INTAKE, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY, root_id=root_id,
         source=tree_registry.DerivationSource.TAXONOMY,
     )
     tree_registry.write(cfg, tree_registry.Registry().with_record(record))
@@ -135,32 +128,19 @@ def _stage(cfg: config.Config, silence: Path, title: str) -> Path:
 
 
 def swept(
-    cfg: config.Config,
-    listed: dict[str, tuple[str | None, tuple[str, ...]]],
-    *,
-    run_id: str = RUN,
-    source_id: str = playlists.SOURCE_ID,
+    cfg: config.Config, listed: dict[str, tuple[str | None, tuple[str, ...]]], *,
+    run_id: str = RUN, source_id: str = playlists.SOURCE_ID,
 ) -> None:
     """One job per playlist, ``id -> (account name, titles)``, queued as a sweep does and run."""
+    def track(title: str) -> dict:
+        return {"artist": "Probe", "title": title, "origin": match.TIDAL, "ref": f"tid-{title}"}
+
     with jobs.open_store() as store:
         queued = [
             intake_cli.queue_playlist(
-                store,
-                cfg,
-                handler_key="intake.playlist",
-                reference=playlist_id,
-                tracks={
-                    f"tid-{title}": {
-                        "artist": "Probe",
-                        "title": title,
-                        "origin": match.TIDAL,
-                        "ref": f"tid-{title}",
-                    }
-                    for title in titles
-                },
-                run_id=run_id,
-                source_id=source_id,
-                name=name,
+                store, cfg, handler_key="intake.playlist", reference=playlist_id,
+                tracks={f"tid-{title}": track(title) for title in titles}, run_id=run_id,
+                source_id=source_id, name=name,
             )
             for playlist_id, (name, titles) in listed.items()
         ]
@@ -175,21 +155,12 @@ def _land(pass_name: str = PASS) -> list[str]:
 
 
 def _inbox(cfg: config.Config, root_id: str) -> dict[str, list[str]]:
-    """Every live playlist directly under the intake root and its titles, but
-    INBOX / Analyze (U166)."""
-    rows = _query(
-        cfg,
-        "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0 "
-        "AND Name != ? ORDER BY Seq",
-        root_id,
-        native.ANALYZE,
-    )
-    held = _query(cfg, "SELECT ID, Title FROM djmdContent")
-    titles = {str(content_id): str(title) for content_id, title in held}
-    return {
-        str(name): [titles[member] for member in _members(cfg, str(playlist_id))]
-        for playlist_id, name in rows
-    }
+    """Every live playlist under the intake root and its titles, but INBOX / Analyze (U166)."""
+    rows = _query(cfg, "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND "
+                  "rb_local_deleted = 0 AND Name != ? ORDER BY Seq", root_id, native.ANALYZE)
+    titles = {str(i): str(title) for i, title in _query(cfg, "SELECT ID, Title FROM djmdContent")}
+    return {str(name): [titles[m] for m in _members(cfg, str(playlist_id))]
+            for playlist_id, name in rows}
 
 
 def _landed(cfg: config.Config) -> dict:
@@ -211,28 +182,31 @@ def _left(acted: dict) -> list[dict]:
     return [w for w in acted["warnings"] if w["code"] == account_playlists.LEFT_OUT]
 
 
-def _made(cfg: config.Config, root_id: str, name: str) -> str:
-    """A playlist of ``name`` made under INBOX before the landing, as a person makes one."""
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+@contextmanager
+def _opened(cfg: config.Config, **kwargs):
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg, **kwargs)
     try:
-        made = handle.create_playlist(name, parent=handle.get_playlist(ID=root_id))
-        handle.session.commit()
-        return str(made.ID)
+        yield handle
     finally:
         rb_writer.close_db(handle)
 
 
+def _made(cfg: config.Config, root_id: str, name: str) -> str:
+    """A playlist of ``name`` made under INBOX before the landing, as a person makes one."""
+    with _opened(cfg) as handle:
+        made = handle.create_playlist(name, parent=handle.get_playlist(ID=root_id))
+        handle.session.commit()
+        return str(made.ID)
+
+
 def _plans(cfg: config.Config, *days: date) -> list[rotate.RotationPlan]:
     """What the rotation would do on each of ``days``, planned on one handle."""
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
+    with _opened(cfg) as handle:
         registry = tree_registry.read(cfg)
         return [
             rotate.plan_rotation(cfg, handle, declared=DECLARED, registry=registry, today=day)
             for day in days
         ]
-    finally:
-        rb_writer.close_db(handle)
 
 
 def _actions(plan: rotate.RotationPlan) -> dict[str, str]:
@@ -275,8 +249,7 @@ def test_a_second_landing_of_one_playlist_the_next_week_takes_its_own_date(
     assert code == int(ExitCode.OK), acted
     # Its own landing's date tells the two passes apart, so no `` 2`` is needed (U175).
     assert _inbox(cfg, root_id) == {
-        "Sunset Warmup 2026-10-03": ["One"],
-        "Sunset Warmup 2026-10-10": ["Two"],
+        "Sunset Warmup 2026-10-03": ["One"], "Sunset Warmup 2026-10-10": ["Two"]
     }
 
 
@@ -370,13 +343,10 @@ def test_a_pass_batch_and_its_dated_playlists_move_together_and_expire_together(
     (moving,) = _plans(cfg, landed + timedelta(days=stale + 1))
     assert set(_actions(moving).values()) == {rotate.MOVE}
     # Moved into Old together, they are removed together.
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
+    with _opened(cfg, require_closed=True) as handle:
         rotate.apply_rotation(
             cfg, handle, moving, declared=DECLARED, analysis_roots=[Path(cfg.library.root)]
         )
-    finally:
-        rb_writer.close_db(handle)
     assert not pass_playlists & set(_inbox(cfg, root_id))
     gone = _actions(_plans(cfg, landed + timedelta(days=expired + 1))[0])
     assert {gone[name] for name in pass_playlists} == {rotate.REMOVE}
@@ -387,9 +357,7 @@ def test_the_gate_screen_names_each_playlist_as_the_bridge_does(native_library, 
     _made(cfg, root_id, "Sunset Warmup 2026-10-03")
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One", "Loose")
-    code, refused = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    shown = refused["cause"]["detail"]["shown"]
+    shown = land_native._shown(_land())
     assert shown["account playlists"] == [
         "Sunset Warmup 2026-10-03 2 (1 file(s)), the account's Sunset Warmup"
     ]
@@ -413,12 +381,8 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(nativ
     cfg, root_id = native_library
     gone_id = _made(cfg, root_id, "Sunset Warmup 2026-10-03")
     # Soft removed, the way the rotation removes an expired batch.
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
-        conn.execute(
-            f"UPDATE djmdPlaylist SET {rb_writer.SOFT_DELETE_COLUMN} = 1 WHERE ID = ?", (gone_id,)
-        )
-    conn.close()
+    _execute(cfg, f"UPDATE djmdPlaylist SET {rb_writer.SOFT_DELETE_COLUMN} = 1 WHERE ID = ?",
+             gone_id)
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
     _landed(cfg)
@@ -443,13 +407,10 @@ def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
     """And an owned track in two account playlists is in both."""
     cfg, root_id = native_library
     _owned(cfg, silence, ("Held1", "Held2", "Held3"))
-    swept(
-        cfg,
-        {
-            "pl-a": ("Sunset Warmup", ("Held1", "New1", "Held2", "New2", "Held3")),
-            "pl-b": ("Deep Cuts", ("New1", "Held1")),
-        },
-    )
+    swept(cfg, {
+        "pl-a": ("Sunset Warmup", ("Held1", "New1", "Held2", "New2", "Held3")),
+        "pl-b": ("Deep Cuts", ("New1", "Held1")),
+    })
     _staged(cfg, silence, "New1", "New2")
     acted = _landed(cfg)
     inbox = _inbox(cfg, root_id)
@@ -539,21 +500,11 @@ def test_a_playlist_whose_only_file_is_unsupported_still_names_it_as_left():
     target = Path("/library/music/b/Odd.xyz")
     member = account_playlists.Member(position=3, file=Path("Odd.xyz"), artist="Probe", title="Odd")
     row = native.RowPlan(
-        source=Path("/staging/Odd.xyz"),
-        target=target,
-        action=native.UNSUPPORTED,
-        title="Odd",
-        folder_path=str(target),
-        file_name=target.name,
-        file_size=1,
-        file_type=0,
-        content_link=None,
+        source=Path("/staging/Odd.xyz"), target=target, action=native.UNSUPPORTED, title="Odd",
+        folder_path=str(target), file_name=target.name, file_size=1, file_type=0, content_link=None,
     )
-    one = native.PlaylistPlan(
-        name="Deep Cuts",
-        account="pl-b",
-        members=(native.PlaylistMember(target=target, member=member),),
-    )
+    members = (native.PlaylistMember(target=target, member=member),)
+    one = native.PlaylistPlan(name="Deep Cuts", account="pl-b", members=members)
     kept, dropped = native._supported_only([one], [row])
     assert kept == ()
     assert dropped == (("Deep Cuts", member.left(account_playlists.NOT_LANDED)),)

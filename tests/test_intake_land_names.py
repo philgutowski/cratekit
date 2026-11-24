@@ -1,8 +1,7 @@
 """U110: an INBOX batch is named by its date and source, never a run identifier.
 
-A second landing that day takes `` 2``, ``--name`` wins, and the intake file keeps
-the identifier the marks read. The date is pinned so one run reads one date.
-"""
+A second landing that day takes `` 2``, ``--name`` wins, and the intake file keeps the
+identifier the marks read. The date is pinned so one run reads one date."""
 
 from __future__ import annotations
 
@@ -36,29 +35,18 @@ def pinned_day(monkeypatch):
 
 
 def _queued(
-    cfg: config.Config,
-    reference: str,
-    *,
-    source_id: str,
-    run_id: str = RUN,
+    cfg: config.Config, reference: str, *, source_id: str, run_id: str = RUN,
     ended: jobs.JobState = jobs.JobState.SUCCEEDED,
 ) -> None:
     """One intake job of a pass, queued as ``crate sync all`` does and ended as its worker does."""
     with jobs.open_store() as store:
         job = intake_cli.queue_playlist(
-            store,
-            cfg,
-            handler_key="intake.playlist",
-            reference=reference,
-            tracks={"t1": {"artist": "A", "title": "T"}},
-            run_id=run_id,
-            source_id=source_id,
+            store, cfg, handler_key="intake.playlist", reference=reference,
+            tracks={"t1": {"artist": "A", "title": "T"}}, run_id=run_id, source_id=source_id,
         )
         stopped = Cause(
-            reason="internal-error",
-            message="stopped for the test",
-            remediation=Remediation(steps=("nothing",)),
-            origin=("test",),
+            reason="internal-error", message="stopped for the test",
+            remediation=Remediation(steps=("nothing",)), origin=("test",),
         )
         jobs.transition(
             store, job.job_id, ended, cause=None if ended is jobs.JobState.SUCCEEDED else stopped
@@ -76,18 +64,14 @@ def _playlist_names(intake: Path) -> list[str]:
     body = intake.read_text(encoding="utf-8")
     inbox = body[body.index('<NODE Name="INBOX"') :]
     inbox = inbox[: inbox.index("\n      </NODE>")] if "\n      </NODE>" in inbox else inbox
-    return [
-        line.split('Name="', 1)[1].split('"', 1)[0]
-        for line in inbox.splitlines()
-        if 'Type="1"' in line
-    ]
+    lines = [line for line in inbox.splitlines() if 'Type="1"' in line]
+    return [line.split('Name="', 1)[1].split('"', 1)[0] for line in lines]
 
 
 def test_a_tidal_playlist_sync_landing_is_named_and_its_intake_file_keeps_the_pass(
     cfg, silence, export
 ):
-    """``sync mark`` matches the pass's own jobs to the intake file's name, and
-    ``export archive`` and ``label mark`` record under it."""
+    """``sync mark`` matches the pass's jobs to its intake file's name, as the marks record."""
     _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
     _queued(cfg, "pl-other", source_id=playlists.SOURCE_ID, run_id="2026-10-02T090000Z-ffff")
     _stage(cfg, silence, "One.flac")
@@ -128,8 +112,7 @@ def test_a_label_go_landing_for_one_label_is_named_for_the_date_and_that_label(
 def test_a_second_landing_the_same_day_gets_a_distinct_name_and_one_pass_is_never_merged(
     cfg, silence, export
 ):
-    """The intake file is the pass's, so a second landing of one pass is refused
-    before its gate; another pass that day takes `` 2``."""
+    """A second landing of one pass is refused before its gate; another pass takes `` 2``."""
     later = "2026-10-03T180000Z-ef56"
     _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
     _queued(cfg, "pl-b", source_id=playlists.SOURCE_ID, run_id=later)
@@ -185,8 +168,7 @@ def test_a_default_name_taken_after_the_gate_is_refused_under_the_lock(
 
 
 def test_a_landing_whose_intake_file_another_landing_is_writing_is_refused(cfg, silence, export):
-    """The landing takes the intake lock itself, so one pass under another name
-    waits: the intake file is keyed on the pass, so it needs its own lock."""
+    """The intake file is keyed on the pass, so its own lock holds one pass under another name."""
     _stage(cfg, silence, "One.flac")
     with landing.intake_lock(PASS):
         code, refused = _drive(["-d", f"{GATE}=apply", *_land(export, "--name", "Other", "--pass", PASS)])
@@ -265,25 +247,19 @@ def test_each_kind_of_pass_job_says_its_own_word():
 
 
 def test_several_words_are_joined_in_one_order_whatever_order_they_arrive_in():
-    assert batch_name.joined(["Favorites", "Tidal playlists", "Favorites"]) == (
-        "Tidal playlists and Favorites"
-    )
-    assert batch_name.joined(["Set", "Favorites", "Tidal playlists"]) == (
-        "Tidal playlists, Favorites and Set"
-    )
+    joined = batch_name.joined
+    assert joined(["Favorites", "Tidal playlists", "Favorites"]) == "Tidal playlists and Favorites"
+    assert joined(["Set", "Favorites", "Tidal playlists"]) == "Tidal playlists, Favorites and Set"
     assert batch_name.joined([]) is None
 
 
 def test_label_rows_name_one_label_by_its_name_and_several_as_labels(tmp_path):
-    one = landing.read_label_manifest(
-        _manifest(tmp_path / "a", [("1", "P", "One", "Sudbeat", 2025), ("2", "P", "Two", "sudbeat", 2024)])
-    )
-    several = landing.read_label_manifest(
-        _manifest(tmp_path / "b", [("1", "P", "One", "Sudbeat", 2025), ("2", "P", "Two", "Kompakt", 2024)])
-    )
-    unsafe = landing.read_label_manifest(
-        _manifest(tmp_path / "c", [("1", "P", "One", "AC/DC: Records", 2025)])
-    )
+    def read(folder: str, *rows: tuple) -> landing.LabelManifest:
+        return landing.read_label_manifest(_manifest(tmp_path / folder, list(rows)))
+
+    one = read("a", ("1", "P", "One", "Sudbeat", 2025), ("2", "P", "Two", "sudbeat", 2024))
+    several = read("b", ("1", "P", "One", "Sudbeat", 2025), ("2", "P", "Two", "Kompakt", 2024))
+    unsafe = read("c", ("1", "P", "One", "AC/DC: Records", 2025))
     assert batch_name.label_words(one.rows) == "Sudbeat"
     assert batch_name.label_words(several.rows) == "Labels"
     assert batch_name.label_words(unsafe.rows) == "AC-DC- Records"

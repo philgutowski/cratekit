@@ -46,26 +46,9 @@ SENT = "fixture0discogs0value"
 
 #: The styles the brief requires the default template to file in a folder.
 BRIEF_STYLES = (
-    "Nu-Disco",
-    "Disco",
-    "Deep House",
-    "House",
-    "Tech House",
-    "Afro House",
-    "Italo-Disco",
-    "Boogie",
-    "Funk",
-    "Electro",
-    "Balearic",
-    "Downtempo",
-    "Leftfield",
-    "Acid House",
-    "Minimal",
-    "Techno",
-    "Progressive House",
-    "Garage House",
-    "UK Garage",
-    "Soulful House",
+    "Nu-Disco", "Disco", "Deep House", "House", "Tech House", "Afro House", "Italo-Disco", "Boogie",
+    "Funk", "Electro", "Balearic", "Downtempo", "Leftfield", "Acid House", "Minimal", "Techno",
+    "Progressive House", "Garage House", "UK Garage", "Soulful House",
 )
 
 
@@ -77,8 +60,7 @@ def results(*numbers: int, kind: str = "release") -> str:
         {
             "pagination": {"page": 1, "pages": 1, "items": len(numbers)},
             "results": [
-                {"id": number, "type": kind, "title": f"{ARTIST} - {TITLE}"}
-                for number in numbers
+                {"id": number, "type": kind, "title": f"{ARTIST} - {TITLE}"} for number in numbers
             ],
         }
     )
@@ -145,9 +127,7 @@ def routed(
 
 def asker(fetch, *, token: str | None = SENT, naps: list[float] | None = None):
     return searchers.discogs_asker(
-        token=token,
-        fetch=fetch,
-        sleep=(naps.append if naps is not None else lambda _s: None),
+        token=token, fetch=fetch, sleep=(naps.append if naps is not None else lambda _s: None)
     )
 
 
@@ -207,8 +187,7 @@ def test_the_scraped_shops_are_never_asked_by_the_default_walk():
         url.startswith((searchers.TRAXSOURCE_SEARCH, searchers.BANDCAMP_SEARCH)) for url in seen
     )
     assert [url.split("?")[0] for url in seen] == [
-        searchers.DISCOGS_SEARCH,
-        searchers.BEATPORT_SEARCH,
+        searchers.DISCOGS_SEARCH, searchers.BEATPORT_SEARCH
     ]
 
 
@@ -225,7 +204,6 @@ def test_a_discogs_match_never_asks_beatport():
 def test_a_matched_release_whose_first_style_resolves_is_written():
     fetch = routed(search=results(7), releases={7: release(7, styles=("Nu-Disco", "Disco"))})
     hit = searcher(fetch)(ARTIST, TITLE)
-
     expected = routing.suggest_tag(TAXONOMY, "Nu-Disco", source=searchers.DISCOGS).tag
     assert expected and TAXONOMY.named_folder(expected) is not None
     assert hit.genre == expected
@@ -375,7 +353,6 @@ def test_a_walk_names_known_sources_once():
 def test_no_token_is_not_asked_with_how_to_record_one_and_never_no_hit():
     seen: list[str] = []
     hit = searcher(routed(search=results(1), seen=seen), token=None)(ARTIST, TITLE)
-
     entry = discogs_answer(hit)
     assert entry.answer == searchers.NOT_ASKED
     assert entry.note == searchers.DISCOGS_NO_TOKEN
@@ -400,9 +377,7 @@ def test_a_file_swept_without_a_token_is_sources_unread_not_no_hit(tmp_path, sil
     path = tmp_path / "a.flac"
     path.write_bytes(Path(silence).read_bytes())
     assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE})
-
     result = tag.tag_one(path, searcher=searcher(routed(search=results()), token=None))
-
     assert result.skipped == tag.SOURCES_UNREAD
     assert result.skipped != tag.NO_HIT
     assert tags.read_genre_from_file(path) is None
@@ -562,12 +537,10 @@ def test_a_429_on_every_attempt_is_blocked_and_remembered_for_the_run():
     sent: list = []
     naps: list[float] = []
     discogs = over_the_wire({searchers.DISCOGS_SEARCH: Reply(429)}, sent=sent, naps=naps)
-
     first = discogs.ask(ARTIST, TITLE)
     assert first.answer is searchers.Answer.BLOCKED
     assert len(sent) == searchers.RATE_LIMIT_ATTEMPTS
     ladder = naps.count(searchers.RATE_LIMIT_BASE_WAIT_S) + naps.count(2 * searchers.RATE_LIMIT_BASE_WAIT_S)
-
     second = discogs.ask("Another Artist", "Another Title")
     assert second.answer is searchers.Answer.BLOCKED
     assert "earlier in this run" in second.note
@@ -683,12 +656,10 @@ def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, s
         seen_text.append(exc.cause.message)
         seen_text.append(json.dumps(exc.cause.detail))
         seen_text.extend(exc.cause.remediation.steps)
-
     path = tmp_path / "c.flac"
     path.write_bytes(Path(silence).read_bytes())
     assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE})
     result = tag.tag_one(path, searcher=searcher(routed(search=results()), discogs=leaking))
-
     assert "Invalid header value" in discogs_answer(hits[0]).note, "the leak was exercised"
     for hit in hits:
         seen_text.extend(entry.note for entry in hit.answers)
@@ -1061,7 +1032,6 @@ def test_discogs_chooses_only_a_named_folder_even_on_a_copy_with_no_table():
 def test_a_word_resolving_to_the_fallback_is_passed_over_where_its_name_is_not_too_coarse():
     """M19: the fallback check stands alone on a copy whose fallback is not in its coarse list."""
     from cratekit.core.taxonomy import load_taxonomy, shipped_template_text
-
     text = shipped_template_text("default")
     line = 'too_coarse_as_source = ["", "Electronica", "Electronic", "Electronica / Other"]'
     assert text.count(line) == 1

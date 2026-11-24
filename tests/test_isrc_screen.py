@@ -1,10 +1,8 @@
 """U207: many ISRCs are screened in a few requests, and a track found is never fetched again.
 
-A batch of up to twenty ISRCs answers one track per code (``docs/solutions``, the
-multi ISRC filter entry), so it only says which codes the catalogue files anything
-under; a held code is still asked alone. Each claim is counted through the real
-pacing gate. A failed batch marks nothing, and ``sync pair``, the mirror and
-``intake missing`` screen before they ask.
+A batch answers one track per code (``docs/solutions``, the multi ISRC filter entry), so it
+only says which codes hold anything; a held code is still asked alone, each claim is counted
+through the real pacing gate, and a failed batch marks nothing.
 """
 
 from __future__ import annotations
@@ -61,8 +59,7 @@ def included(tracks: list[dict]) -> list[dict]:
 
 
 class Api:
-    """``openapi.tidal.com/v2`` over ``held`` codes to release ids; ``batch`` and
-    ``single`` replace an answer with a status or a body."""
+    """``openapi.tidal.com/v2`` over ``held``; ``batch`` and ``single`` replace an answer."""
 
     def __init__(self, held: dict[str, list[str]]) -> None:
         self.held = held
@@ -95,18 +92,13 @@ class Api:
         return [one for one in self.sent if one["url"] != catalogue_api.TOKEN_URL]
 
     def batches(self) -> list[list[str]]:
-        return [
-            one["params"]["filter[isrc]"]
-            for one in self.reads()
-            if isinstance(one["params"]["filter[isrc]"], list)
-        ]
+        return [one for one in self._filters() if isinstance(one, list)]
 
     def singles(self) -> list[str]:
-        return [
-            one["params"]["filter[isrc]"]
-            for one in self.reads()
-            if not isinstance(one["params"]["filter[isrc]"], list)
-        ]
+        return [one for one in self._filters() if not isinstance(one, list)]
+
+    def _filters(self) -> list[Any]:
+        return [one["params"]["filter[isrc]"] for one in self.reads()]
 
 
 @pytest.fixture
@@ -160,9 +152,15 @@ def held_and_lacking(held: int, lacking: int, *, releases: int = 1) -> dict[str,
     return catalogue
 
 
+def batch_answered(gate: Gate, held: int, lacking: int, said: Any):
+    """The codes, an api whose first batch answers ``said``, and the account over it."""
+    api = Api(held_and_lacking(held, lacking))
+    api.batch = [said]
+    return list(api.held), api, adapter(gate, api)
+
+
 def test_an_isrc_filed_under_five_releases_costs_one_read_and_no_track_is_read_again(gate):
-    api = Api({code(1): ["11", "12", "13", "14", "15"]})
-    account = adapter(gate, api)
+    account = adapter(gate, api := Api({code(1): ["11", "12", "13", "14", "15"]}))
 
     found = account.match_track(identity="row-1", isrc=code(1))
 
@@ -213,8 +211,7 @@ def test_a_held_code_is_still_asked_alone_so_every_release_comes_back(gate):
 
 
 def test_a_code_absent_from_a_batch_answer_is_not_found_and_the_others_are_answered(gate):
-    api = Api({code(1): ["101"], code(2): [], code(3): ["301"]})
-    account = adapter(gate, api)
+    account = adapter(gate, api := Api({code(1): ["101"], code(2): [], code(3): ["301"]}))
 
     account.screen_isrcs([code(1), code(2), code(3)])
 
@@ -226,8 +223,7 @@ def test_a_code_absent_from_a_batch_answer_is_not_found_and_the_others_are_answe
 
 
 def test_a_batch_asks_every_code_by_name_in_the_accounts_country_and_nothing_else(gate):
-    api = Api(held_and_lacking(1, 1))
-    account = adapter(gate, api)
+    account = adapter(gate, api := Api(held_and_lacking(1, 1)))
 
     account.screen_isrcs([code(0), code(1)])
 
@@ -238,8 +234,7 @@ def test_a_batch_asks_every_code_by_name_in_the_accounts_country_and_nothing_els
 
 
 def test_a_code_already_screened_is_not_sent_again(gate):
-    api = Api(held_and_lacking(0, 4))
-    account = adapter(gate, api)
+    account = adapter(gate, api := Api(held_and_lacking(0, 4)))
 
     assert account.screen_isrcs([code(0), code(1)]) == 1
     assert account.screen_isrcs([code(1), code(0)]) == 0
@@ -249,8 +244,7 @@ def test_a_code_already_screened_is_not_sent_again(gate):
 
 
 def test_a_malformed_code_or_a_spelling_not_its_own_fold_never_enters_a_batch(gate):
-    api = Api(held_and_lacking(0, 3))
-    account = adapter(gate, api)
+    account = adapter(gate, api := Api(held_and_lacking(0, 3)))
     lower = code(2).lower()
 
     made = account.screen_isrcs(["not-an-isrc", "", lower, code(0), code(1), code(0)])
@@ -263,8 +257,7 @@ def test_a_malformed_code_or_a_spelling_not_its_own_fold_never_enters_a_batch(ga
 
 
 def test_a_lone_code_is_never_screened_since_its_own_lookup_costs_the_same(gate):
-    api = Api(held_and_lacking(0, 21))
-    account = adapter(gate, api)
+    account = adapter(gate, api := Api(held_and_lacking(0, 21)))
 
     assert account.screen_isrcs([code(0)]) == 0
     assert account.screen_isrcs([code(n) for n in range(1, 22)]) == 1
@@ -285,13 +278,10 @@ def test_the_app_client_refuses_a_batch_it_was_not_built_to_ask(gate):
 
 
 def test_a_server_error_on_a_batch_falls_back_to_singles_and_finds_the_one_bad_answer(gate):
-    catalogue = held_and_lacking(1, 3)
-    api = Api(catalogue)
-    api.batch = [500]
+    codes, api, account = batch_answered(gate, 1, 3, 500)
     api.single = {code(2): 500}
-    account = adapter(gate, api)
 
-    assert account.screen_isrcs(list(catalogue)) == 1
+    assert account.screen_isrcs(codes) == 1
     assert account.match_track(identity="a", isrc=code(0)) == "00"
     assert account.match_track(identity="b", isrc=code(1)) is None
     with pytest.raises(CratekitError):
@@ -302,51 +292,39 @@ def test_a_server_error_on_a_batch_falls_back_to_singles_and_finds_the_one_bad_a
 
 
 def test_a_batch_that_failed_is_not_sent_again_by_the_next_plan(gate):
-    catalogue = held_and_lacking(0, 3)
-    api = Api(catalogue)
-    api.batch = [503]
-    account = adapter(gate, api)
+    codes, api, account = batch_answered(gate, 0, 3, 503)
 
-    assert account.screen_isrcs(list(catalogue)) == 1
-    assert account.screen_isrcs(list(catalogue)) == 0
+    assert account.screen_isrcs(codes) == 1
+    assert account.screen_isrcs(codes) == 0
 
     assert len(api.batches()) == 1
 
 
 def test_a_failed_batch_does_not_stop_the_next_one(gate):
-    catalogue = held_and_lacking(0, 40)
-    api = Api(catalogue)
-    api.batch = [503]
-    account = adapter(gate, api)
+    codes, api, account = batch_answered(gate, 0, 40, 503)
 
-    assert account.screen_isrcs(list(catalogue)) == 2
+    assert account.screen_isrcs(codes) == 2
 
-    ask_every(account, list(catalogue))
-    assert api.singles() == list(catalogue)[:20]
+    ask_every(account, codes)
+    assert api.singles() == codes[:20]
 
 
 def test_a_rate_limit_on_a_batch_is_counted_marks_nothing_and_stops_the_screening(gate):
-    catalogue = held_and_lacking(0, 60)
-    api = Api(catalogue)
-    api.batch = [429]
-    account = adapter(gate, api)
+    codes, api, account = batch_answered(gate, 0, 60, 429)
 
-    assert account.screen_isrcs(list(catalogue)) == 1
+    assert account.screen_isrcs(codes) == 1
     assert gate.spend().app_rate_limited == 1
     assert account.screen_isrcs([code(98), code(99)]) == 0
     assert len(api.batches()) == 1
 
-    ask_every(account, list(catalogue)[:3])
-    assert api.singles() == list(catalogue)[:3]
+    ask_every(account, codes[:3])
+    assert api.singles() == codes[:3]
 
 
 def test_a_rejected_app_credential_on_a_batch_marks_nothing_and_stops_the_screening(gate):
-    catalogue = held_and_lacking(0, 40)
-    api = Api(catalogue)
-    api.batch = [401]
-    account = adapter(gate, api)
+    codes, api, account = batch_answered(gate, 0, 40, 401)
 
-    assert account.screen_isrcs(list(catalogue)) == 1
+    assert account.screen_isrcs(codes) == 1
     assert account.screen_isrcs([code(98), code(99)]) == 0
 
     assert account.match_track(identity="a", isrc=code(0)) is None
@@ -355,25 +333,19 @@ def test_a_rejected_app_credential_on_a_batch_marks_nothing_and_stops_the_screen
 
 @pytest.mark.parametrize("status", [400, 404, 422])
 def test_a_refused_request_form_stops_the_screening_and_marks_nothing(gate, status):
-    catalogue = held_and_lacking(0, 60)
-    api = Api(catalogue)
-    api.batch = [status]
-    account = adapter(gate, api)
+    codes, api, account = batch_answered(gate, 0, 60, status)
 
-    assert account.screen_isrcs(list(catalogue)) == 1
+    assert account.screen_isrcs(codes) == 1
     assert len(api.batches()) == 1
 
-    ask_every(account, list(catalogue)[:2])
-    assert api.singles() == list(catalogue)[:2]
+    ask_every(account, codes[:2])
+    assert api.singles() == codes[:2]
 
 
 def test_the_gates_own_park_passes_through_the_screen(gate):
-    api = Api(held_and_lacking(0, 2))
-    parked = refuse(
-        "unavailable-transient", "the gate is cooling down", remedy=Remedy.RETRY_LATER, origin=("test",)
-    )
-    api.batch = [parked]
-    account = adapter(gate, api)
+    said = "the gate is cooling down"
+    parked = refuse("unavailable-transient", said, remedy=Remedy.RETRY_LATER, origin=("test",))
+    _codes, _api, account = batch_answered(gate, 0, 2, parked)
 
     with pytest.raises(CratekitError) as raised:
         account.screen_isrcs([code(0), code(1)])
@@ -392,26 +364,21 @@ def test_the_gates_own_park_passes_through_the_screen(gate):
     ids=["no-isrc", "unreadable-isrc", "a-code-not-asked", "paged", "not-a-resource", "no-list"],
 )
 def test_an_answer_that_cannot_be_attributed_whole_marks_nothing_absent(gate, said):
-    catalogue = held_and_lacking(0, 3)
-    api = Api(catalogue)
-    api.batch = [said]
-    account = adapter(gate, api)
+    codes, api, account = batch_answered(gate, 0, 3, said)
 
-    assert account.screen_isrcs(list(catalogue)) == 1
+    assert account.screen_isrcs(codes) == 1
 
-    ask_every(account, list(catalogue))
-    assert api.singles() == list(catalogue)
+    ask_every(account, codes)
+    assert api.singles() == codes
 
 
 def test_a_resource_that_is_not_a_track_is_not_read_as_an_answer_about_a_code(gate):
-    catalogue = held_and_lacking(1, 1)
-    api = Api(catalogue)
-    api.batch = [{"data": [track("00", code(0)), {"id": "a1", "type": "artists"}], "included": []}]
-    account = adapter(gate, api)
+    said = {"data": [track("00", code(0)), {"id": "a1", "type": "artists"}], "included": []}
+    codes, api, account = batch_answered(gate, 1, 1, said)
 
-    account.screen_isrcs(list(catalogue))
+    account.screen_isrcs(codes)
 
-    ask_every(account, list(catalogue))
+    ask_every(account, codes)
     assert api.singles() == [code(0)]
 
 

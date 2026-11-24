@@ -110,6 +110,10 @@ def check(envelope: dict, key: str) -> dict:
     return found
 
 
+def reverified(envelope: dict) -> str:
+    return check(envelope, f"reverified.{SLUG}")["detail"]
+
+
 def sweep_job() -> tuple[int, str]:
     job_id = queued_sweep()
     code, _resumed = drive(["sync", "labels", "--job", job_id])
@@ -128,7 +132,6 @@ def filed(cfg: config.Config) -> list[review.Item]:
 
 
 def unlisted() -> dict:
-    """``--next`` over Rawax, refused as unlisted."""
     code, envelope = next_rawax()
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unlisted"
@@ -136,7 +139,6 @@ def unlisted() -> dict:
 
 
 def nothing_new() -> dict:
-    """``--next`` over Rawax, answered as a no op."""
     code, envelope = next_rawax()
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
@@ -144,7 +146,6 @@ def nothing_new() -> dict:
 
 
 def worker_incomplete():
-    """The sweep worker's failed item cause, an incomplete sweep."""
     code, job_id = sweep_job()
     assert code != int(ExitCode.OK)
     cause = item_cause(job_id)
@@ -153,7 +154,6 @@ def worker_incomplete():
 
 
 def worker_files_nothing(cfg: config.Config) -> None:
-    """The sweep worker succeeds with nothing failed and nothing filed."""
     code, job_id = sweep_job()
     assert code == int(ExitCode.OK)
     assert item_cause(job_id) is None
@@ -161,8 +161,6 @@ def worker_files_nothing(cfg: config.Config) -> None:
 
 
 # 1. The guided sync, ``--next``
-
-
 def test_the_live_shape_answers_nothing_new_rather_than_refusing(installed, monkeypatch):
     live_shape(installed, monkeypatch)
     envelope = nothing_new()
@@ -202,9 +200,8 @@ def test_held_releases_whose_lines_name_another_act_still_refuse(installed, monk
     canary = check(envelope, f"reverified.{SLUG}")
     assert "release x0, answered mismatch (credited as 'RAWAXXX')" in canary["detail"]
     assert len([one for one in fake.verified if one.startswith(("a", "x"))]) == 1
-    assert sync_cli.load_record(installed)["labels"][SLUG] == {
-        "asked": ["x0", "x1", "x2", "a1", "a2", "a3", "a4"]
-    }
+    asked_now = sync_cli.load_record(installed)["labels"][SLUG]
+    assert asked_now == {"asked": ["x0", "x1", "x2", "a1", "a2", "a3", "a4"]}
 
 
 def lineless(identity: str, year: str = "2026") -> FakeRelease:
@@ -221,9 +218,7 @@ def test_a_degraded_provider_still_refuses_though_a_held_line_names_the_label(
 ):
     session = Session({"n0": "2025 Rawax"}, degraded=True)
     unanswered_shape(installed, monkeypatch, session)
-    envelope = unlisted()
-    reverified = check(envelope, f"reverified.{SLUG}")
-    assert "release n0, answered unconfirmed (no label credit)" in reverified["detail"]
+    assert "release n0, answered unconfirmed (no label credit)" in reverified(unlisted())
     # THE PROVIDER WAS READ FOR THE RELEASE RE-VERIFIED, not only for the new ones.
     assert "n0" in session.reads
 
@@ -232,9 +227,8 @@ def test_a_provider_that_answers_turns_the_same_shape_into_nothing_new(installed
     """The new releases' reads credit another label, and the held one's credits Rawax."""
     session = Session({"n0": "2025 Rawax", **{f"m{n}": "2026 Moon Harbour" for n in range(3)}})
     unanswered_shape(installed, monkeypatch, session)
-    envelope = nothing_new()
     # Every drop named another label, so a held Rawax line shows the needle right; n0 is not read.
-    detail = check(envelope, f"reverified.{SLUG}")["detail"]
+    detail = reverified(nothing_new())
     assert detail.endswith("release a1, answered confirmed")
     assert session.reads == ["m0", "m1", "m2"]
 
@@ -244,10 +238,9 @@ def test_an_unanswered_release_with_no_held_release_to_read_refuses_as_before(
 ):
     """Sitting 94's shape with three new releases the provider answers with no line."""
     every_line_shape(installed, monkeypatch, Session(degraded=True), also=rawaxxx())
-    envelope = unlisted()
-    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
-    assert "release a1, answered unconfirmed" in reverified
-    assert "read again from the provider" in reverified
+    said = reverified(unlisted())
+    assert "release a1, answered unconfirmed" in said
+    assert "read again from the provider" in said
 
 
 def test_a_listing_with_no_release_held_asks_no_canary_and_says_none(installed, monkeypatch):
@@ -257,8 +250,6 @@ def test_a_listing_with_no_release_held_asks_no_canary_and_says_none(installed, 
 
 
 # 2. The sweep worker, the go's twin of the refusal
-
-
 def test_the_worker_answers_the_live_shape_as_nothing_new(installed, monkeypatch):
     live_shape(installed, monkeypatch)
     worker_files_nothing(installed)
@@ -290,15 +281,12 @@ def test_the_worker_refuses_a_degraded_provider_over_held_lines_that_name_the_la
 
 
 # 3. The engine: which held release is the canary
-
-
 @pytest.fixture
 def entry(installed):
     return labels.RegistryStore().load().by_id(SLUG)
 
 
 def held_listing(cfg, entry, fake: LineCatalogue, releases, **kwargs: Any) -> sweep.LabelListing:
-    """The engine's listing of ``releases`` verified by ``fake``, ``offered`` the held ones."""
     kwargs.setdefault("verify", fake.search_release)
     kwargs["offered"] = frozenset(kwargs.get("offered", ()))
     return sweep.list_for_label(cfg, entry, artist=FakePagedArtist(releases), **kwargs)
@@ -387,14 +375,11 @@ def test_a_degraded_provider_refuses_though_the_newest_held_release_names_the_la
     session = Session({"n0": "2024 Rawax"}, degraded=True)
     bind(monkeypatch, [lineless("m0"), *held, *others(3)], session=session)
     asked(installed, *(one.id for one in held))
-    envelope = unlisted()
-    assert "release n0, answered unconfirmed" in check(envelope, f"reverified.{SLUG}")["detail"]
+    assert "release n0, answered unconfirmed" in reverified(unlisted())
     assert session.reads == ["m0", "n0"]
 
 
 # 4. R-1634: the release re-verified is read from the provider, never its line
-
-
 def every_line_shape(cfg: config.Config, monkeypatch, session: Session, *, also: list | None = None):
     """Three new releases with no line over the held ``also`` and four held ``Rawax`` ones."""
     held = [*(also or []), *rawax()]
@@ -407,10 +392,9 @@ def every_line_shape(cfg: config.Config, monkeypatch, session: Session, *, also:
 def test_a_degraded_provider_refuses_though_every_held_line_names_the_label(installed, monkeypatch):
     session = Session({"a1": "2025 Rawax"}, degraded=True)
     every_line_shape(installed, monkeypatch, session)
-    envelope = unlisted()
-    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
-    assert "release a1, answered unconfirmed (no label credit)" in reverified
-    assert "read again from the provider" in reverified
+    said = reverified(unlisted())
+    assert "release a1, answered unconfirmed (no label credit)" in said
+    assert "read again from the provider" in said
     # THE PROVIDER WAS READ FOR THE HELD RELEASE, though its line names the label.
     assert session.reads == ["m0", "m1", "m2", "a1"]
 
@@ -433,11 +417,10 @@ def test_a_provider_crediting_another_label_still_answers_nothing_new(installed,
     """Every drop a mismatch: the held line shows the needle right, and no held release is read."""
     session = Session({f"m{n}": "2026 Moon Harbour" for n in range(3)})
     every_line_shape(installed, monkeypatch, session)
-    envelope = nothing_new()
-    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
-    assert reverified.endswith("release a1, answered confirmed")
+    said = reverified(nothing_new())
+    assert said.endswith("release a1, answered confirmed")
     # SAID: the answer came from the release's own line, not from the provider.
-    assert "from its own copyright line, with no provider read" in reverified
+    assert "from its own copyright line, with no provider read" in said
     assert session.reads == ["m0", "m1", "m2"]
 
 
@@ -447,10 +430,9 @@ def test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing
     """The real nothing new kept: the provider reads the held release and credits the label."""
     session = Session({one.id: "2025 Rawax" for one in rawax()})
     every_line_shape(installed, monkeypatch, session, also=rawaxxx())
-    envelope = nothing_new()
-    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
-    assert "release a1, answered confirmed" in reverified
-    assert "read again from the provider" in reverified
+    said = reverified(nothing_new())
+    assert "release a1, answered confirmed" in said
+    assert "read again from the provider" in said
     assert session.reads == ["m0", "m1", "m2", "a1"]
 
 
@@ -484,9 +466,8 @@ def test_the_forced_read_is_asked_only_when_a_drop_is_not_a_mismatch(installed, 
     def forced(claimed, one):
         reread.append(one.id)
         return fake.reread_release(claimed, one)
-    found = held_listing(
-        installed, entry, fake, releases, reread=forced, offered={"a1", "a2", "a3", "a4"}
-    )
+    offered = {"a1", "a2", "a3", "a4"}
+    found = held_listing(installed, entry, fake, releases, reread=forced, offered=offered)
     assert (found.canary.identity, found.canary.verdict) == ("a1", "confirmed")
     assert found.canary.basis == sweep.READ_LINE
     assert reread == []
@@ -508,8 +489,6 @@ def test_with_a_drop_given_no_credit_the_held_label_line_comes_before_another_ac
 
 
 # 5. The seam: ``TidalCatalogue.reread_release``
-
-
 class Gone(Exception):
     """Named as the provider's client names a release it does not have."""
 
@@ -569,11 +548,7 @@ def test_a_forced_read_that_raises_fails_the_item_in_the_lookup_vocabulary(insta
 
 
 # 6. A held release the provider has withdrawn (round one of R-1634's review)
-
-
 class PartlyGone(Session):
-    """A healthy provider that no longer has the releases named in ``gone``."""
-
     def __init__(self, lines: dict[str, str], gone: set[str]) -> None:
         super().__init__(lines)
         self.gone = set(gone)
@@ -597,10 +572,9 @@ def test_a_withdrawn_held_release_is_passed_over_for_the_next_and_the_label_has_
 ):
     """A kept listing still lists ``a1`` after the provider withdrew it: ``a2`` is read in its place."""
     session = withdrawn_shape(installed, monkeypatch, gone={"a1"})
-    envelope = nothing_new()
-    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
-    assert "release a2, answered confirmed" in reverified
-    assert "read again from the provider" in reverified
+    said = reverified(nothing_new())
+    assert "release a2, answered confirmed" in said
+    assert "read again from the provider" in said
     # ONE more read, and only because the first answered gone.
     assert session.reads == ["m0", "m1", "m2", "a1", "a2"]
 
@@ -613,27 +587,23 @@ def test_the_worker_passes_over_a_withdrawn_held_release_too(installed, monkeypa
 
 def test_two_withdrawn_held_releases_refuse_and_no_third_is_read(installed, monkeypatch):
     session = withdrawn_shape(installed, monkeypatch, gone={"a1", "a2"})
-    envelope = unlisted()
-    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
-    assert "release a2, answered gone" in reverified
+    said = reverified(unlisted())
+    assert "release a2, answered gone" in said
     # BOTH answers are said: a2's own, and that it was read in a1's place.
-    assert "read in place of release a1, which the provider no longer has" in reverified
+    assert "read in place of release a1, which the provider no longer has" in said
     assert session.reads == ["m0", "m1", "m2", "a1", "a2"]
 
 
 def test_a_lone_withdrawn_held_release_refuses(installed, entry):
     releases = [lineless("m1"), release("a1", "2025", "Rawax"), *others(3)]
     fake = LineCatalogue(session=PartlyGone({}, {"a1"}))
-    found = held_listing(
-        installed, entry, fake, releases, reread=fake.reread_release, offered={"a1"}
-    )
+    reread = fake.reread_release
+    found = held_listing(installed, entry, fake, releases, reread=reread, offered={"a1"})
     assert (found.canary.identity, found.canary.verdict) == ("a1", catalogue.RELEASE_GONE)
     assert found.held_unconfirmed == 1
 
 
 # 7. What the answer rested on, and where the forced read comes from
-
-
 def test_every_drop_a_mismatch_over_a_held_release_with_no_line_says_the_provider_was_read(
     installed, entry
 ):
@@ -667,6 +637,5 @@ def test_a_withdrawn_held_release_is_never_replaced_by_another_acts(installed, m
     held = [release("a1", "2025", "Rawax"), release("p0", "2024", "2024 Planet Radio")]
     bind(monkeypatch, [lineless("m0"), *held, *others(3)], session=session)
     asked(installed, *(one.id for one in held))
-    envelope = unlisted()
-    assert "release a1, answered gone" in check(envelope, f"reverified.{SLUG}")["detail"]
+    assert "release a1, answered gone" in reverified(unlisted())
     assert session.reads == ["m0", "a1"]

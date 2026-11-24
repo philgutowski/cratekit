@@ -179,7 +179,6 @@ def test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name(nati
 
 
 def test_a_label_named_by_its_registry_identifier_is_compared_under_its_name(native_built):
-    """The identifier is resolved to the name the record holds."""
     cfg, _fake, account = native_built
     _record_landing(cfg, _filed(2021))
     entry = labels.RegistryStore().load().resolve(LABEL)
@@ -277,20 +276,22 @@ def test_sync_unmark_takes_a_native_label_mark_off_again(native_built):
     cfg, fake, account = native_built
     _record_landing(cfg, _filed(2021), _filed(2022), _filed(2023))
     assert _mark()[0] == int(ExitCode.OK)
-    fake.account = [
-        AccountPlaylist(playlist_id=pid, name=title, tracks=None)
-        for pid, title in account.titles.items()
-    ]
+    fake.account = [AccountPlaylist(playlist_id=pid, name=title, tracks=None)
+                    for pid, title in account.titles.items()]
     account.renamed.clear()
     _exits(ExitCode.OK, _two_acts(["sync", "unmark", "--pass", PASS], "sync.unmark.confirm"))
     assert account.renamed == [], "a release writes nothing on the account (U242)"
     assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
 
 
+#: The session the reader's own records are read as.
+ONE_LANDING = "20261007T120000-landing"
+
+
 def _record(labels) -> session.SessionRecord:
     return session.SessionRecord(
-        session_id="20261007T120000-landing", workflow=native.WORKFLOW,
-        started="2026-10-07T12:00:00+00:00", state=session.SessionState.CLOSED, sources={},
+        session_id=ONE_LANDING, workflow=native.WORKFLOW, started="2026-10-07T12:00:00+00:00",
+        state=session.SessionState.CLOSED, sources={},
         detail={} if labels is None else {label_filing.RECORD_KEY: labels},
     )
 

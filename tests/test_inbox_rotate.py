@@ -56,9 +56,8 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: settings)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
-    )
+    unlocked = lambda target, **kwargs: real_integrity_ok(target, unlock=False)
+    monkeypatch.setattr(rb_writer, "integrity_ok", unlocked)
 
 
 @pytest.fixture
@@ -73,9 +72,8 @@ def machine(tmp_path, monkeypatch):
     config.save(resolved)
     config.reset_cache()
     adopt_fixtures.build(resolved, TRACKS)
-    monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
-    )
+    identity = resolved.library.volume_id
+    monkeypatch.setattr(preflight, "default_identity_provider", lambda: (lambda _path: identity))
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     return resolved
 
@@ -89,10 +87,7 @@ def acknowledged(machine):
 def _cut_over_intake(cfg: config.Config) -> str:
     root_id = cutover_fixtures.add_folder(cfg, DECLARED.intake.display)
     record = tree_registry.TreeRecord(
-        tree_id=INTAKE,
-        mode=tree_registry.Mode.DATABASE,
-        cutover_on=TODAY,
-        root_id=root_id,
+        tree_id=INTAKE, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY, root_id=root_id,
         source=tree_registry.DerivationSource.TAXONOMY,
     )
     tree_registry.write(cfg, tree_registry.Registry().with_record(record))
@@ -119,14 +114,8 @@ def _handle(cfg: config.Config, **opened):
 
 
 def _node(
-    cfg: config.Config,
-    name: str,
-    *,
-    under: str,
-    age: int | None = None,
-    tracks: tuple[str, ...] = (),
-    folder: bool = False,
-    batch_folder: bool = False,
+    cfg: config.Config, name: str, *, under: str, age: int | None = None,
+    tracks: tuple[str, ...] = (), folder: bool = False, batch_folder: bool = False,
 ) -> str:
     """One playlist or folder under ``under``, created ``age`` days before TODAY."""
     with _handle(cfg) as handle:
@@ -156,11 +145,7 @@ def _genre_playlist(cfg: config.Config) -> str:
 
 
 def _record_landing(
-    cfg: config.Config,
-    playlist_id: str,
-    name: str,
-    landed: date,
-    *,
+    cfg: config.Config, playlist_id: str, name: str, landed: date, *,
     source: session.SourceState = session.SourceState.COMMITTED,
 ) -> None:
     """A native landing's session record naming its batch playlist, closed."""
@@ -286,9 +271,8 @@ def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_mov
     assert actions["remove"] == ["a batch named by hand"]
     assert actions["keep"] == ["2026-09-23 Tidal playlists"]
     # Old itself is named left beside the rest since U214, as the mirror names it.
-    assert sorted(actions[rotate_cli.LEAVE]) == [
-        "2026-01-01 my list", "Lisa picks", OLD, "listen later"
-    ]
+    left = sorted(actions[rotate_cli.LEAVE])
+    assert left == ["2026-01-01 my list", "Lisa picks", OLD, "listen later"]
 
     # The moves: parent is Old, still live, every track still in it.
     for key, members in (("40", ["t3", "t4"]), ("100", ["t5", "t6"])):
@@ -344,17 +328,14 @@ def test_old_is_created_once_a_second_run_plans_nothing_and_still_asks_and_old_i
     assert int(_node_row(cfg, old_id)[3]) == 1
 
     # A SECOND RUN PLANS NOTHING AND STILL ASKS.
-    content, members = _content(cfg), _memberships(cfg)
-    nodes = _nodes(cfg)
+    content, members, nodes = _content(cfg), _memberships(cfg), _nodes(cfg)
     code, acted, refused = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     assert refused["cause"]["detail"]["gate"] == GATE
     # The keep, and Old, which the first run made, named left (U214).
-    assert [(item["action"], item["playlist"]) for item in acted["data"]["items"]] == [
-        ("keep", "2026-08-20 Set"),
-        (rotate_cli.LEAVE, OLD),
-    ]
+    shown = [(item["action"], item["playlist"]) for item in acted["data"]["items"]]
+    assert shown == [("keep", "2026-08-20 Set"), (rotate_cli.LEAVE, OLD)]
     assert (acted["data"]["totals"]["move"], acted["data"]["totals"]["remove"]) == (0, 0)
     assert (_content(cfg), _memberships(cfg)) == (content, members)
     assert _nodes(cfg) == nodes
@@ -433,9 +414,8 @@ def test_an_inbox_changed_after_the_approval_is_refused_and_nothing_is_written(n
 
 def _plan(cfg: config.Config) -> rotate.RotationPlan:
     with _handle(cfg) as handle:
-        return rotate.plan_rotation(
-            cfg, handle, declared=DECLARED, registry=tree_registry.read(cfg), today=TODAY
-        )
+        registry = tree_registry.read(cfg)
+        return rotate.plan_rotation(cfg, handle, declared=DECLARED, registry=registry, today=TODAY)
 
 
 def _apply(cfg: config.Config, plan: rotate.RotationPlan) -> rotate.Rotated:
@@ -444,9 +424,7 @@ def _apply(cfg: config.Config, plan: rotate.RotationPlan) -> rotate.Rotated:
         return rotate.apply_rotation(cfg, handle, plan, declared=DECLARED, analysis_roots=roots)
 
 
-def test_a_removal_or_a_move_beyond_the_plan_is_refused_and_rolled_back(
-    four_batches, monkeypatch
-):
+def test_a_removal_or_a_move_beyond_the_plan_is_refused_and_rolled_back(four_batches, monkeypatch):
     """The whitelist admits a membership marker here, so only SQL can tell whose it was."""
     cfg, root_id, _old, genre, _ids = four_batches
     real = rb_writer.remove_playlist_node
@@ -458,8 +436,7 @@ def test_a_removal_or_a_move_beyond_the_plan_is_refused_and_rolled_back(
 
     monkeypatch.setattr(rb_writer, "remove_playlist_node", reaches_further)
     plan = _plan(cfg)
-    content, members = _content(cfg), _memberships(cfg)
-    nodes = _nodes(cfg)
+    content, members, nodes = _content(cfg), _memberships(cfg), _nodes(cfg)
     with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
         _apply(cfg, plan)
     assert raised.value.cause.reason == "whitelist-violation"
@@ -496,9 +473,8 @@ def test_the_writer_refuses_a_folder_a_parent_not_a_folder_and_a_removed_playlis
         with pytest.raises(CratekitError) as removed:
             rb_writer.remove_playlist_node(handle, row)
         with pytest.raises(CratekitError) as raised:
-            rb_writer.move_playlist_node(
-                handle, handle.get_playlist(ID=batch), handle.get_playlist(ID=plain)
-            )
+            under_plain = handle.get_playlist(ID=plain)
+            rb_writer.move_playlist_node(handle, handle.get_playlist(ID=batch), under_plain)
     assert "folder" in moved.value.cause.message and "folder" in removed.value.cause.message
     assert "not a live folder" in raised.value.cause.message
     with _handle(cfg) as handle:
@@ -513,23 +489,16 @@ def _tables(**changes) -> rb_writer.NodeTables:
     base = {
         "content": {"c1": "a digest"},
         "playlists": {
-            "root": ("root", "INBOX", "", 1, 0),
-            "old": ("old", "Old", "root", 2, 0),
-            "b1": ("b1", "batch", "root", 3, 0),
-            "b2": ("b2", "batch two", "old", 1, 0),
+            "root": ("root", "INBOX", "", 1, 0), "old": ("old", "Old", "root", 2, 0),
+            "b1": ("b1", "batch", "root", 3, 0), "b2": ("b2", "batch two", "old", 1, 0),
             "sib": ("sib", "sibling", "root", 4, 0),
         },
-        "memberships": {
-            "m1": ("m1", "b2", "c1", 0),
-            "m2": ("m2", "g", "c1", 0),
-        },
+        "memberships": {"m1": ("m1", "b2", "c1", 0), "m2": ("m2", "g", "c1", 0)},
     }
     for key, value in changes.items():
         base[key] = {**base[key], **value}
     return rb_writer.NodeTables(
-        content=base["content"],
-        playlists=base["playlists"],
-        memberships=base["memberships"],
+        content=base["content"], playlists=base["playlists"], memberships=base["memberships"],
         playlist_columns=("ID", "Name", "ParentID", "Seq", rb_writer.SOFT_DELETE_COLUMN),
         membership_columns=("ID", "PlaylistID", "ContentID", rb_writer.SOFT_DELETE_COLUMN),
     )
@@ -622,16 +591,14 @@ def _removal_callers() -> dict[str, list[str]]:
         for node in ast.walk(ast.parse(text)):
             if not isinstance(node, ast.Call):
                 continue
-            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(
-                node.func, "id", ""
-            )
+            called = node.func
+            name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
             if name not in {"commit_guarded", "assert_session_whitelisted", "guard_violations"}:
                 continue
             for keyword in node.keywords:
                 if keyword.arg == "removals":
-                    found.setdefault(path.relative_to(src).as_posix(), []).append(
-                        ast.unparse(keyword.value)
-                    )
+                    held = found.setdefault(path.relative_to(src).as_posix(), [])
+                    held.append(ast.unparse(keyword.value))
     return found
 
 
@@ -655,9 +622,8 @@ def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
 
 
 def _template_with(section: str) -> str:
-    text = Path(taxonomy.__file__).resolve().parents[1].joinpath(
-        "templates", "taxonomy.default.toml"
-    ).read_text(encoding="utf-8")
+    template = Path(taxonomy.__file__).resolve().parents[1] / "templates" / "taxonomy.default.toml"
+    text = template.read_text(encoding="utf-8")
     start = text.index("[intake_old]")
     end = text.index("\n\n", start)
     return text[:start] + section + text[end:]

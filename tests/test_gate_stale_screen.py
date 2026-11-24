@@ -12,7 +12,7 @@ from cratekit.core.exit_codes import ExitCode
 from tests.test_cli_contract import _trap_standard_input as _trap_standard_input  # noqa: PLC0414
 from tests.test_cli_contract import configured as configured  # noqa: PLC0414
 from tests.test_cli_contract import library as library  # noqa: PLC0414
-from tests.test_gate_not_reached import _drive, _state, digest_spec
+from tests.test_gate_not_reached import _drive, _reached, _state, digest_spec
 
 SHOWN = "sha256:shown"
 MOVED = "sha256:moved"
@@ -30,21 +30,23 @@ def _answered(spec: registry.GateSpec | None = None) -> gates.RunState:
     """The first act and the decide: the gate shown over one playlist, answered apply."""
     spec = spec or _spec()
     state = _state()
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(spec, plan=_plan(SHOWN, "One"), context={"area": "a"})
+    _reached(state, spec, plan=_plan(SHOWN, "One"), context={"area": "a"})
     gates.record(state, spec, "apply", actor="a-person")
     return gates.RunState.from_json(json.loads(json.dumps(state.to_json())))
 
 
-def _stale(state: gates.RunState, plan: dict, **kwargs) -> dict:
+def _stale_cause(state: gates.RunState, spec: registry.GateSpec | None = None, **kwargs):
+    """The cause the gate refuses ``state``'s recorded answer with, as stale."""
     with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(_spec(), plan=plan, **kwargs)
-    return raised.value.cause.detail
+        gates.Gates(state=state).require(spec or _spec(), **kwargs)
+    return raised.value.cause
+
+
+def _stale(state: gates.RunState, plan: dict, **kwargs) -> dict:
+    return _stale_cause(state, plan=plan, **kwargs).detail
 
 
 # The gate layer
-
-
 def test_a_stale_refusal_carries_the_moved_plan_as_an_open_gate_shows_it():
     state = _answered()
     moved = _plan(MOVED, "One", "Made Between The Acts")
@@ -80,9 +82,7 @@ def test_a_plan_that_moves_again_after_the_second_answer_is_stale_and_shows_the_
 def test_a_stale_refusal_and_its_message_are_otherwise_the_gates_own():
     """The code, the reason, the remedy and the message stay the gate's own."""
     state = _answered()
-    with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(_spec(), plan=_plan(MOVED, "Two"))
-    cause = raised.value.cause
+    cause = _stale_cause(state, plan=_plan(MOVED, "Two"))
     assert cause.code is ExitCode.DECISION_STALE
     assert cause.reason == "decision-stale"
     assert str(cause.remediation.remedy) == "replan-then-decide"
@@ -95,14 +95,12 @@ def test_a_stale_refusal_and_its_message_are_otherwise_the_gates_own():
 def test_a_digest_gate_with_nothing_to_show_says_so_as_its_open_gate_does():
     """No context and no plan: absent stays absent, and the options still reach the screen."""
     state = _state()
-    with pytest.raises(gates.DecisionRequired) as opened:
-        gates.Gates(state=state).require(_spec(), digest=SHOWN)
+    opened = _reached(state, _spec(), digest=SHOWN)
     gates.record(state, _spec(), "apply", actor="a-person")
-    with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(_spec(), digest=MOVED)
-    assert "shown" not in opened.value.cause.detail
-    assert "shown" not in raised.value.cause.detail
-    assert raised.value.cause.detail["options"] == ["apply", "abort"]
+    stale = _stale_cause(state, digest=MOVED)
+    assert "shown" not in opened.detail
+    assert "shown" not in stale.detail
+    assert stale.detail["options"] == ["apply", "abort"]
 
 
 def test_a_stale_a_verb_raises_itself_keeps_the_detail_it_had():
@@ -114,8 +112,7 @@ def test_a_stale_a_verb_raises_itself_keeps_the_detail_it_had():
 def test_a_pinned_stale_keeps_the_detail_it_had():
     """U161's stale moves no digest, so it binds nothing new and is left as it was."""
     state = _state()
-    with pytest.raises(gates.DecisionRequired):
-        gates.Gates(state=state).require(_spec(), plan=_plan(SHOWN, "One"), pinned={"database": "a"})
+    _reached(state, _spec(), plan=_plan(SHOWN, "One"), pinned={"database": "a"})
     gates.record(state, _spec(), "apply", actor="a-person")
     detail = _stale(state, _plan(SHOWN, "One"), pinned={"database": "b"})
     assert detail["pinned"] == "database"
@@ -142,15 +139,10 @@ def test_an_unknown_option_raised_outside_require_keeps_the_detail_it_had():
 
 
 # The screen a person reads
-
-
 def test_the_stale_screen_shows_the_moved_plan_and_the_answer_it_takes():
-    state = _answered(_spec(explicit=False))
-    with pytest.raises(gates.DecisionStale) as raised:
-        gates.Gates(state=state).require(
-            _spec(explicit=False), plan=_plan(MOVED, "One", "Made Between The Acts")
-        )
-    screen = render.render_gate(raised.value.cause)
+    spec = _spec(explicit=False)
+    moved = _plan(MOVED, "One", "Made Between The Acts")
+    screen = render.render_gate(_stale_cause(_answered(spec), spec, plan=moved))
     assert screen.splitlines()[0] == (
         "The plan moved since this gate was answered. This is the plan this run "
         "reads now, and an answer recorded on the run now is taken over it:"
@@ -163,10 +155,7 @@ def test_the_stale_screen_shows_the_moved_plan_and_the_answer_it_takes():
 
 
 def test_the_open_gates_screen_is_unchanged():
-    spec = _spec(explicit=False)
-    with pytest.raises(gates.DecisionRequired) as raised:
-        gates.Gates(state=_state()).require(spec)
-    assert render.render_gate(raised.value.cause).splitlines() == [
+    assert render.render_gate(_reached(_state(), _spec(explicit=False))).splitlines() == [
         "Apply this plan?",
         "",
         "  gate:    stale.probe",
@@ -179,8 +168,6 @@ def test_the_open_gates_screen_is_unchanged():
 
 
 # Through the dispatcher
-
-
 def _switch_off_by_hand(module: str) -> None:
     document = config.load().to_toml_dict()
     document["modules"] = {module: False}
@@ -216,11 +203,6 @@ def test_through_the_dispatcher_the_stale_refusal_shows_the_moved_plan_and_a_dec
 
 def test_only_the_gates_own_stale_prints_a_gate_screen():
     """A stale a verb raises on its write handle carries no options, so no screen is printed."""
-    state = _answered()
-    with pytest.raises(gates.DecisionStale) as offered:
-        gates.Gates(state=state).require(_spec(), plan=_plan(MOVED, "Two"))
-    with pytest.raises(gates.DecisionRequired) as opened:
-        gates.Gates(state=_state()).require(_spec())
-    assert render.is_gate_screen(offered.value.cause)
-    assert render.is_gate_screen(opened.value.cause)
+    assert render.is_gate_screen(_stale_cause(_answered(), plan=_plan(MOVED, "Two")))
+    assert render.is_gate_screen(_reached(_state(), _spec()))
     assert not render.is_gate_screen(gates.DecisionStale(_spec(), "r", SHOWN, MOVED).cause)

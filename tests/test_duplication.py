@@ -1,24 +1,19 @@
 """No newly copied block of six logical lines: the duplication check (U296).
 
-U290 point 3: removed duplication cannot grow back. A package's copied
-blocks must be on its allowance under ``tests/ratchets/duplication/``, which
-only shrinks, and since U329 every allowance is empty.
+U290 point 3: removed duplication cannot grow back. A package's copied blocks must be on its
+allowance under ``tests/ratchets/duplication/``, which only shrinks; since U329 every one is empty.
 
-Exact copies only. A logical line is one statement's tokens joined by single
-spaces, with comments, blank lines, lone strings and imports dropped, so a
-re-indented or re-wrapped copy is still a copy; a block is six or more
-consecutive logical lines standing in two or more places. The normalised
-reading also matches tables, so it stays a reading in
-``scripts/refactor_measure.py``.
+Exact copies only. A logical line is one statement's tokens joined by single spaces, comments,
+blank lines, lone strings and imports dropped, so a re-indented or re-wrapped copy is still a copy;
+a block is six or more consecutive logical lines in two or more places. The reading also matches
+tables, so it stays in ``scripts/refactor_measure.py``.
 
-The allowance is held in windows of exactly six lines, so removing a partner
-copy can only shrink what is found, where a whole block's digest would
-change in a package nobody touched. An edit bringing two stretches together
-is a new copy and fails on its own branch.
+The allowance is held in windows of exactly six lines, so removing a partner copy can only shrink
+what is found, where a whole block's digest would change in a package nobody touched. An edit
+bringing two stretches together is a new copy and fails on its own branch.
 
-A copied helper is read beside it (U329): a function body of three lines or
-more defined identically in two files, compared as syntax trees, which a
-window of six lines can miss.
+A copied helper is read beside it (U329): a function body of three lines or more defined
+identically in two files, compared as syntax trees, which a window of six lines can miss.
 """
 
 from __future__ import annotations
@@ -47,8 +42,6 @@ def _sources(**packages: str) -> dict[str, str]:
 
 
 # ── What a logical line is ───────────────────────────────────────────────────
-
-
 def test_a_logical_line_is_a_statements_tokens_joined_by_single_spaces():
     lines = measure.logical_lines("total   =   first +\\\n    second\n")
     assert [line.text for line in lines] == ["total = first + second"]
@@ -84,13 +77,10 @@ def test_a_string_inside_a_statement_is_kept_and_only_a_lone_string_is_dropped()
 
 
 # ── The rule bites: six lines, in two places ─────────────────────────────────
-
-
 def test_a_copy_of_six_lines_is_found_in_both_packages():
     held = _held(_sources(label=_block(6), sync=_block(6)))
     assert {package: sum(counts.values()) for package, counts in held.items()} == {
-        "label": 1,
-        "sync": 1,
+        "label": 1, "sync": 1,
     }
     assert set(held["label"]) == set(held["sync"])
 
@@ -121,8 +111,7 @@ def test_a_copy_that_was_only_reindented_recommented_and_rewrapped_is_still_foun
 
 
 def test_imports_do_not_count_toward_the_six_lines():
-    """Six lines of which one is an import are five lines, and the header of a
-    module is where every pair of files looks alike."""
+    """Six lines with an import are five, and a module's header is where any two files agree."""
     source = "import os\n" + _block(5)
     assert _held(_sources(label=source, sync=source)) == {}
 
@@ -139,13 +128,10 @@ def test_the_block_size_is_six_logical_lines():
 
 
 # ── The allowance: a multiset of lines that only shrinks ─────────────────────
-
-
 def test_a_block_on_the_allowance_passes_and_a_new_one_beside_it_fails():
     before = _sources(label=_block(6), sync=_block(6))
     allowed = _held(before)
     assert measure.over_allowance(_held(before), allowed) == {}
-
     fresh = _block(6, prefix="fresh")
     after = _sources(label=_block(6) + fresh, sync=_block(6), intake=fresh)
     excess = measure.over_allowance(_held(after), allowed)
@@ -180,22 +166,16 @@ def test_a_third_copy_of_an_allowed_block_in_the_same_package_fails():
 
 
 def test_removing_a_partner_copy_does_not_fail_the_package_that_kept_its_lines():
-    """Removing a partner copy cannot fail the package that kept its lines, held in windows.
-
-    ``adopt`` holds eight lines, ``tagging`` copies all eight and ``intake`` the
-    last seven; when ``tagging`` removes its copy, ``adopt`` finds a subset of its
-    allowance, where a whole block would have become a new digest.
-    """
+    """``adopt`` holds eight lines, ``tagging`` copies all eight and ``intake`` the last seven; when
+    ``tagging`` removes its copy, ``adopt`` finds a subset of its allowance, held in windows."""
     eight = _block(8)
     seven = "".join(eight.splitlines(keepends=True)[1:])
     before = _sources(adopt=eight, tagging=eight, intake=seven)
     allowed = _held(before)
-
     after = _sources(adopt=eight, tagging="shared = helper()\n", intake=seven)
     found = _held(after)
     assert measure.over_allowance(found, allowed) == {}
     assert set(found["adopt"]) < set(allowed["adopt"])
-
     blocks_before = {(run.path, run.logical) for run in measure.Copies(before).runs}
     blocks_after = {(run.path, run.logical) for run in measure.Copies(after).runs}
     assert ("src/cratekit/adopt/module.py", 8) in blocks_before
@@ -241,8 +221,6 @@ def test_a_window_is_described_by_where_it_stands():
 
 
 # ── The real package ─────────────────────────────────────────────────────────
-
-
 def test_no_package_holds_a_copied_block_beyond_its_allowance():
     sources = measure.read_sources(REPO_ROOT, [measure.SOURCE])
     copies = measure.Copies(sources)
@@ -252,7 +230,6 @@ def test_no_package_holds_a_copied_block_beyond_its_allowance():
         "too few to be the package"
     )
     assert not any(f"/{measure.VENDOR}/" in path for path in sources)
-
     allowed = measure.read_allowances(REPO_ROOT, measure.DUPLICATION_ALLOWANCES)
     excess = measure.over_allowance(copies.held(), allowed)
     problems = [
@@ -270,10 +247,9 @@ def test_no_package_holds_a_copied_block_beyond_its_allowance():
 
 # ── Identical function bodies (U329) ─────────────────────────────────────────
 #
-# A copied helper is the duplication the window reading misses: a body of three
-# statements is half a window. A body is a function's arguments and its
-# statements as syntax trees, its docstring dropped, so a re-wrapped or
-# re-documented copy is still a copy; it counts from three physical lines.
+# A copied helper is what the window reading misses: a body of three statements is half a window.
+# A body is a function's arguments and statements as syntax trees, its docstring dropped, so a
+# re-wrapped or re-documented copy is still a copy; it counts from three physical lines.
 
 BODY_LINES = 3
 
@@ -307,27 +283,22 @@ _BODY = "found = read(path)\nif strict and not found:\n    raise ValueError(path
 
 
 def test_a_body_defined_in_two_files_is_a_copy_whatever_its_docstring():
-    found = identical_bodies(
-        {
-            "src/cratekit/core/one.py": _function("load", _BODY, docstring="One way."),
-            "src/cratekit/write/two.py": _function("load", _BODY, docstring="Another way."),
-        }
-    )
+    found = identical_bodies({
+        "src/cratekit/core/one.py": _function("load", _BODY, docstring="One way."),
+        "src/cratekit/write/two.py": _function("load", _BODY, docstring="Another way."),
+    })
     assert found == [["src/cratekit/core/one.py:1 load", "src/cratekit/write/two.py:1 load"]]
 
 
 def test_a_renamed_function_with_the_same_body_is_still_a_copy():
-    found = identical_bodies(
-        {"a.py": _function("load", _BODY), "b.py": _function("read_it", _BODY)}
-    )
-    assert found == [["a.py:1 load", "b.py:1 read_it"]]
+    found = identical_bodies({"a.py": _function("load", _BODY), "b.py": _function("again", _BODY)})
+    assert found == [["a.py:1 load", "b.py:1 again"]]
 
 
 def test_a_body_under_three_lines_or_in_one_file_is_not_a_copy():
     short = "found = read(path)\nreturn found"
-    assert not identical_bodies(
-        {"a.py": _function("load", short), "b.py": _function("load", short)}
-    )
+    copied = _function("load", short)
+    assert not identical_bodies({"a.py": copied, "b.py": copied})
     twice = _function("load", _BODY) + _function("again", _BODY)
     assert not identical_bodies({"a.py": twice})
 
@@ -346,9 +317,8 @@ def test_a_method_a_nested_function_and_an_async_function_are_read():
     asynchronous = "async " + _function("load", _BODY)
     for shape in (nested, method, asynchronous):
         found = identical_bodies({"a.py": shape, "b.py": shape})
-        assert ["a.py:" in places[0] and places[0].endswith(" load") for places in found].count(
-            True
-        ) == 1, shape
+        named = ["a.py:" in places[0] and places[0].endswith(" load") for places in found]
+        assert named.count(True) == 1, shape
 
 
 def test_bodies_that_differ_in_an_argument_or_a_statement_are_not_copies():
@@ -368,7 +338,6 @@ def test_no_function_body_is_defined_identically_in_two_files():
         "Give it one home and import it from each place:\n"
         + "\n".join(", ".join(places) for places in found)
     )
-
 
 
 def test_every_duplication_allowance_is_empty():

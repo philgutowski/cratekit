@@ -33,17 +33,17 @@ from tests.test_intake_missing_isrc import fresh_cache as fresh_cache  # noqa: P
 from tests.test_intake_missing_isrc import library as library  # noqa: PLC0414 - fixture
 from tests.test_intake_missing_isrc import lists_dir
 
+
 # Fixtures
 @pytest.fixture
 def cfg(library) -> config.Config:
     """A configured machine naming the fake adapter, so one config serves intake and download."""
-    built = config.from_dict(
-        valid_data(
-            library,
-            profile={"name": "full"},
-            acquisition={"adapter": FAKE_ADAPTER, "pacing_delay_s": 0.0},
-        )
-    )
+    return _saved(library)
+
+
+def _saved(root: Path) -> config.Config:
+    acquisition = {"adapter": FAKE_ADAPTER, "pacing_delay_s": 0.0}
+    built = config.from_dict(valid_data(root, profile={"name": "full"}, acquisition=acquisition))
     config.save(built)
     config.reset_cache()
     return built
@@ -84,8 +84,7 @@ def mixed_library(library: Path) -> None:
 
 def queued(monkeypatch, rows: list[Track]) -> str:
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(StrictCatalogue(hearts=rows)))
-    code, envelope = drive(["intake", "playlist", "favorites"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = drove(["intake", "playlist", "favorites"])
     return envelope["data"]["job_id"]
 
 
@@ -95,9 +94,12 @@ def resume_argv(job_id: str) -> list[str]:
 
 
 def finished(monkeypatch, rows: list[Track]) -> str:
-    job_id = queued(monkeypatch, rows)
-    code, envelope = drive(resume_argv(job_id))
-    assert code == int(ExitCode.OK), envelope
+    return _ran(queued(monkeypatch, rows))
+
+
+def _ran(job_id: str) -> str:
+    """Resume ``job_id`` to its end, which must be a success."""
+    envelope = drove(resume_argv(job_id))
     assert envelope["data"]["state"] == "succeeded"
     return job_id
 
@@ -138,11 +140,31 @@ def edit_report(job_id: str, index: int, change) -> None:
     path.write_text(json.dumps(report))
 
 
+def unname(job_id: str, index: int) -> None:
+    """Make one report's track one no provider can be asked for, a row of a text list."""
+    edit_report(job_id, index, lambda report: report.update(
+        {"track": {**report["track"], "origin": "text", "ref": ""}}))
+
+
 def human(argv: list[str]) -> tuple[int, str]:
     """The DEFAULT output a person reads, which a json only driver cannot see."""
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)
     return code, out.getvalue() + err.getvalue()
+
+
+def told(argv: list[str]) -> str:
+    """What a person reads of ``argv``, which must succeed."""
+    code, text = human(argv)
+    assert code == int(ExitCode.OK), text
+    return text
+
+
+def drove(argv: list[str]) -> dict:
+    """The envelope of ``argv``, which must succeed."""
+    code, envelope = drive(argv)
+    assert code == int(ExitCode.OK), envelope
+    return envelope
 
 
 def tombstone(cfg: config.Config, artist: str, title: str) -> None:
@@ -208,8 +230,7 @@ def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch, tmp
     assert (summary["written"], summary["missing"]) == (2, 2)
     assert (summary["owned_since"], summary["suppressed_since"], summary["offered_since"]) == (0, 0, 0)
     # THE DEFAULT OUTPUT a person reads names the list and the next command.
-    code, text = human(["intake", "missing", "--job", job_id])
-    assert code == int(ExitCode.OK), text
+    text = told(["intake", "missing", "--job", job_id])
     assert f"[ok  ] intake.missing.written: 2 missing track(s) written to {expected}" in text
     assert f"next: crate acquire download {expected}" in text
     assert "intake.missing.offered: 1 offered for review" in text
@@ -218,13 +239,11 @@ def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch, tmp
     monkeypatch.setitem(acquire.ADAPTERS, FAKE_ADAPTER, FAKE_DECLARATION)
     monkeypatch.setattr(FakeAdapter, "script", script)
     monkeypatch.setattr(acquire_cli, "_SLEEP", lambda _seconds: None)
-    code, queued_download = drive(["acquire", "download", str(expected)])
-    assert code == int(ExitCode.OK), queued_download
+    queued_download = drove(["acquire", "download", str(expected)])
     download_id = queued_download["data"]["job_id"]
     with jobs.open_store() as store:
         assert [item.item_id for item in jobs.items(store, download_id)] == ["204", "205"]
-    code, ran = drive(resume_argv(download_id))
-    assert code == int(ExitCode.OK), ran
+    ran = drove(resume_argv(download_id))
     assert ran["data"]["state"] == "succeeded"
     assert sorted(request.key for request in script.fetched) == ["204", "205"]
 
@@ -241,11 +260,8 @@ def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch, tmp
         # R-667: the artist tag lists every credit, the row names one, both carry the ISRC.
         (
             "04A - 126 - Malive, Tito Azevedo, MRQZ - Burning (Extended Mix).flac",
-            {
-                "artist": "Malive, Tito Azevedo, MRQZ",
-                "title": "04A - 126 - Burning (Extended Mix)",
-                "isrc": "USNRS2644532",
-            },
+            {"artist": "Malive, Tito Azevedo, MRQZ", "title": "04A - 126 - Burning (Extended Mix)",
+             "isrc": "USNRS2644532"},
             ("301", "Malive", "Burning (Extended Mix)", "USNRS2644532"),
         ),
         # R-667's second rule: no ISRC tag, held by the primary artist in the credited list.
@@ -336,8 +352,7 @@ def test_a_row_a_person_answered_as_another_track_stays_listed(cfg, library, mon
     with jobs.open_store() as store:
         (report,) = missing_cli.job_reports(store, jobs.get(store, asked))
     assert report["state"] == "offered"
-    code, answered = drive(["review", "resolve", report["review_item"], "--verdict", "rejected"])
-    assert code == int(ExitCode.OK), answered
+    drove(["review", "resolve", report["review_item"], "--verdict", "rejected"])
     job_id = finished(monkeypatch, [Track("202", "Nova Reef", "Tide")])
     envelope, summary = ok(job_id)
     assert (summary["written"], summary["missing"], summary["offered_since"]) == (1, 1, 0)
@@ -354,8 +369,7 @@ def offered_item(job_id: str) -> str:
 
 
 def answer(job_id: str, verdict: str) -> None:
-    code, answered = drive(["review", "resolve", offered_item(job_id), "--verdict", verdict])
-    assert code == int(ExitCode.OK), answered
+    drove(["review", "resolve", offered_item(job_id), "--verdict", verdict])
 
 
 def checks_of(envelope: dict) -> dict[str, dict]:
@@ -440,23 +454,13 @@ def test_an_offered_row_nobody_answered_is_unchanged_and_asks_nothing(cfg, libra
 def test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it(
     cfg, library, monkeypatch, tmp_path
 ):
-    """A job freezes the configuration it was queued against, and the library's root may move after
-    it."""
+    """A job freezes the configuration it was queued against, and the library's root may move."""
     job_id = mixed_job(library, monkeypatch)
     moved = tmp_path / "moved"
     library.rename(moved)
     # The file moves the root, not the environment, whose override re-bases both.
     monkeypatch.delenv(config.ENV_LIBRARY_ROOT)
-    config.save(
-        config.from_dict(
-            valid_data(
-                moved,
-                profile={"name": "full"},
-                acquisition={"adapter": FAKE_ADAPTER, "pacing_delay_s": 0.0},
-            )
-        )
-    )
-    config.reset_cache()
+    _saved(moved)
     owned(moved, "Lumen Drift - Salt Road.flac")
     owned(moved, "Kite Harbor - Low Tide Signal.flac")
     envelope = ok(job_id)[0]
@@ -494,12 +498,10 @@ def withheld(envelope: dict) -> list[dict]:
 
 def test_a_short_hearts_listing_is_queued_and_says_by_how_much(cfg, library, monkeypatch):
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Withholding(hearts(), declared=7)))
-    code, text = human(["intake", "playlist", "favorites"])
-    assert code == int(ExitCode.OK), text
+    text = told(["intake", "playlist", "favorites"])
     assert "warning [intake-hearts-withheld]:" in text
     assert "7 declared, 5 listed, 2 withheld by the provider" in text
-    code, envelope = drive(["intake", "playlist", "favorites"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = drove(["intake", "playlist", "favorites"])
     assert envelope["outcome"] == "ok"
     assert envelope["data"]["progress"]["shortfall"] == {"declared": 7, "listed": 5, "withheld": 2}
     (warning,) = withheld(envelope)
@@ -509,16 +511,14 @@ def test_a_short_hearts_listing_is_queued_and_says_by_how_much(cfg, library, mon
     assert [item.item_id for item in items] == ["201", "202", "203", "204", "205"]
     # WHAT CAME BACK IS STILL LISTED, through to the missing list.
     mixed_library(library)
-    code, done = drive(resume_argv(envelope["data"]["job_id"]))
-    assert code == int(ExitCode.OK), done
+    drove(resume_argv(envelope["data"]["job_id"]))
     listed = ok(envelope["data"]["job_id"])[0]
     assert listed["data"]["summary"]["written"] == 2
 
 
 def test_a_complete_hearts_listing_says_nothing_of_a_shortfall(cfg, library, monkeypatch):
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(StrictCatalogue(hearts=hearts())))
-    code, envelope = drive(["intake", "playlist", "favorites"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = drove(["intake", "playlist", "favorites"])
     assert withheld(envelope) == []
     assert "shortfall" not in envelope["data"]["progress"]
 
@@ -526,8 +526,7 @@ def test_a_complete_hearts_listing_says_nothing_of_a_shortfall(cfg, library, mon
 def test_hearts_all_withheld_are_not_read_as_an_account_with_none(cfg, library, monkeypatch):
     """Nothing to queue, and still not the quiet no-op an empty account gets."""
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Withholding([], declared=3)))
-    code, envelope = drive(["intake", "playlist", "favorites"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = drove(["intake", "playlist", "favorites"])
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["progress"]["shortfall"] == {"declared": 3, "listed": 0, "withheld": 3}
     (warning,) = withheld(envelope)
@@ -548,12 +547,7 @@ def test_an_open_job_is_refused_and_nothing_is_written(cfg, library, monkeypatch
 
 def test_a_failed_job_is_refused_carrying_its_own_cause(cfg, library, monkeypatch):
     job_id = queued(monkeypatch, hearts())
-    cause = Cause(
-        reason="internal-error", message="stopped for the test",
-        remediation=Remediation(steps=("nothing",)), origin=("test",),
-    )
-    with jobs.open_store() as store:
-        jobs.transition(store, job_id, jobs.JobState.FAILED, cause=cause)
+    fail(job_id)
     envelope = refused(job_id)
     assert envelope["cause"]["inner"]["message"] == "stopped for the test"
     assert not lists_dir(library).exists()
@@ -584,10 +578,8 @@ def test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset(
     assert "'201'" in refused(job_id)["cause"]["message"]
     paths[0].write_text(kept[0])
     # A MISSING ROW FROM NO PROVIDER stands for any row the provider cannot be asked for.
-    edit_report(job_id, 4, lambda report: report.update(
-        {"track": {**report["track"], "origin": "text", "ref": ""}}))
-    code, text = human(["intake", "missing", "--job", job_id])
-    assert code == int(ExitCode.OK), text
+    unname(job_id, 4)
+    text = told(["intake", "missing", "--job", job_id])
     assert "[FAIL] intake.missing.unlisted: 1 missing track(s)" in text
     _code, envelope = missing(job_id)
     assert envelope["data"]["summary"]["unlisted_tracks"] == [
@@ -626,11 +618,7 @@ def test_missing_tracks_none_of_which_can_be_listed_write_the_unlisted_list_not_
 ):
     """Nothing nameable is not a no-op: the track is handed on to a text list and said so."""
     job_id = finished(monkeypatch, [Track("205", "Kite Harbor", "Low Tide Signal")])
-    edit_report(
-        job_id,
-        0,
-        lambda report: report.update({"track": {**report["track"], "origin": "text", "ref": ""}}),
-    )
+    unname(job_id, 0)
     envelope = ok(job_id)[0]
     assert envelope["outcome"] == "ok"
     summary = envelope["data"]["summary"]
@@ -713,11 +701,7 @@ def in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN) -> str:
 
 
 def finished_in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN) -> str:
-    job_id = in_run(cfg, reference, rows, run_id=run_id)
-    code, envelope = drive(resume_argv(job_id))
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["state"] == "succeeded"
-    return job_id
+    return _ran(in_run(cfg, reference, rows, run_id=run_id))
 
 
 def fail(job_id: str) -> None:
@@ -765,8 +749,7 @@ def test_two_playlists_sharing_a_track_list_it_once_with_both_provenances(cfg, l
     assert rows["204"]["source_refs"] == ["pl-a", "pl-b"]
     assert (rows["205"]["source_ref"], rows["206"]["source_ref"]) == ("pl-a", "pl-b")
     assert "source_refs" not in rows["205"] and "source_refs" not in rows["206"]
-    code, text = human(["intake", "missing", "--run", RUN])
-    assert code == int(ExitCode.OK), text
+    text = told(["intake", "missing", "--run", RUN])
     assert f"next: crate acquire download {lists_dir(library) / RUN_LIST}" in text
     # R-770: the hint names the batch and which medium wants the export. ``--pass``,
     # never ``--name`` (U110): the run names the intake file sync mark reads.
@@ -838,9 +821,8 @@ def test_a_run_lists_only_its_own_finished_jobs_and_names_the_rest(
     assert broken in skipped["detail"] and "pl-b" in skipped["detail"]
     # JOBS NO RUN OF THIS LIBRARY OWNS are left OPEN, so a selection that took one refuses:
     # another library's job in the run, another verb's, and one queued by hand.
-    elsewhere = dataclasses.replace(
-        cfg, library=dataclasses.replace(cfg.library, volume_id="0000-0000")
-    )
+    lib = dataclasses.replace(cfg.library, volume_id="0000-0000")
+    elsewhere = dataclasses.replace(cfg, library=lib)
     in_run(elsewhere, "pl-c", [Track("206", "Sable Cove", "Quiet Pier")])
     with jobs.open_store() as store:
         jobs.enqueue(
@@ -851,8 +833,7 @@ def test_a_run_lists_only_its_own_finished_jobs_and_names_the_rest(
     envelope, summary = run_ok("--skip-failed")
     assert (summary["jobs"], ids(summary)) == ([kept], ["204"])
     # TRACKS ONLY HANDED ON are written to the text list rather than refused.
-    edit_report(kept, 0, lambda report: report.update(
-        {"track": {**report["track"], "origin": "text", "ref": ""}}))
+    unname(kept, 0)
     envelope, summary = run_ok("--skip-failed", "--out", str(tmp_path / "handed"))
     assert (summary["written"], summary["unlisted"], summary["skipped"]) == (0, 1, [broken])
     assert Path(summary["unlisted_list"]).is_file()
@@ -933,12 +914,10 @@ def test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns(
     cfg, library, monkeypatch
 ):
     bind_playlist(monkeypatch, eight(), declared=10)
-    code, text = human(["intake", "playlist", SHORT])
-    assert code == int(ExitCode.OK), text
+    text = told(["intake", "playlist", SHORT])
     assert "warning [intake-playlist-withheld]:" in text
     assert "10 declared, 8 listed, 2 withheld by the provider" in text
-    code, envelope = drive(["intake", "playlist", SHORT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = drove(["intake", "playlist", SHORT])
     assert envelope["outcome"] == "ok"
     with jobs.open_store() as store:
         items = jobs.items(store, envelope["data"]["job_id"])
@@ -954,16 +933,14 @@ def test_a_full_playlist_listing_or_one_with_no_declared_count_warns_nothing(
     cfg, library, monkeypatch, declared
 ):
     bind_playlist(monkeypatch, eight(), declared=declared)
-    code, envelope = drive(["intake", "playlist", SHORT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = drove(["intake", "playlist", SHORT])
     assert playlist_withheld(envelope) == []
     assert "shortfall" not in envelope["data"]["progress"]
 
 
 def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(cfg, library, monkeypatch):
     bind_playlist(monkeypatch, [], declared=3)
-    code, envelope = drive(["intake", "playlist", SHORT])
-    assert code == int(ExitCode.OK), envelope
+    envelope = drove(["intake", "playlist", SHORT])
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["progress"]["shortfall"] == {"declared": 3, "listed": 0, "withheld": 3}
     assert len(playlist_withheld(envelope)) == 1

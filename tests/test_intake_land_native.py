@@ -302,9 +302,15 @@ def _two_acts(verb: list[str], gate: str = GATE) -> tuple[int, dict, dict]:
 
 def _landed_ok(verb: list[str] | None = None) -> dict:
     """Both acts of ``verb`` (the batch's landing by default), which must succeed."""
-    code, acted, _ = _two_acts(_land() if verb is None else verb)
+    return _lands(verb=verb)[0]
+
+
+def _lands(*extra: str, verb: list[str] | None = None) -> tuple[dict, dict]:
+    """Both acts of the batch's landing with ``extra``, or of ``verb``, which must succeed:
+    (acted, refused)."""
+    code, acted, refused = _two_acts(_land(*extra) if verb is None else verb)
     assert code == int(ExitCode.OK), acted
-    return acted
+    return acted, refused
 
 
 def _land_fails() -> dict:
@@ -575,7 +581,6 @@ def test_an_approval_at_one_link_is_not_applied_at_another_and_no_majority_refus
     assert code != int(ExitCode.OK), acted
     assert _landed_rows(cfg) == []
     assert _staged_names(cfg) == ["One.flac"]
-
     _set_links(cfg, {"2": 30})
     rows_before = _query(cfg, "SELECT COUNT(*) FROM djmdContent")
     code, refused = drive(_land())
@@ -606,7 +611,6 @@ def test_the_link_its_count_the_playlist_and_each_file_move_the_digest(one_stage
     second = _asked(_land())
     _stage(cfg, silence, "Two.flac")
     grown = _asked(_land())
-
     (one,) = first["cause"]["detail"]["shown"]["items"]
     (two,) = second["cause"]["detail"]["shown"]["items"]
     assert one["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
@@ -939,7 +943,6 @@ def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commi
     from sqlalchemy import text
 
     cfg = one_staged
-
     real = native._restamp
 
     def restamp_and_taint(content, row, plan):
@@ -1111,7 +1114,6 @@ def test_the_engine_identity_names_the_device_and_master_id_and_no_database_path
         assert "database" not in one
         named = _strings(one)
         assert not [s for s in named if str(database) in s or str(database.parent) == s], named
-
     plan = plans[-1]
     base = digest_of(real(plan))
     elsewhere = replace(plan, database=Path(cfg.library.root) / "rehearsal" / "master.db")

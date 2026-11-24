@@ -1,8 +1,7 @@
 """The suite's disposable database is built once per worker and copied (U256).
 
-Every caller still gets a file of its own that no other caller can see or
-change, and the file is the database a build from nothing would make, its
-timestamps aside.
+Every caller still gets a file of its own that no other caller can see or change, and the file is
+the database a build from nothing would make, its timestamps aside.
 """
 
 from __future__ import annotations
@@ -11,6 +10,7 @@ import hashlib
 import os
 import sqlite3
 import stat
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -39,12 +39,14 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _read(path: Path, statement: str) -> list[tuple]:
+    """One query's rows from the file, read with no binding."""
+    with closing(sqlite3.connect(path)) as conn:
+        return conn.execute(statement).fetchall()
+
+
 def _titles(path: Path) -> dict[str, str]:
-    conn = sqlite3.connect(path)
-    try:
-        return dict(conn.execute("SELECT ID, Title FROM djmdContent ORDER BY ID"))
-    finally:
-        conn.close()
+    return dict(_read(path, "SELECT ID, Title FROM djmdContent ORDER BY ID"))
 
 
 def _stamp_columns() -> dict[str, set[str]]:
@@ -60,8 +62,7 @@ def _stamp_columns() -> dict[str, set[str]]:
 def _contents(path: Path) -> dict[str, object]:
     """Everything in the file, each timestamp read as whether it is set."""
     stamps = _stamp_columns()
-    conn = sqlite3.connect(path)
-    try:
+    with closing(sqlite3.connect(path)) as conn:
         schema = sorted(conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master"))
         modes = {
             pragma: conn.execute(f"PRAGMA {pragma}").fetchone()[0]
@@ -80,30 +81,20 @@ def _contents(path: Path) -> dict[str, object]:
                 for row in cursor
             )
         return {"schema": schema, "modes": modes, "rows": rows}
-    finally:
-        conn.close()
 
 
-def test_a_database_written_and_encrypted_leaves_its_sibling_and_the_next_untouched(
-    tmp_path, cold
-):
+def test_a_database_written_and_encrypted_leaves_its_sibling_and_the_next_untouched(tmp_path, cold):
     """One copy written, altered and encrypted leaves the copies before and after it."""
-    first = tmp_path / "first" / "master.db"
-    second = tmp_path / "second" / "master.db"
+    first, second, after = (tmp_path / name / "master.db" for name in ("first", "second", "after"))
     fixture._build_disposable_database(first)
     fixture._build_disposable_database(second)
     before = _digest(second)
-
-    conn = sqlite3.connect(first)
-    conn.execute("UPDATE djmdContent SET Title = 'changed' WHERE ID = '1'")
-    conn.execute("ALTER TABLE djmdContent ADD COLUMN u256_probe TEXT")
-    conn.commit()
-    conn.close()
+    with closing(sqlite3.connect(first)) as conn:
+        conn.execute("UPDATE djmdContent SET Title = 'changed' WHERE ID = '1'")
+        conn.execute("ALTER TABLE djmdContent ADD COLUMN u256_probe TEXT")
+        conn.commit()
     fixture._encrypt_in_place(first)
-
-    after = tmp_path / "after" / "master.db"
     fixture._build_disposable_database(after)
-
     assert _digest(second) == before
     assert _titles(second) == {"1": "a track", "2": "another track"}
     assert _digest(after) == before
@@ -113,18 +104,14 @@ def test_a_database_written_and_encrypted_leaves_its_sibling_and_the_next_untouc
 
 
 @pytest.mark.parametrize("with_tag_category", [True, False], ids=["tagged", "untagged"])
-def test_a_copy_is_the_database_a_build_from_nothing_makes(
-    tmp_path, cold, with_tag_category
-):
+def test_a_copy_is_the_database_a_build_from_nothing_makes(tmp_path, cold, with_tag_category):
     """Table by table and row by row, schema and journal mode with them, stamps aside."""
     copied = tmp_path / "copied" / "master.db"
     fixture._build_disposable_database(copied, with_tag_category=with_tag_category)
     built = tmp_path / "built" / "master.db"
     built.parent.mkdir()
-    fixture._build_from_nothing(
-        built, with_tag_category=with_tag_category, db_version=W.pinned_db_version()
-    )
-
+    pin = W.pinned_db_version()
+    fixture._build_from_nothing(built, with_tag_category=with_tag_category, db_version=pin)
     copy, scratch = _contents(copied), _contents(built)
     assert copy == scratch
     assert copy["modes"]["journal_mode"] == "wal"
@@ -132,9 +119,7 @@ def test_a_copy_is_the_database_a_build_from_nothing_makes(
     assert not copied.with_name("master.db-wal").exists()
 
 
-def test_each_variant_is_built_from_nothing_once_and_every_call_gets_its_own_file(
-    tmp_path, cold
-):
+def test_each_variant_is_built_from_nothing_once_and_every_call_gets_its_own_file(tmp_path, cold):
     """The count the card asks for: one schema creation per variant, not one a call."""
     paths = []
     for index in range(4):
@@ -142,53 +127,37 @@ def test_each_variant_is_built_from_nothing_once_and_every_call_gets_its_own_fil
             path = tmp_path / f"{index}-{tagged}" / "master.db"
             fixture._build_disposable_database(path, with_tag_category=tagged)
             paths.append((path, tagged))
-
     assert len(cold) == 2
     assert len({path.stat().st_ino for path, _ in paths}) == len(paths)
     for path, tagged in paths:
-        conn = sqlite3.connect(path)
-        try:
-            (tags,) = conn.execute("SELECT COUNT(*) FROM djmdMyTag").fetchone()
-        finally:
-            conn.close()
+        ((tags,),) = _read(path, "SELECT COUNT(*) FROM djmdMyTag")
         assert tags == (1 if tagged else 0)
 
 
 def test_the_schema_pin_read_at_the_call_reaches_the_file(tmp_path, cold, monkeypatch):
     """A test that configures another pin before it builds finds that pin in its file."""
-
-    def version(path: Path) -> str:
-        conn = sqlite3.connect(path)
-        try:
-            return conn.execute("SELECT DBVersion FROM djmdProperty").fetchone()[0]
-        finally:
-            conn.close()
-
     shipped = W.pinned_db_version()
     fixture._build_disposable_database(tmp_path / "a" / "master.db")
     monkeypatch.setattr(W, "pinned_db_version", lambda *args, **kwargs: "5999")
     fixture._build_disposable_database(tmp_path / "b" / "master.db")
     monkeypatch.setattr(W, "pinned_db_version", lambda *args, **kwargs: shipped)
     fixture._build_disposable_database(tmp_path / "c" / "master.db")
-
-    assert version(tmp_path / "a" / "master.db") == shipped
-    assert version(tmp_path / "b" / "master.db") == "5999"
-    assert version(tmp_path / "c" / "master.db") == shipped
+    versions = {
+        name: _read(tmp_path / name / "master.db", "SELECT DBVersion FROM djmdProperty")[0][0]
+        for name in ("a", "b", "c")
+    }
+    assert versions == {"a": shipped, "b": "5999", "c": shipped}
     assert len(cold) == 2
 
 
 @pytest.mark.parametrize("present", ["", "-wal", "-shm", "-journal"], ids=lambda s: s or "file")
-def test_a_path_already_holding_a_file_is_built_from_nothing_as_before(
-    tmp_path, cold, present
-):
+def test_a_path_already_holding_a_file_is_built_from_nothing_as_before(tmp_path, cold, present):
     """Nothing already at the path is written over by a copy."""
     fixture._build_disposable_database(tmp_path / "warm" / "master.db")
     path = tmp_path / "db" / "master.db"
     path.parent.mkdir()
     Path(f"{path}{present}").write_bytes(b"")
-
     fixture._build_disposable_database(path)
-
     assert len(cold) == 2
     assert _titles(path) == {"1": "a track", "2": "another track"}
 
@@ -208,50 +177,34 @@ def test_a_copy_carries_the_rows_the_safety_chain_reads(tmp_path, cold, with_tag
     """The rows named here, so a row dropped from both build and copy is caught."""
     path = tmp_path / "db" / "master.db"
     fixture._build_disposable_database(path, with_tag_category=with_tag_category)
-
-    conn = sqlite3.connect(path)
-    try:
-        registry = conn.execute(
-            "SELECT registry_id, int_1 FROM agentRegistry ORDER BY registry_id"
-        ).fetchall()
-        property_rows = conn.execute("SELECT DBID, DBVersion FROM djmdProperty").fetchall()
-        content = conn.execute(
-            "SELECT ID, Title, rb_local_deleted FROM djmdContent ORDER BY ID"
-        ).fetchall()
-        tags = conn.execute(
-            "SELECT ID, Name, Attribute, ParentID, Seq, UUID FROM djmdMyTag"
-        ).fetchall()
-        unstamped = [
-            (table, column)
-            for table, columns in _stamp_columns().items()
-            if table in ("agentRegistry", "djmdProperty", "djmdContent", "djmdMyTag")
-            for column in sorted(columns)
-            if column in ("created_at", "updated_at")
-            and conn.execute(f'SELECT COUNT(*) FROM "{table}" WHERE "{column}" IS NULL').fetchone()[0]
-        ]
-    finally:
-        conn.close()
-
+    unstamped = [
+        (table, column)
+        for table, columns in _stamp_columns().items()
+        if table in ("agentRegistry", "djmdProperty", "djmdContent", "djmdMyTag")
+        for column in sorted(columns)
+        if column in ("created_at", "updated_at")
+        and _read(path, f'SELECT COUNT(*) FROM "{table}" WHERE "{column}" IS NULL')[0][0]
+    ]
+    registry = _read(path, "SELECT registry_id, int_1 FROM agentRegistry ORDER BY registry_id")
     assert registry == [("localUpdateCount", 100)]
-    assert property_rows == [("1", W.pinned_db_version())]
+    assert _read(path, "SELECT DBID, DBVersion FROM djmdProperty") == [("1", W.pinned_db_version())]
+    content = _read(path, "SELECT ID, Title, rb_local_deleted FROM djmdContent ORDER BY ID")
     assert content == [("1", "a track", 0), ("2", "another track", 0)]
+    tags = _read(path, "SELECT ID, Name, Attribute, ParentID, Seq, UUID FROM djmdMyTag")
     assert tags == ([("10", "a category", 0, "0", 0, "category-uuid")] if with_tag_category else [])
     assert unstamped == []
 
 
 def test_a_copy_has_the_mode_a_build_from_nothing_has_under_a_loose_umask(tmp_path, cold):
-    """SQLite creates at 0644 before the umask, a plain create at 0666, told apart
-    only under a looser umask than 022."""
+    """SQLite creates at 0644 before the umask, a plain create at 0666, told apart only under a
+    looser umask than 022."""
     copied = tmp_path / "copied" / "master.db"
     built = tmp_path / "built" / "master.db"
     built.parent.mkdir()
     previous = os.umask(0o002)
     try:
         fixture._build_disposable_database(copied)
-        fixture._build_from_nothing(
-            built, with_tag_category=True, db_version=W.pinned_db_version()
-        )
+        fixture._build_from_nothing(built, with_tag_category=True, db_version=W.pinned_db_version())
     finally:
         os.umask(previous)
-
     assert stat.S_IMODE(copied.stat().st_mode) == stat.S_IMODE(built.stat().st_mode) == 0o644

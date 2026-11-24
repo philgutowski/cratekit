@@ -25,18 +25,12 @@ SCRIPT = REPO_ROOT / "scripts" / "head_agreement.py"
 @pytest.mark.parametrize(
     ("head", "reference", "bucket"),
     [
-        (127, 127.00, agreement.EQUAL),
-        (127, 126.50, agreement.EQUAL),
-        (127, 127.49, agreement.EQUAL),
-        (129, 127.00, agreement.OFF_ONE_TO_THREE),
-        (112, 110.11, agreement.OFF_ONE_TO_THREE),
-        (120, 123.00, agreement.OFF_ONE_TO_THREE),
-        (124, 120.00, agreement.OTHER_LEVEL),
-        (83, 166.00, agreement.HALF_OR_DOUBLE),
-        (166, 83.13, agreement.HALF_OR_DOUBLE),
-        (83, 126.00, agreement.OTHER_LEVEL),
-        (123, 90.96, agreement.OTHER_LEVEL),
-        (120, 0.0, agreement.OTHER_LEVEL),
+        (127, 127.00, agreement.EQUAL), (127, 126.50, agreement.EQUAL),
+        (127, 127.49, agreement.EQUAL), (129, 127.00, agreement.OFF_ONE_TO_THREE),
+        (112, 110.11, agreement.OFF_ONE_TO_THREE), (120, 123.00, agreement.OFF_ONE_TO_THREE),
+        (124, 120.00, agreement.OTHER_LEVEL), (83, 166.00, agreement.HALF_OR_DOUBLE),
+        (166, 83.13, agreement.HALF_OR_DOUBLE), (83, 126.00, agreement.OTHER_LEVEL),
+        (123, 90.96, agreement.OTHER_LEVEL), (120, 0.0, agreement.OTHER_LEVEL),
     ],
 )
 def test_the_four_tempo_buckets(head, reference, bucket):
@@ -51,30 +45,11 @@ def test_a_head_rounds_half_up_the_way_the_source_system_did():
 @pytest.mark.parametrize(
     ("name", "camelot"),
     [
-        ("8A", "08A"),
-        ("08A", "08A"),
-        ("12B", "12B"),
-        ("Am", "08A"),
-        ("F#m", "11A"),
-        ("Gbm", "11A"),
-        ("Dbm", "12A"),
-        ("C#m", "12A"),
-        ("Db", "03B"),
-        ("C#", "03B"),
-        ("Gb", "02B"),
-        ("F#", "02B"),
-        ("C", "08B"),
-        ("Abm", "01A"),
-        ("G#m", "01A"),
-        ("Bb", "06B"),
-        ("A#", "06B"),
-        ("  8a ", "08A"),
-        ("", None),
-        (None, None),
-        ("13A", None),
-        ("0A", None),
-        ("H", None),
-        ("Amaj", None),
+        ("8A", "08A"), ("08A", "08A"), ("12B", "12B"), ("Am", "08A"), ("F#m", "11A"),
+        ("Gbm", "11A"), ("Dbm", "12A"), ("C#m", "12A"), ("Db", "03B"), ("C#", "03B"),
+        ("Gb", "02B"), ("F#", "02B"), ("C", "08B"), ("Abm", "01A"), ("G#m", "01A"),
+        ("Bb", "06B"), ("A#", "06B"), ("  8a ", "08A"),
+        ("", None), (None, None), ("13A", None), ("0A", None), ("H", None), ("Amaj", None),
     ],
 )
 def test_either_key_notation_maps_to_one_padded_camelot(name, camelot):
@@ -89,11 +64,8 @@ def test_every_classic_name_reaches_one_of_the_twenty_four_codes():
 
 def _row_of(identifier, filename, hundredths, scale_name):
     return agreement.HeadRow(
-        identifier=identifier,
-        filename=filename,
-        stored_hundredths=hundredths,
-        scale_name=scale_name,
-        folder_path=None,
+        identifier=identifier, filename=filename, stored_hundredths=hundredths,
+        scale_name=scale_name, folder_path=None,
     )
 
 
@@ -117,9 +89,7 @@ def test_the_comparison_buckets_every_row_and_counts_what_it_could_not_compare()
     assert found.no_head == 1
     assert found.unanalysed == 2
     assert dict(found.tempo) == {
-        agreement.EQUAL: 3,
-        agreement.OFF_ONE_TO_THREE: 1,
-        agreement.HALF_OR_DOUBLE: 1,
+        agreement.EQUAL: 3, agreement.OFF_ONE_TO_THREE: 1, agreement.HALF_OR_DOUBLE: 1,
         agreement.OTHER_LEVEL: 2,
     }
     assert found.within_one == 3
@@ -154,17 +124,22 @@ def test_the_detector_head_is_its_tempo_with_no_key_and_a_terminal_is_none():
     assert agreement.head_from_detection(None) is None
 
 
-def test_reanalysis_samples_rekordbox_own_rows_with_a_file_and_buckets_the_detector(
-    tmp_path, monkeypatch
-):
+def _own_file(tmp_path, monkeypatch) -> tuple[Path, config.Config, Path]:
+    """A library root, its configuration, and one empty file in its music folder."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     # The suite's conftest points the library root elsewhere through the
     # environment, and the environment wins over the mapping.
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    cfg = config.from_dict(valid_data(root))
     on_disk = root / "Music" / "own.flac"
     on_disk.write_bytes(b"")
+    return root, config.from_dict(valid_data(root)), on_disk
+
+
+def test_reanalysis_samples_rekordbox_own_rows_with_a_file_and_buckets_the_detector(
+    tmp_path, monkeypatch
+):
+    root, cfg, on_disk = _own_file(tmp_path, monkeypatch)
     rows = [
         agreement.HeadRow("1", "01A - 100 - own.flac", 12650, "8A", str(on_disk)),
         agreement.HeadRow("2", "01A - 100 - imported.flac", 12700, "8A", str(on_disk)),
@@ -185,12 +160,7 @@ def test_reanalysis_samples_rekordbox_own_rows_with_a_file_and_buckets_the_detec
 
 
 def test_the_sample_stops_resolving_rows_once_it_is_full(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    cfg = config.from_dict(valid_data(root))
-    on_disk = root / "Music" / "own.flac"
-    on_disk.write_bytes(b"")
+    _root, cfg, on_disk = _own_file(tmp_path, monkeypatch)
     rows = [
         agreement.HeadRow(str(n), "01A - 100 - own.flac", 12650, "8A", str(on_disk))
         for n in range(1, 41)
@@ -217,9 +187,7 @@ def test_the_sample_stops_resolving_rows_once_it_is_full(tmp_path, monkeypatch):
 def test_the_script_refuses_a_step_below_one_before_it_reads_anything():
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), "--analyse", "3", "--step", "0"],
-        capture_output=True,
-        text=True,
-        check=False,
+        capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 2
     assert "--step must be one or more" in completed.stderr
@@ -233,11 +201,8 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
+    settings = {rb_writer.LIBRARY_SYNC_SETTING: 0}
+    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: settings)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
@@ -268,12 +233,8 @@ def _fixture_library(tmp_path, monkeypatch) -> config.Config:
     (root / "db").mkdir(parents=True)
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    data = valid_data(
-        root,
-        profile={"name": "full"},
-        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
-    )
-    cfg = config.from_dict(data)
+    pinned = {"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"}
+    cfg = config.from_dict(valid_data(root, profile={"name": "full"}, rekordbox=pinned))
     config.save(cfg)
     config.reset_cache()
     _build_disposable_database(Path(cfg.library.db_path), with_tag_category=False)
@@ -285,32 +246,16 @@ def _fixture_library(tmp_path, monkeypatch) -> config.Config:
             key_ids[name] = str(500 + index)
             db_session.add(_row(tables.DjmdKey, ID=key_ids[name], ScaleName=name, Seq=index))
         for identifier, filename, hundredths, name in FIXTURE_ROWS:
-            db_session.add(
-                _row(
-                    tables.DjmdContent,
-                    ID=identifier,
-                    Title=filename,
-                    FileNameL=filename,
-                    FolderPath=str(root / "Music" / filename),
-                    BPM=hundredths,
-                    KeyID=key_ids[name],
-                    Length=300,
-                    FileType=5,
-                    rb_local_deleted=0,
-                )
-            )
+            db_session.add(_row(
+                tables.DjmdContent, ID=identifier, Title=filename, FileNameL=filename,
+                FolderPath=str(root / "Music" / filename), BPM=hundredths, KeyID=key_ids[name],
+                Length=300, FileType=5, rb_local_deleted=0,
+            ))
         # A deleted row is not a row.
-        db_session.add(
-            _row(
-                tables.DjmdContent,
-                ID="19",
-                Title="gone",
-                FileNameL="01A - 100 - gone.flac",
-                BPM=10000,
-                KeyID=key_ids["8A"],
-                rb_local_deleted=1,
-            )
-        )
+        db_session.add(_row(
+            tables.DjmdContent, ID="19", Title="gone", FileNameL="01A - 100 - gone.flac",
+            BPM=10000, KeyID=key_ids["8A"], rb_local_deleted=1,
+        ))
         db_session.commit()
     engine.dispose()
     return cfg
@@ -333,9 +278,7 @@ def test_the_measurement_reads_a_disposable_copy_and_buckets_the_fixture(tmp_pat
     assert found.no_head == 3
     assert found.unanalysed == 1
     assert dict(found.tempo) == {
-        agreement.EQUAL: 2,
-        agreement.OFF_ONE_TO_THREE: 1,
-        agreement.HALF_OR_DOUBLE: 1,
+        agreement.EQUAL: 2, agreement.OFF_ONE_TO_THREE: 1, agreement.HALF_OR_DOUBLE: 1,
         agreement.OTHER_LEVEL: 2,
     }
     assert dict(found.key) == {agreement.KEY_EQUAL: 4, agreement.KEY_DIFFERS: 2}
@@ -396,20 +339,13 @@ def test_the_script_prints_the_four_buckets_over_a_fixture_copy(tmp_path, monkey
     env["PYTHONPATH"] = str(sitecustomize)
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), "--database", str(copy)],
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
+        capture_output=True, text=True, env=env, check=False,
     )
     assert completed.returncode == 0, completed.stderr
     out = completed.stdout
     for line in (
-        "tempo equal: 2",
-        "tempo off one to three: 1",
-        "tempo half or double: 1",
-        "tempo other level: 2",
-        "key equal: 4",
-        "key differs: 2",
+        "tempo equal: 2", "tempo off one to three: 1", "tempo half or double: 1",
+        "tempo other level: 2", "key equal: 4", "key differs: 2",
     ):
         assert line in out, out
     assert "heads on disk against rekordbox own analysis" in out
@@ -421,10 +357,8 @@ def test_the_recorded_agreement_is_a_fresh_copy_with_every_bucket_named():
     assert first == second and first is not second
     first["tempo"]["equal"] = 0
     assert detect.head_agreement()["tempo"]["equal"] != 0
-    assert first["window"] == {
-        "floor": config.DEFAULT_TEMPO_FLOOR,
-        "ceiling": config.DEFAULT_TEMPO_CEILING,
-    }
+    window = {"floor": config.DEFAULT_TEMPO_FLOOR, "ceiling": config.DEFAULT_TEMPO_CEILING}
+    assert first["window"] == window
 
 
 def test_the_recorded_shape_is_the_shape_the_measurement_prints():
@@ -455,13 +389,16 @@ def test_the_record_says_whether_it_applies_to_the_bound_window():
     assert raised["tempo"] == detect.head_agreement()["tempo"]
 
 
+ANALYSIS_CLI = REPO_ROOT / "src" / "cratekit" / "analysis" / "cli.py"
+
+
 def test_the_run_answer_carries_the_bound_window_to_the_record():
-    source = (REPO_ROOT / "src" / "cratekit" / "analysis" / "cli.py").read_text(encoding="utf-8")
+    source = ANALYSIS_CLI.read_text(encoding="utf-8")
     assert "window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling)" in source
 
 
 def test_the_run_answer_carries_the_recorded_agreement():
-    source = (REPO_ROOT / "src" / "cratekit" / "analysis" / "cli.py").read_text(encoding="utf-8")
+    source = ANALYSIS_CLI.read_text(encoding="utf-8")
     assert 'summary["head_agreement"] = detect.head_agreement(' in source
 
 

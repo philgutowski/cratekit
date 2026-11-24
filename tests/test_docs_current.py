@@ -40,9 +40,7 @@ _WORD = r"[a-z][a-z0-9-]*"
 
 #: The top level options that take a value, so ``crate --output json doctor``
 #: reads as ``doctor``. Held equal to the parser's own below.
-TOP_VALUED = frozenset(
-    {"--output", "-d", "--decision", "--run", "--calls", "--calls-per-hour"}
-)
+TOP_VALUED = frozenset({"--output", "-d", "--decision", "--run", "--calls", "--calls-per-hour"})
 
 #: Every top level option, which argparse takes only before the verb.
 TOP_OPTIONS = TOP_VALUED | {"-h", "--help", "--version"}
@@ -404,11 +402,5 @@ def test_a_misspelt_dotted_key_is_stray() -> None:
 
 def test_the_default_spelling_is_toml() -> None:
     assert [format_default(v) for v in (None, True, 7, 1.5, "x", ("A", "B"), ())] == [
-        "unset",
-        "true",
-        "7",
-        "1.5",
-        '"x"',
-        '["A", "B"]',
-        "[]",
+        "unset", "true", "7", "1.5", '"x"', '["A", "B"]', "[]"
     ]

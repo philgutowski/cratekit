@@ -118,8 +118,6 @@ def test_set_with_only_bandcamp_is_a_field_to_change():
 
 
 # The store, for a file edited by hand
-
-
 def _hand_written(labels_: dict) -> labels.Registry:
     path = config.state_path("label_intent")
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,8 +1,5 @@
-"""Tests for ``scripts/killset.py``, the recorded mutation kill set (U297).
-
-A refactor is held to it: every mutation killed before is killed after, so a
-miscount or a check passing a lost kill would leave a guard untested. Counts
-are taken on trees small enough to verify by hand.
+"""``scripts/killset.py``, the recorded mutation kill set (U297): a refactor must kill every
+mutation killed before, so counts are taken on trees small enough to verify by hand.
 """
 
 from __future__ import annotations
@@ -72,7 +69,6 @@ def _table(root: Path, name: str, rows: list[dict], **extra) -> Path:
 
 @pytest.fixture
 def tree(tmp_path) -> Path:
-    """A checkout with one source file, two test files and no tables yet."""
     (tmp_path / "src" / "pkg").mkdir(parents=True)
     (tmp_path / ALPHA).write_text(ALPHA_TEXT, encoding="utf-8")
     (tmp_path / "tests").mkdir()
@@ -178,8 +174,7 @@ def test_rows_for_a_directory_takes_every_file_under_it(tree):
 
 
 def test_a_row_file_named_for_its_rows_measures_the_table_beside_it(tree):
-    """``u1-replay-before-rows.toml`` is measured into ``u1-replay-before.json``,
-    where the next command of a replay reads it by name."""
+    """``u1-replay-before-rows.toml`` is measured into ``u1-replay-before.json``, read by name."""
     _table(tree, "u1.json", [_recorded("A", "    return 1")])
     out = tree / "u1-replay-before-rows.toml"
     assert _run(tree, "rows", ALPHA, "--out", str(out)) == 0
@@ -259,7 +254,6 @@ def test_code_is_written_as_it_reads_when_a_literal_holds_it():
 
 # check: every row killed before is killed after
 def _measured(row_id: str, *, deaths: int = 1, status: str = "killed", **extra) -> dict:
-    """A replay table's row for source ``u1.json`` row ``row_id``."""
     return {
         "id": f"u1.{row_id}", "source": {"table": "u1.json", "id": row_id}, "file": ALPHA,
         "old": f"old {row_id}", "new": "new", "status": status, "deaths": deaths, **extra,
@@ -272,28 +266,53 @@ def _check(tmp_path: Path, before: list[dict], after: list[dict], **after_extra)
     return killset.main(["killset.py", "check", str(first), str(second)])
 
 
-def test_check_passes_when_every_kill_is_kept(tmp_path, capsys):
-    rows = [_measured("A"), _measured("B"), _measured("Z", deaths=0, status="zero")]
-    assert _check(tmp_path, rows, rows) == 0
-    assert "2 rows killed before: 2 killed after as written" in capsys.readouterr().out
+def _mapping(to: str, reason: str = "merged into A") -> dict:
+    return {"source": {"table": "u1.json", "id": "B"}, "to": to, "reason": reason}
 
 
-def test_check_fails_on_one_lost_kill_and_names_it(tmp_path, capsys):
-    before = [_measured("A"), _measured("B")]
-    after = [_measured("A"), _measured("B", deaths=0, status="zero")]
-    assert _check(tmp_path, before, after) == 1
+def _ab() -> list[dict]:
+    return [_measured("A"), _measured("B")]
+
+
+ZERO = {"deaths": 0, "status": "zero"}
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "extra", "code", "said"),
+    [
+        ([*_ab(), _measured("Z", **ZERO)], [*_ab(), _measured("Z", **ZERO)], {}, 0,
+         ["2 rows killed before: 2 killed after as written"]),
+        (_ab(), [_measured("A"), _measured("B", **ZERO)], {}, 1,
+         ["1 lost", "LOST u1.json B: killed before, zero after (0 deaths)"]),
+        # The driver says of such a row that it is neither a zero nor a clean kill.
+        (_ab(), [_measured("A"), _measured("B", status="collect-error")], {}, 1,
+         ["LOST u1.json B: killed before, collect-error after (1 deaths)"]),
+        (_ab(), [_measured("A")], {}, 1,
+         ["LOST u1.json B: killed before, and no row and no mapping after"]),
+        (_ab(), [_measured("A")], {"mapped": [_mapping("u1.A")]}, 0,
+         ["1 covered by a mapped row that is killed, 0 lost"]),
+        (_ab(), [_measured("A", **ZERO)], {"mapped": [_mapping("u1.A")]}, 1,
+         ["LOST u1.json B: mapped to 'u1.A', which is zero after"]),
+        (_ab(), [_measured("A")], {"mapped": [_mapping("u1.C")]}, 1,
+         ["mapped to 'u1.C', which is no row after"]),
+        (_ab(), [_measured("A")], {"mapped": [_mapping("u1.A", " ")]}, 1,
+         ["mapped to 'u1.A' with no reason"]),
+        ([_measured("B")], [_measured("A", status="collect-error")],
+         {"mapped": [_mapping("u1.A")]}, 1, ["mapped to 'u1.A', which is collect-error after"]),
+    ],
+    ids=[
+        "every-kill-kept", "one-lost-kill-named", "a-collection-error-is-lost-though-a-death",
+        "no-row-and-no-mapping", "mapped-to-a-surviving-killed-row", "mapped-to-a-row-not-killed",
+        "mapped-to-no-row", "mapped-for-no-reason", "mapped-onto-a-row-that-only-broke-collection",
+    ],
+)
+def test_check_holds_each_kill_to_its_row_or_mapping_after(
+    tmp_path, capsys, before, after, extra, code, said
+):
+    assert _check(tmp_path, before, after, **extra) == code
     out = capsys.readouterr().out
-    assert "1 lost" in out
-    assert "LOST u1.json B: killed before, zero after (0 deaths)" in out
-
-
-def test_a_kill_that_became_a_collection_error_is_lost_though_it_records_a_death(tmp_path, capsys):
-    """The driver says of such a row that it is neither a zero nor a clean kill."""
-    before = [_measured("A"), _measured("B")]
-    after = [_measured("A"), _measured("B", status="collect-error")]
-    assert _check(tmp_path, before, after) == 1
-    out = capsys.readouterr().out
-    assert "LOST u1.json B: killed before, collect-error after (1 deaths)" in out
+    for line in said:
+        assert line in out
 
 
 def test_a_row_that_broke_collection_before_is_held_to_no_less_after(tmp_path, capsys):
@@ -305,13 +324,6 @@ def test_a_row_that_broke_collection_before_is_held_to_no_less_after(tmp_path, c
     assert "LOST u1.json A: collect-error before, zero after" in capsys.readouterr().out
 
 
-def test_a_mapping_onto_a_row_that_only_broke_collection_does_not_cover_a_kill(tmp_path, capsys):
-    before = [_measured("A"), _measured("B")]
-    after = [_measured("A", status="collect-error")]
-    assert _check(tmp_path, [before[1]], after, mapped=[_mapping("u1.A")]) == 1
-    assert "mapped to 'u1.A', which is collect-error after" in capsys.readouterr().out
-
-
 @pytest.mark.parametrize("which", ["before", "after"])
 def test_check_refuses_a_table_with_two_rows_for_one_source(tmp_path, capsys, which):
     """Two rows under one source: whichever was read first would decide the verdict."""
@@ -319,37 +331,6 @@ def test_check_refuses_a_table_with_two_rows_for_one_source(tmp_path, capsys, wh
     before, after = (twice, one) if which == "before" else (one, twice)
     assert _check(tmp_path, before, after) == 2
     assert f"{which}.json holds two rows for u1.json A" in capsys.readouterr().err
-
-
-def test_check_fails_on_a_kill_with_no_row_and_no_mapping(tmp_path, capsys):
-    assert _check(tmp_path, [_measured("A"), _measured("B")], [_measured("A")]) == 1
-    assert "LOST u1.json B: killed before, and no row and no mapping after" in capsys.readouterr().out
-
-
-def _mapping(to: str, reason: str = "merged into A") -> dict:
-    return {"source": {"table": "u1.json", "id": "B"}, "to": to, "reason": reason}
-
-
-def test_check_passes_a_row_mapped_to_a_surviving_row_that_is_killed(tmp_path, capsys):
-    before = [_measured("A"), _measured("B")]
-    assert _check(tmp_path, before, [_measured("A")], mapped=[_mapping("u1.A")]) == 0
-    assert "1 covered by a mapped row that is killed, 0 lost" in capsys.readouterr().out
-
-
-def test_check_fails_a_row_mapped_to_a_row_that_is_not_killed(tmp_path, capsys):
-    before = [_measured("A"), _measured("B")]
-    after = [_measured("A", deaths=0, status="zero")]
-    assert _check(tmp_path, before, after, mapped=[_mapping("u1.A")]) == 1
-    out = capsys.readouterr().out
-    assert "LOST u1.json B: mapped to 'u1.A', which is zero after" in out
-
-
-def test_check_fails_a_row_mapped_to_no_row_or_for_no_reason(tmp_path, capsys):
-    before = [_measured("A"), _measured("B")]
-    assert _check(tmp_path, before, [_measured("A")], mapped=[_mapping("u1.C")]) == 1
-    assert "mapped to 'u1.C', which is no row after" in capsys.readouterr().out
-    assert _check(tmp_path, before, [_measured("A")], mapped=[_mapping("u1.A", " ")]) == 1
-    assert "mapped to 'u1.A' with no reason" in capsys.readouterr().out
 
 
 def test_check_holds_a_row_whose_text_changed_to_a_moved_reason(tmp_path, capsys):
@@ -368,8 +349,7 @@ AUTOMATIC = "the same text, now in src/pkg/beta.py, was in src/pkg/alpha.py"
 
 
 def test_a_row_the_tool_moved_must_still_die_by_a_test_that_killed_it_before(tmp_path, capsys):
-    """The same text elsewhere is not the same guard: a row killed at an identical
-    line in another file vouches for nothing."""
+    """The same text in another file is not the same guard: it vouches for nothing."""
     before = [_measured("A", killed=["tests/test_alpha.py::test_once"])]
     killed = ["tests/test_beta.py::test_beta_caps[low - high]"]
     twin = [_measured("A", file="src/pkg/beta.py", moved=AUTOMATIC, killed=killed)]
@@ -467,7 +447,6 @@ def _git(root: Path, *args: str) -> str:
 
 
 def _commit(tree: Path) -> str:
-    """Make the tree a repository with one commit, and name that commit."""
     _git(tree, "init", "-q", "-b", "main")
     _git(tree, "add", "-A")
     _git(tree, "commit", "-q", "-m", "before the refactor")
@@ -536,8 +515,7 @@ def _twin_is_split(tree: Path) -> None:
 def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
     tree, capsys, refactor
 ):
-    """The same line elsewhere is another guard: two then and one now, so the one
-    left may be the twin's, however much it looks like a move."""
+    """Two then and one now: the line left may be the twin's, however like a move it looks."""
     (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    return 1\n", encoding="utf-8")
     head = _commit(tree)
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
@@ -558,8 +536,7 @@ def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
 def test_a_line_written_new_elsewhere_reads_as_a_move_and_check_is_what_catches_it(
     committed, capsys
 ):
-    """One place then and one now, yet another guard, so ``check`` holds a row at a
-    new anchor to a test in common."""
+    """One place then and one now, yet another guard: ``check`` asks a test in common."""
     tree, head = committed
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "delta.py").write_text("def new():\n    return 1\n", encoding="utf-8")
@@ -657,8 +634,7 @@ def test_rows_after_refuses_a_table_whose_rows_name_no_source(tree, capsys):
 
 
 def test_a_replay_table_says_where_a_moved_guard_lives_now(tree):
-    """After a card moves a guard, a replay table names the row live at its new
-    place, and counts as no table of its own."""
+    """A replay names a moved guard's row live at its new place, and is no table of its own."""
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "moved.py").write_text("def once():\n    return 1\n", encoding="utf-8")
     _table(tree, "u1.json", [_recorded("A", "    return 1")])
@@ -722,8 +698,7 @@ def test_the_newest_replay_gives_a_row_in_place_its_tests(tree):
 
 # End to end, through the one driver
 def test_recorded_kills_replay_through_the_driver_and_check_clean(repo, capsys):
-    """Table, row file, replay, check: the whole chain on a package with a known
-    answer, then against a copy in which one kill was lost."""
+    """The whole chain on a package with a known answer, then a copy that lost one kill."""
     _table(repo, "u1.json", [
         _recorded(
             "CLAMP", "if value > limit:", "if value > 10000:", file=GUARDS_FILE,

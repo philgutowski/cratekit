@@ -26,24 +26,15 @@ from tests.test_analysis_workers import unbound as unbound  # noqa: PLC0414
 from tests.test_config import valid_data
 from tests.test_no_beatgrid_ever import FORBIDDEN_TAG_KEYS
 
+
 # The verdict against the cut
-
-
 @pytest.mark.parametrize(
     ("measured", "expected"),
-    [
-        (4.4, drift.VARIABLE),
-        (1.5, drift.VARIABLE),
-        (1.49, drift.STEADY),
-        (0.0, drift.STEADY),
-        (None, drift.UNKNOWN),
-        (math.nan, drift.UNKNOWN),
-    ],
+    [(4.4, drift.VARIABLE), (1.5, drift.VARIABLE), (1.49, drift.STEADY), (0.0, drift.STEADY),
+     (None, drift.UNKNOWN), (math.nan, drift.UNKNOWN)],
     ids=["moving", "at-the-cut", "just-below", "still", "unmeasured", "nan"],
 )
-def test_a_drift_at_or_above_the_cut_is_variable_and_no_measurement_is_unknown(
-    measured, expected
-):
+def test_a_drift_at_or_above_the_cut_is_variable_and_no_measurement_is_unknown(measured, expected):
     assert drift.verdict(measured, 1.5) == expected
 
 
@@ -62,15 +53,8 @@ def test_a_drift_at_or_above_the_cut_is_variable_and_no_measurement_is_unknown(
         ("inf", drift.VARIABLE, (None, drift.UNSCORED)),
     ],
     ids=[
-        "score-over-cut",
-        "score-wins-over-a-stale-verdict",
-        "score-under-cut",
-        "unknown",
-        "unknown-padded",
-        "nothing",
-        "verdict-without-score",
-        "not-a-number",
-        "negative",
+        "score-over-cut", "score-wins-over-a-stale-verdict", "score-under-cut", "unknown",
+        "unknown-padded", "nothing", "verdict-without-score", "not-a-number", "negative",
         "infinite",
     ],
 )
@@ -93,7 +77,6 @@ def test_the_verdict_words_are_the_three_the_tag_carries():
 
 def test_the_normal_settings_are_the_visit_standard_the_sync_stop_prints():
     from cratekit.cli import tail
-
     assert drift.NORMAL_SETTINGS in tail.REKORDBOX_STEPS[0]
     assert drift.DYNAMIC_SETTINGS in tail.REKORDBOX_STEPS[0]
     assert "Analysis Mode Dynamic" in drift.DYNAMIC_SETTINGS
@@ -102,7 +85,6 @@ def test_the_normal_settings_are_the_visit_standard_the_sync_stop_prints():
 def test_the_sync_stop_runs_dynamic_first_and_normal_last():
     """U954: the last Analyze Tracks OK sets the mode the next launch's dialog reads."""
     from cratekit.cli import tail
-
     step = tail.REKORDBOX_STEPS[0]
     dynamic = (
         "run Analyze Tracks first on its rows carrying the dyn My Tag, if any: "
@@ -120,7 +102,6 @@ def test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_sta
     """U319: one wording, said after the Analyze Tracks selections its "as above" names."""
     from cratekit.cli import tail
     from cratekit.intake import land_cli
-
     assert tail.AUTO_ANALYSIS_STEP == land_cli.AUTO_ANALYSIS_STEP, "one wording, two spellings"
     step = tail.REKORDBOX_STEPS[0]
     assert step.endswith(f"; {land_cli.AUTO_ANALYSIS_STEP}")
@@ -129,7 +110,6 @@ def test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_sta
 
 def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dynamic():
     from cratekit.intake import land_cli
-
     step = land_cli.AUTO_ANALYSIS_STEP
     assert step == (
         "or, with Auto Analysis on, open rekordbox with its window in front and press OK on "
@@ -144,17 +124,14 @@ def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dyn
         "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on"
     ), "the standard is unchanged"
 
+
 # The cut is configuration
-
-
 def test_the_cut_defaults_to_the_shipped_value():
     assert config.DEFAULT_DRIFT_CUT == 1.5
     assert config.AnalysisConfig().drift_cut == config.DEFAULT_DRIFT_CUT
 
 
-@pytest.mark.parametrize(
-    "value", [0, 0.0, -1.0, True, "high", math.nan, math.inf, 100.5], ids=repr
-)
+@pytest.mark.parametrize("value", [0, 0.0, -1.0, True, "high", math.nan, math.inf, 100.5], ids=repr)
 def test_a_cut_that_is_not_a_percent_above_zero_is_refused_at_load(tmp_path, value):
     data = valid_data(tmp_path / "library", analysis={"drift_cut": value})
     problems = config.validate(data)
@@ -163,7 +140,6 @@ def test_a_cut_that_is_not_a_percent_above_zero_is_refused_at_load(tmp_path, val
 
 def test_a_whole_number_cut_loads_and_reaches_the_detector_binding(tmp_path, monkeypatch):
     from cratekit.analysis import energy
-
     data = valid_data(tmp_path / "library", analysis={"drift_cut": 3})
     assert config.validate(data) == []
     loaded = config.from_dict(data)
@@ -176,23 +152,19 @@ def test_a_whole_number_cut_loads_and_reaches_the_detector_binding(tmp_path, mon
 
 
 # The finalize writes what the detector answered, and only that
-
-
 @pytest.fixture(scope="module")
 def silence(tmp_path_factory) -> Path:
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
 
 
+#: The two tags a drift is written as.
+FIELDS = ("driftlevel", "drift")
+
+
 def _detector(**drift_fields):
     def detect_(path: Path):
-        return {
-            "path": path,
-            "camelot": "8A",
-            "rate": 124,
-            "energy": 6,
-            "energy_status": "calibrated",
-            **drift_fields,
-        }
+        return {"path": path, "camelot": "8A", "rate": 124, "energy": 6,
+                "energy_status": "calibrated", **drift_fields}
 
     return detect_
 
@@ -212,37 +184,27 @@ def _analysed(folder: Path, silence: Path, monkeypatch, detect_) -> tuple[Path, 
 
 
 def test_a_measured_drift_is_written_as_its_level_and_verdict(cfg, folder, silence, monkeypatch):
-    done, report = _analysed(
-        folder, silence, monkeypatch, _detector(drift=4.3667, drift_verdict=drift.VARIABLE)
-    )
-    assert tags.read_tags(done, ("driftlevel", "drift")) == {
-        "driftlevel": "4.4",
-        "drift": drift.VARIABLE,
-    }
+    detect_ = _detector(drift=4.3667, drift_verdict=drift.VARIABLE)
+    done, report = _analysed(folder, silence, monkeypatch, detect_)
+    assert tags.read_tags(done, FIELDS) == {"driftlevel": "4.4", "drift": drift.VARIABLE}
     assert (report["drift"], report["drift_verdict"]) == (4.3667, drift.VARIABLE)
 
 
 def test_a_track_too_thin_to_judge_carries_unknown_and_no_level(cfg, folder, silence, monkeypatch):
-    done, report = _analysed(
-        folder, silence, monkeypatch, _detector(drift=None, drift_verdict=drift.UNKNOWN)
-    )
-    assert tags.read_tags(done, ("driftlevel", "drift")) == {
-        "driftlevel": None,
-        "drift": drift.UNKNOWN,
-    }
+    detect_ = _detector(drift=None, drift_verdict=drift.UNKNOWN)
+    done, report = _analysed(folder, silence, monkeypatch, detect_)
+    assert tags.read_tags(done, FIELDS) == {"driftlevel": None, "drift": drift.UNKNOWN}
     assert report["drift_verdict"] == drift.UNKNOWN
 
 
 def test_a_detector_that_measures_no_drift_writes_neither_tag(cfg, folder, silence, monkeypatch):
     """No level and no verdict, which a landing reads as unscored, not steady."""
     done, report = _analysed(folder, silence, monkeypatch, _detector())
-    assert tags.read_tags(done, ("driftlevel", "drift")) == {"driftlevel": None, "drift": None}
+    assert tags.read_tags(done, FIELDS) == {"driftlevel": None, "drift": None}
     assert report["drift"] is None and report["drift_verdict"] is None
 
 
 # Neither field is a tempo (R17)
-
-
 @pytest.mark.parametrize("field", ["driftlevel", "drift"])
 def test_the_drift_fields_carry_no_tempo_key_in_any_container(field):
     spec = tags.FIELDS[field]
@@ -256,13 +218,10 @@ def test_the_drift_fields_carry_no_tempo_key_in_any_container(field):
 def test_a_file_carrying_a_drift_carries_no_tempo_frame(tmp_path, suffix):
     """Read raw, below the tag table, so a slipped tempo frame shows here."""
     import mutagen
-
     path = synth_container(tmp_path, suffix)
     assert tags.write_tags(path, {"driftlevel": "4.4", "drift": drift.VARIABLE})
     raw = mutagen.File(str(path))
     held = {str(key) for key in (raw.tags.keys() if raw.tags is not None else ())}
     assert held, "the fixture wrote nothing"
     lowered = {key.lower() for key in held}
-    assert not any(
-        forbidden.lower() in key for forbidden in FORBIDDEN_TAG_KEYS for key in lowered
-    ), held
+    assert not any(bad.lower() in key for bad in FORBIDDEN_TAG_KEYS for key in lowered), held
