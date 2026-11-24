@@ -18,14 +18,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
-from cratekit.analysis import artifacts
-from cratekit.analysis import cli as analysis_cli
-from cratekit.analysis import vocals as scoring
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import config, discovery, jobs, tags
+from cratekit.core import config, jobs, tags
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
+# The analysis module is imported where it is called (U331): this verb is
+# gated by its own toggle, and it builds with the analysis toggle off.
 _ORIGIN = ("vocals", "cli")
 
 #: Every file the folder held carries a vocal score already, so ``--unscored``
@@ -42,6 +41,8 @@ def _require_extra() -> None:
     ``scoring.missing_requirement`` names the first missing piece, so a job
     that could score nothing is refused before it is filed (R-370).
     """
+    from cratekit.analysis import vocals as scoring
+
     if scoring.loader_bound():
         return
     missing = scoring.missing_requirement()
@@ -57,6 +58,8 @@ def _require_extra() -> None:
 
 
 def _bind_defaults() -> None:
+    from cratekit.analysis import vocals as scoring
+
     if scoring.loader_bound():
         return
     from cratekit.analysis import vocal
@@ -88,11 +91,11 @@ def _write_or_refuse(path: Path, fields: dict[str, Any]) -> None:
 def _folder_and_path(job, item) -> tuple[Path, Path]:
     """The frozen folder and the item's file in it, joined by the checked rule.
 
-    ``discovery.item_path`` rather than an operator, which an absolute id would
+    ``jobs.item_path`` rather than an operator, which an absolute id would
     turn into a file the job never queued (U93).
     """
     folder = Path(str((job.payload or {}).get("folder") or ""))
-    return folder, discovery.item_path(folder, str(item.item_id))
+    return folder, jobs.item_path(folder, str(item.item_id))
 
 
 def _item_path(job, item) -> Path:
@@ -113,6 +116,8 @@ def _item_path(job, item) -> Path:
 
 
 def _unscored_warning(summary: Mapping[str, Any]) -> dict[str, str] | None:
+    from cratekit.analysis import vocals as scoring
+
     return scoring.unscored_warning(summary, verb="scored")
 
 
@@ -151,9 +156,11 @@ def _unscored(cfg: config.Config, folder: Path, items: tuple[str, ...]) -> list[
     (U343). A file not yet measured is the run's to analyse, and one carrying a
     score is left alone.
     """
+    from cratekit.analysis import cli as analysis_cli
+
     chosen = []
     for item in items:
-        path = discovery.item_path(folder, item)
+        path = jobs.item_path(folder, item)
         if analysis_cli.already_measured(path, cfg) and tags.read_vox_from_file(path) is None:
             chosen.append(item)
     return chosen
@@ -199,11 +206,13 @@ def _advance(ctx, store, job):
 
 
 def _resume(ctx, cfg: config.Config) -> Envelope:
+    from cratekit.analysis import cli as analysis_cli
+
     with jobs.open_store() as store:
         job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
         summary = analysis_cli.committed_summary(cfg, job.job_id)
         # THE RESUME CARRIES THE WALK'S OMISSIONS TOO, off the frozen payload.
-        warnings = (*warnings, *discovery.warnings_of(job.payload))
+        warnings = (*warnings, *jobs.warnings_of(job.payload))
         unscored = _unscored_warning(summary)
         if unscored is not None:
             warnings = (*warnings, unscored)
@@ -214,6 +223,8 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
 
 
 def analyze_vocals(ctx) -> Envelope:
+    from cratekit.analysis import cli as analysis_cli
+
     cfg = load_config(_ORIGIN)
     if ctx.args.job:
         return _resume(ctx, cfg)
@@ -234,7 +245,7 @@ def analyze_vocals(ctx) -> Envelope:
             # FROZEN WITH THE FOLDER: the resume replays the store, never a scan.
             payload={
                 "folder": str(folder),
-                **discovery.frozen_walk(scan, recursive=recursive),
+                **jobs.frozen_walk(scan, recursive=recursive),
                 **({"unscored": True} if unscored else {}),
             },
             cfg=cfg,
@@ -251,6 +262,10 @@ def handle(job, item, cfg) -> jobs.Produced:
     that is already there, writes voxlevel, voxgender and voxgenderconf,
     and renames nothing.
     """
+    from cratekit.analysis import artifacts
+    from cratekit.analysis import cli as analysis_cli
+    from cratekit.analysis import vocals as scoring
+
     path = _item_path(job, item)
     _require_extra()
     _bind_defaults()

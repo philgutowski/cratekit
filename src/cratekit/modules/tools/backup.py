@@ -27,9 +27,9 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
-from cratekit.core import backup_facts, binaries, config, preflight, session
+from cratekit.core import backup_facts, binaries, config, session
 from cratekit.core.cause import CratekitError
-from cratekit.core.processes import (
+from cratekit.core.session import (
     REKORDBOX_PROCESSES,
     AbsenceUnconfirmed,
     ProcessLister,
@@ -422,7 +422,7 @@ def identity_marker(identity: str | None) -> str | None:
     identity that is not plainly a name, which must never reach a path."""
     if identity is None:
         return None
-    folded = preflight.normalize_identity(identity)
+    folded = session.normalize_identity(identity)
     if not _MARKER_IDENTITY.fullmatch(folded):
         return None
     return IDENTITY_MARKER_PREFIX + folded
@@ -456,8 +456,8 @@ def plan_backup(
     process_lister: ProcessLister | None = None, archive_keep: int = DEFAULT_ARCHIVE_KEEP,
     settings_dirs: Sequence[Path] | None = None, full: bool = False, check: bool = False,
     only: backup_facts.Portion | None = None, emptied: bool = False,
-    identity_provider: preflight.IdentityProvider | None = None,
-    mount_enumerator: preflight.MountEnumerator | None = None,
+    identity_provider: session.IdentityProvider | None = None,
+    mount_enumerator: session.MountEnumerator | None = None,
 ) -> BackupPlan:
     """Decide what a run would do, for the dry run and the run alike. Touches no
     remote and copies nothing.
@@ -567,8 +567,8 @@ def _self_written(cfg: config.Config) -> frozenset[str]:
 def _plan_files(
     cfg: config.Config, *, rclone: str, stamp: str, archive_keep: int, full: bool = False,
     asked: str = "a full check was asked for", emptied: bool = False,
-    identity_provider: preflight.IdentityProvider | None = None,
-    mount_enumerator: preflight.MountEnumerator | None = None,
+    identity_provider: session.IdentityProvider | None = None,
+    mount_enumerator: session.MountEnumerator | None = None,
 ) -> PortionPlan:
     """The files portion: a full check, a quick run of the difference, or a skip.
 
@@ -678,8 +678,8 @@ def _plan_files(
 
 
 def _not_the_recorded_volume(
-    cfg: config.Config, *, identity_provider: preflight.IdentityProvider | None,
-    mount_enumerator: preflight.MountEnumerator | None,
+    cfg: config.Config, *, identity_provider: session.IdentityProvider | None,
+    mount_enumerator: session.MountEnumerator | None,
 ) -> str:
     """Why the root is on a volume other than the library's, or an empty string.
 

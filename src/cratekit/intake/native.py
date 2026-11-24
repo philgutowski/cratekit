@@ -26,9 +26,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
 from cratekit.adopt import placements as adopt_placements
-from cratekit.core import config, convergence, drift, rb_writer, session, tree_registry
+from cratekit.core import config, convergence, rb_writer, session, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
-from cratekit.intake import ingest, label_filing, set_playlist
+from cratekit.intake import drift, ingest, label_filing, set_playlist
 from cratekit.write import metadata_cli, row_link, trees
 
 if TYPE_CHECKING:
@@ -106,7 +106,7 @@ VOX_UNREADABLE = (
 )
 
 #: The My Tag every added row whose drift reads variable gets (U157), so Analyze
-#: Tracks selects them for Dynamic; ``analysis.rekordbox_check`` imports it.
+#: Tracks selects them for Dynamic; ``intake.rekordbox_check`` imports it.
 DYN_VALUE = "dyn"
 DYN_CATEGORY = "Analysis"
 #: What the dyn tags are filed under in a record's change summary (R19).

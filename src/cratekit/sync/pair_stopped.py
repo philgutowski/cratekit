@@ -308,7 +308,7 @@ def stopped_writes(
 ) -> dict[str, tuple[datetime, StoppedWrite]]:
     """Each pair's write stopped part way through its order, by account playlist, with when it began.
 
-    ``records`` are runs' steps (``core/held_plan.Steps``); the step names
+    ``records`` are runs' steps (``sync/held_plan.Steps``); the step names
     and the new pair prefix ``new`` are the caller's.
 
     THE LATEST WRITE THAT BEGAN TO ORDER AND NEVER FINISHED, unless a later

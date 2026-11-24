@@ -3,6 +3,16 @@
 Read and explained by ``tests/_pinned_reserved_populations.py``."""
 
 KEBAB_LITERALS = {
+    # 2026-11-23, U331: analyze check moved from analysis, no toggle gating its verb.
+    'intake/check_cli.py': [
+        'analysis-check-nothing',
+        'analysis-check-records-unread',
+        'analysis-suspect',
+    ],
+    # 2026-11-23, U331: the rehearsal moved from core to the one package that used it.
+    'intake/rehearsal.py': ['internal-error', 'output-exists'],
+    # 2026-11-23, U331: analyze check's engine moved from analysis with its verb.
+    'intake/rekordbox_check.py': ['analysis-check-landing-unknown'],
     # Re-pinned on the merge of main at 004cb9d (U128) into grok/290, 2026-10-10:
     # ONE kebab literal joined in intake/account_playlists.py and nothing left,
     # account-playlist-left-out, the WARNING code naming tracks no mirror holds.
@@ -254,6 +264,12 @@ NAMED_WITH_OWN = {
 }
 
 LITERAL_HOLDERS = {
+    # 2026-11-23, U331: analyze check moved from analysis, no toggle gating its verb.
+    'intake/check_cli.py': ['analysis-suspect'],
+    # 2026-11-23, U331: the rehearsal moved from core to the one package that used it.
+    'intake/rehearsal.py': ['internal-error', 'output-exists'],
+    # 2026-11-23, U331: analyze check's engine moved from analysis with its verb.
+    'intake/rekordbox_check.py': ['analysis-check-landing-unknown'],
     'intake/acrcloud.py': [
         'auth-failed',
         'credential-missing',
@@ -379,4 +395,6 @@ LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'intake/cli_identify.py',  # 2026-11-22, U307: the recognition counts moved with their code.
     'intake/imported_cli.py',
     'intake/land_cli.py',  # 2026-10-31, U162: the rehearsal's counts joined.
+    'intake/rehearsal.py',  # 2026-11-23, U331: moved from core with the module.
+    'intake/rekordbox_check.py',  # 2026-11-23, U331: moved from analysis, the wheel's twelve.
 })

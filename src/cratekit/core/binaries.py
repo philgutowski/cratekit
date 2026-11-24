@@ -22,8 +22,10 @@ import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
-from cratekit.core import secrets
+from cratekit.core import exit_codes, secrets
+from cratekit.core.cause import CratekitError, Scope, refuse
 
 #: Every platform the tables below answer for, so an audit can walk them all.
 SUPPORTED_PLATFORMS: tuple[str, ...] = ("darwin", "linux", "win32")
@@ -230,8 +232,39 @@ def subprocess_env(base: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
+def yt_dlp_missing(
+    exc: BinaryNotFound, subject: dict[str, Any], *, said: str, origin: tuple[str, ...]
+) -> CratekitError:
+    """The ``yt-dlp-missing`` refusal for one :class:`BinaryNotFound`.
+
+    One spelling for ``acquire fallback`` (U80) and ``intake set`` (U104), kept
+    below both. ``said`` and ``origin`` are required: they are the caller's.
+    The remedy is the exception's own token; the hint travels as data (D2).
+    """
+    hint = exc.hint
+    return refuse(
+        "yt-dlp-missing",
+        f"{exc} {said}",
+        remedy=exit_codes.Remedy(exc.remedy.value),
+        steps=(
+            (f"install {', '.join(hint.packages)} with {hint.manager}, then run it again",)
+            if hint is not None
+            else ()
+        ),
+        scope=Scope.RUN,
+        origin=origin,
+        detail={
+            "binary": exc.binary,
+            "override": env_var(exc.binary),
+            "manager": str(hint.manager) if hint is not None else None,
+            "packages": list(hint.packages) if hint is not None else [],
+            **subject,
+        },
+    )
+
+
 __all__ = [
     "ENV_PREFIX", "INSTALLABLE_BINARIES", "PLATFORM_BINARIES", "SUPPORTED_PLATFORMS",
     "BinaryNotFound", "InstallHint", "PackageManager", "Remedy", "env_var", "fallback_dirs",
-    "find", "install_hint", "override_problem", "resolve", "subprocess_env",
+    "find", "install_hint", "override_problem", "resolve", "subprocess_env", "yt_dlp_missing",
 ]

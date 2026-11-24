@@ -50,6 +50,7 @@ Keeping `exc.remedy` as the remedy keeps the distinction the binaries module
 drew: a broken override says fix the override, not install it again. Re-pin
 `tests/test_reserved_causes.py` for the new slug. The population and the
 non-reserved half each move by one and the reserved half stays put.
-`acquire/fallback_cli.py:_binary_refusal` is the worked example, driven in
+`core/binaries.py:yt_dlp_missing` is the worked example since U331, the one
+spelling `acquire fallback` and `intake set` both raise, driven in
 `tests/test_acquire_fallback.py` for both the install and the broken override
 paths.

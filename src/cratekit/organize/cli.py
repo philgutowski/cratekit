@@ -25,7 +25,7 @@ import dataclasses
 from typing import Any
 
 from cratekit.cli.output import Envelope
-from cratekit.core import profiles, rb_writer
+from cratekit.core import rb_writer
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import rotate_cli
@@ -225,7 +225,7 @@ def organize(ctx) -> Envelope:
     report = bool(getattr(ctx.args, "report", False))
     chosen = getattr(ctx.args, "only", None)
     only = frozenset(chosen) if chosen else None
-    membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
+    membership = cfg.membership()
     # THE REGISTRY IS READ ONLY FOR A STEP THAT USES IT: every account step
     # may, and on the database side only the author's own, for a home.
     followed, unfollowed = (

@@ -12,7 +12,8 @@ from typing import Callable
 import pytest
 
 from cratekit.analysis import detect
-from cratekit.core import config, drift
+from cratekit.core import config
+from cratekit.intake import drift
 
 np = pytest.importorskip("numpy")
 librosa = pytest.importorskip("librosa")

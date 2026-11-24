@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cratekit.core import profiles
+from cratekit.core import config
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +80,7 @@ SPECS: tuple[SourceSpec, ...] = (
 DECLARED: tuple[str, ...] = tuple(spec.source_id for spec in SPECS)
 
 
-def enabled_specs(membership: profiles.Membership) -> tuple[SourceSpec, ...]:
+def enabled_specs(membership: config.Membership) -> tuple[SourceSpec, ...]:
     """The sources this profile switches on, in declared order."""
     return tuple(
         spec
@@ -89,6 +89,6 @@ def enabled_specs(membership: profiles.Membership) -> tuple[SourceSpec, ...]:
     )
 
 
-def enabled(membership: profiles.Membership) -> tuple[str, ...]:
+def enabled(membership: config.Membership) -> tuple[str, ...]:
     """The identifiers of the sources this profile switches on, in declared order."""
     return tuple(spec.source_id for spec in enabled_specs(membership))

@@ -18,15 +18,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from cratekit.analysis import check_cli, head_adopt_cli
 from cratekit.analysis import head_adopt as ha
-from cratekit.analysis import rekordbox_check as rc
+from cratekit.analysis import head_adopt_cli
 from cratekit.cli import gates, registry
 from cratekit.core import analysis_store, config, locations, rb_writer, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.naming import NameTemplate, parse_head, stamp_head
-from cratekit.intake import native
+from cratekit.intake import check_cli, native
+from cratekit.intake import rekordbox_check as rc
 from cratekit.write import metadata
 from tests.cli_drive import drive
 from tests.test_analyze_check import CONSTANT_GRID, PATH_TAG, _key_id, anlz

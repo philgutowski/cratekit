@@ -2,7 +2,7 @@
 title: "A copy run redirects the installation state too, so the ISRC cache needs its own pointer to stay shared"
 date: 2026-11-05
 category: workflow-issues
-module: "cratekit.acquire.isrc_cache, cratekit.core.rehearsal"
+module: "cratekit.acquire.isrc_cache, cratekit.intake.rehearsal"
 problem_type: workflow_issue
 component: development_workflow
 severity: medium
@@ -10,7 +10,7 @@ root_cause: missing_workflow_step
 resolution_type: code_fix
 applies_when:
   - "A verb that looks ISRCs up is rehearsed on a disposable copy before its live run"
-  - "A rehearsal redirects CRATEKIT_STATE_DIR, by hand or through core.rehearsal.redirected"
+  - "A rehearsal redirects CRATEKIT_STATE_DIR, by hand or through intake.rehearsal.redirected"
   - "Something installation scoped is meant to be shared between a copy run and the live run"
   - "A copy run makes calls to the streaming provider, which the live gate must count"
 symptoms:
@@ -33,7 +33,7 @@ installation's state directory, on the reasoning that a copy run redirects
 `library.state_dirname` and so would still share it with the live run. That
 holds for the sitting 13 procedure only. Every copy run since sitting 39 also
 copies the installation state and redirects `CRATEKIT_STATE_DIR`
-(`docs/cutover.md`, sittings 39 onward), and `core.rehearsal.redirected` does
+(`docs/cutover.md`, sittings 39 onward), and `intake.rehearsal.redirected` does
 the same for the body of any built in rehearsal. Under either, the cache
 resolves into the scratch state, the rehearsal pays for its lookups there, the
 scratch is removed, and the live run pays again: the very cost the card was
@@ -42,7 +42,7 @@ filed for.
 ## The rule
 
 `CRATEKIT_ISRC_CACHE_DIR`, when set, names the directory the cache and its
-lock live in (`config.ENV_ISRC_CACHE_DIR`). `core.rehearsal.redirected` sets it
+lock live in (`config.ENV_ISRC_CACHE_DIR`). `intake.rehearsal.redirected` sets it
 to the live directory, resolved before it moves the state directory, and
 restores it on the way out. A copy run by hand exports it the same way, set
 to the live installation state directory, the folder doctor's

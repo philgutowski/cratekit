@@ -140,8 +140,8 @@ def _let_go_passed(account_id: str, synced: str) -> None:
 
     One that cannot be let go is left; the next plan reads it as no write.
     """
-    from cratekit.core import held_plan
     from cratekit.favorites import placeholders
+    from cratekit.sync import held_plan
 
     moment = placeholders.parse_hearted(synced)
     if moment is None:
@@ -306,7 +306,7 @@ SETTLE_SECONDS = 30.0
 class PairSteps:
     """One pair's steps in its run's record (U210), or no record at all.
 
-    ``steps`` is the run's :class:`cratekit.core.held_plan.Steps`, or None for
+    ``steps`` is the run's :class:`cratekit.sync.held_plan.Steps`, or None for
     a write that keeps no record. ``key`` is the pair as the gate names it.
     """
 
@@ -333,7 +333,7 @@ class PairSteps:
         """Keep this pair's steps past its run (R-1372), and stop the write when they cannot be kept."""
         if self.steps is None:
             return
-        from cratekit.core import held_plan
+        from cratekit.sync import held_plan
 
         try:
             held_plan.carry(self.steps, self.key)
@@ -348,7 +348,7 @@ class PairSteps:
         """
         if self.steps is None:
             return None
-        from cratekit.core import held_plan
+        from cratekit.sync import held_plan
 
         return held_plan.carried_step(self.steps.run_id, self.key, step)
 
@@ -359,7 +359,7 @@ class PairSteps:
         """
         if self.steps is None:
             return
-        from cratekit.core import held_plan
+        from cratekit.sync import held_plan
 
         held_plan.let_go(self.steps.run_id, self.key)
 

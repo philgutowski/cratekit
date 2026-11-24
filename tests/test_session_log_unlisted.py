@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.analysis import rekordbox_check as rc
 from cratekit.core import session, tree_registry
 from cratekit.core.cause import CratekitError
 from cratekit.intake import batch_name, native, refill, refill_cli, rotate, rotate_cli
+from cratekit.intake import rekordbox_check as rc
 from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.test_restore import _nothing_is_running as _nothing_is_running  # noqa: PLC0414

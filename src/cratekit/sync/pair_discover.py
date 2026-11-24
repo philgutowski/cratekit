@@ -208,7 +208,7 @@ def discover(
     write, ``paired`` the rekordbox playlists pairs hold, and ``released``
     those whose account side was deleted.
     """
-    from cratekit.core import foreign_tree
+    from cratekit.core import active_taxonomy
 
     roots, names = tops
     skipped = frozenset(str(one) for one in skip)
@@ -216,12 +216,12 @@ def discover(
     gone = frozenset(str(one) for one in released)
     every, live, children = _live_children(db)
 
-    foreign = {str(row.ID) for row in foreign_tree.roots_in(live)}
+    foreign = {str(row.ID) for row in active_taxonomy.foreign_roots_in(live)}
     # THE FAVOURITES' HOME, by placement's rule, and its folder. Two of them are
     # no home a name decides, so every playlist there is LISTED, never hidden.
     named = [
         row
-        for row in foreign_tree.outside(
+        for row in active_taxonomy.outside_foreign(
             [r for r in live if _attribute(r) == PLAIN and str(getattr(r, "Name", "") or "") == favorites],
             every,
         )
@@ -332,7 +332,7 @@ def left_behind(db: Any, playlist: Any, *, favorites: str, skip: Iterable[str]) 
     U198. Moved where discovery would never find it, its pair is let go
     rather than synced there.
     """
-    from cratekit.core import foreign_tree
+    from cratekit.core import active_taxonomy
 
     if not playlist.ancestors:
         return ""
@@ -340,7 +340,7 @@ def left_behind(db: Any, playlist: Any, *, favorites: str, skip: Iterable[str]) 
     if top_name in set(str(one) for one in skip):
         return f"moved under {top_name!r}, a folder the configuration skips"
     live = [row for row in db.get_playlist() if not rb_writer.node_removed(row)]
-    if top_id in {str(row.ID) for row in foreign_tree.roots_in(live)}:
+    if top_id in {str(row.ID) for row in active_taxonomy.foreign_roots_in(live)}:
         return f"moved into {top_name!r}, another app's folder"
     above = {node_id for node_id, _name in playlist.ancestors}
     for row in live:
@@ -383,7 +383,7 @@ def home_of(
     ``Opener`` in ``GIG READY / Halloween`` when that exists. Every place a
     name cannot decide or discovery would never pair is refused.
     """
-    from cratekit.core import foreign_tree
+    from cratekit.core import active_taxonomy
 
     name = name_of(folder, title)
     if not name:
@@ -426,7 +426,7 @@ def home_of(
                 f"one it goes in is not something a name decides"
             )
         top_id = str(top[0].ID)
-        foreign = {str(row.ID) for row in foreign_tree.roots_in(live)}
+        foreign = {str(row.ID) for row in active_taxonomy.foreign_roots_in(live)}
         if top_id in roots or top_id in foreign:
             return (
                 f"rekordbox's {folder!r} is one of Cratekit's trees or another app's "

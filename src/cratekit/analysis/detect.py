@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, Iterator, MutableMapping
 
 from cratekit.analysis.energy import MEASURE_RATE
-from cratekit.core import drift as drift_words
 from cratekit.core.config import DEFAULT_DRIFT_CUT, DEFAULT_TEMPO_CEILING, DEFAULT_TEMPO_FLOOR
+from cratekit.intake import drift as drift_words
 
 #: The terminal status for a file the decoder could not read at all.
 TERMINAL_UNDECODABLE = "skipped-undecodable"

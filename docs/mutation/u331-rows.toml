@@ -1,0 +1,292 @@
+name = "u331"
+pass_kind = "light"
+
+# U331's own guards, scoped to the branch's diff, and a fixed sample of the
+# guards it re-routed: the measure's new reading of a name that is a module,
+# the drive of each toggle off, the re-exports a feature package now reaches
+# core through, the call time imports that keep a verb buildable with its
+# toggle off or the doctor's help under its ceiling, the origins an envelope
+# prints where a module moved, and the refusal folded into binaries.
+
+[[rows]]
+id = "M01_use_as_written_dropped"
+description = "Tree._followed: drop the use as written, so a name that is a module reads only as the module it leads to, and an off interface import, a top level import of a toggleable package and a private name each read clean"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''            # The use as written stands: the module it names was reached too.
+            out.append(use)
+'''
+new = '''            # The use as written stands: the module it names was reached too.
+'''
+
+[[rows]]
+id = "M02_lazy_import_hands_a_module"
+description = "Tree._parse: a module imported inside a function is read as handed over by the importing module, so an accessor that imports when called reads as a module reached"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''                    if not lazy and not typing_only:
+                        handed[alias.asname or top] = (aliases[alias.asname or top], None)'''
+new = '''                    if not typing_only:
+                        handed[alias.asname or top] = (aliases[alias.asname or top], None)'''
+
+[[rows]]
+id = "M03_lazy_from_import_hands_a_name"
+description = "Tree._parse: a from import inside a function counts as a top level binding, so a name imported at call time is followed as if the module handed it over"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''                at_top = not lazy and not typing_only'''
+new = '''                at_top = not typing_only'''
+
+[[rows]]
+id = "M04_one_hop_only"
+description = "Tree._handed: follow a handed name through one module only, so a module passed on through a third module is not followed"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''        while name is not None and (module, name) not in seen:'''
+new = '''        if name is not None and (module, name) not in seen:'''
+
+[[rows]]
+id = "M05_chains_off_an_imported_name_unread"
+description = "Tree._parse: read no attribute chain off a name imported from a module, so tags.art.read after from cratekit.core import tags is never followed to art"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''            if current.id in named and current.id not in aliases:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M06_attribute_use_not_followed"
+description = "Tree._followed: an attribute use that names a module is kept as written and not followed into it"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''                target, name = self._reached(module, use.rest)
+                out.append(replace(use, target=target, name=name, rest=()))'''
+new = '''                pass'''
+
+[[rows]]
+id = "M07_followed_module_use_filtered_out"
+description = "Tree.uses: drop the uses that name a whole module, so a module reached as an attribute of a listed module is filtered away as an unknown name"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''                if use.kind == "import"
+                or use.name is None
+'''
+new = '''                if use.kind == "import"
+'''
+
+[[rows]]
+id = "M08_followed_stops_after_one_module"
+description = "Tree._reached: stop at the first module handed on, so a chain read past it is not followed into the module it leads to"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''            module, rest = handed, more[1:]'''
+new = '''            module, rest = handed, ()'''
+
+[[rows]]
+id = "M09_drive_formats_no_help"
+description = "imports --drive: build each verb's parser and never format its help, so a verb whose help reaches a blocked module reads as built"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_refactor_measure.py", "tests/test_import_rules.py"]
+old = '''            getattr(module, entry.builder)(parser, entry)
+            parser.format_help()'''
+new = '''            getattr(module, entry.builder)(parser, entry)'''
+
+[[rows]]
+id = "S01_yt_dlp_subject_dropped"
+description = "binaries.yt_dlp_missing: drop the caller's subject from the refusal's detail, so acquire fallback and intake set no longer name the track or set it was for"
+file = "src/cratekit/core/binaries.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/intake/test_set_fetch.py"]
+old = '''            "packages": list(hint.packages) if hint is not None else [],
+            **subject,'''
+new = '''            "packages": list(hint.packages) if hint is not None else [],'''
+
+[[rows]]
+id = "S02_yt_dlp_said_dropped"
+description = "binaries.yt_dlp_missing: print the exception alone, so the caller's own sentence of what was not done is gone from the message"
+file = "src/cratekit/core/binaries.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/intake/test_set_fetch.py"]
+old = '''        f"{exc} {said}",'''
+new = '''        f"{exc}",'''
+
+[[rows]]
+id = "S03_yt_dlp_install_step_dropped"
+description = "binaries.yt_dlp_missing: give no install step even when the platform's package manager is known"
+file = "src/cratekit/core/binaries.py"
+surface = "user"
+tests = ["tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/intake/test_set_fetch.py"]
+old = '''            (f"install {', '.join(hint.packages)} with {hint.manager}, then run it again",)
+            if hint is not None
+            else ()'''
+new = '''            ()'''
+
+[[rows]]
+id = "S04_membership_ignores_explicit_toggles"
+description = "Config.membership: resolve the profile's preset alone, so a toggle the configuration turns on or off is ignored where a feature package reads the membership"
+file = "src/cratekit/core/config_schema.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_sync_all.py", "tests/test_organize.py"]
+old = '''        """The resolved membership: the profile's preset, then the explicit toggles."""
+        return profiles.resolve(self.profile.name, self.modules.explicit)'''
+new = '''        """The resolved membership: the profile's preset, then the explicit toggles."""
+        return profiles.resolve(self.profile.name, {})'''
+
+[[rows]]
+id = "S05_room_reexport_checks_nothing"
+description = "session.assert_room_for_check: the re-export the landing calls is replaced by a function that checks nothing, so a rehearsal's copy is made with no room measured"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_snapshot_check_room_r1677.py", "tests/test_import_rules.py"]
+old = '''from cratekit.core.snapshot import assert_room_for_check as assert_room_for_check
+'''
+new = '''
+
+def assert_room_for_check(*_args, **_kwargs):
+    return None
+
+'''
+
+[[rows]]
+id = "S06_landing_room_check_dropped"
+description = "intake land: the rehearsal's room check is not called through session before its copy (fixed sample, re-routed from snapshot)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_snapshot_check_room_r1677.py"]
+old = '''    session.assert_room_for_check(area.database)
+'''
+new = ''
+
+[[rows]]
+id = "S07_check_engine_origin_renamed"
+description = "intake/rekordbox_check: print the module's new place as the envelope's origin, so analyze check's refusals change the origin they have always printed"
+file = "src/cratekit/intake/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''_ORIGIN = ("analysis.rekordbox_check",)'''
+new = '''_ORIGIN = ("intake.rekordbox_check",)'''
+
+[[rows]]
+id = "S08_check_verb_origin_renamed"
+description = "intake/check_cli: print the module's new place as the envelope's origin"
+file = "src/cratekit/intake/check_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''_ORIGIN = ("analysis.check_cli",)'''
+new = '''_ORIGIN = ("intake.check_cli",)'''
+
+[[rows]]
+id = "S09_rehearsal_origin_renamed"
+description = "intake/rehearsal: print the package it moved to as the rehearsal's refusal origin"
+file = "src/cratekit/intake/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''_ORIGIN = ("core", "rehearsal")'''
+new = '''_ORIGIN = ("intake", "rehearsal")'''
+
+[[rows]]
+id = "S10_check_engine_imports_analysis_at_top"
+description = "intake/rekordbox_check: import the analysis package at the top again, so analyze check cannot build with the analysis toggle off"
+file = "src/cratekit/intake/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''from typing import Any, Iterable, Mapping, Sequence
+
+from cratekit.core import analysis_store,'''
+new = '''from typing import Any, Iterable, Mapping, Sequence
+
+from cratekit.analysis import agreement  # noqa: F401
+from cratekit.core import analysis_store,'''
+
+[[rows]]
+id = "S11_vocals_imports_analysis_cli_at_top"
+description = "vocals/cli: import the analysis verbs' module at the top, so analyze vocals cannot build with the analysis toggle off"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_import_rules.py", "tests/test_vocals_cli.py"]
+old = '''from cratekit.core.exit_codes import Remedy
+'''
+new = '''from cratekit.core.exit_codes import Remedy
+from cratekit.analysis import cli as _analysis_cli  # noqa: F401
+'''
+
+[[rows]]
+id = "S12_vocal_module_imported_before_the_bound_loader"
+description = "vocals/cli._bind_defaults: import the default loader's module before asking whether one is bound, so a machine where it cannot load cannot score through a bound one"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py", "tests/test_analysis.py"]
+old = '''    if scoring.loader_bound():
+        return
+    from cratekit.analysis import vocal
+'''
+new = '''    from cratekit.analysis import vocal
+
+    if scoring.loader_bound():
+        return
+'''
+
+[[rows]]
+id = "S13_doctor_state_loads_the_taxonomy_loader_at_top"
+description = "cli/doctor_state: import the active taxonomy loader at the top again, so crate doctor --help loads the foreign tree with it"
+file = "src/cratekit/cli/doctor_state.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py"]
+old = '''from cratekit.core import (
+    config,
+    provider_gate,'''
+new = '''from cratekit.core import (
+    active_taxonomy,  # noqa: F401
+    config,
+    provider_gate,'''
+
+[[rows]]
+id = "S14_upgrade_loads_the_taxonomy_loader_at_top"
+description = "core/taxonomy_upgrade: import the active taxonomy loader at the top again, so crate doctor --help loads the foreign tree with it"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py"]
+old = '''from cratekit.core import config, taxonomy
+'''
+new = '''from cratekit.core import active_taxonomy, config, taxonomy  # noqa: F401
+'''
+
+[[rows]]
+id = "S15_foreign_reexport_keeps_every_row"
+description = "active_taxonomy.outside_foreign: the re-export the favourites home and the pair discovery call is replaced by one that keeps every row, so a playlist inside another app's folder counts as the Favorites home"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_sync_pair_discover.py", "tests/test_import_rules.py"]
+old = '''from cratekit.core.foreign_tree import outside as outside_foreign
+'''
+new = '''
+
+def outside_foreign(rows, _every):
+    return list(rows)
+
+'''
+
+[[rows]]
+id = "S16_item_path_reexport_joins_plainly"
+description = "jobs: drop the item_path re-export analysis and vocals resolve an item through, so a feature package reaching it through the listed module finds nothing"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_import_rules.py", "tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''    frozen_walk,
+    item_path,
+    scan_audio,'''
+new = '''    frozen_walk,
+    scan_audio,'''
+
+[[dropped]]
+id = "S17_worker_ceiling_reexport_wrapped"
+description = "pool.worker_ceiling: the re-export analysis sizes a pool with is a wrapper rather than the cores' own function"
+reason = "cut at the cap of 25 with the null control: the same shape as S05 and S15, a re-export replaced by a function of its own, which the one identity test of tests/test_import_rules.py holds for every re-exported name"

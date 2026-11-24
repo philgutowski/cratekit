@@ -44,7 +44,6 @@ from types import MappingProxyType
 from typing import Any
 
 from cratekit.analysis import agreement
-from cratekit.analysis import rekordbox_check as rc
 from cratekit.cli.output import digest_of
 from cratekit.core import (
     config,
@@ -66,6 +65,7 @@ from cratekit.core.naming import (
     stamp_head,
 )
 from cratekit.intake import analyzed, native, refill
+from cratekit.intake import rekordbox_check as rc
 from cratekit.write import metadata, row_defaults, trees
 
 _ORIGIN = ("analysis", "head_adopt")
@@ -321,7 +321,7 @@ def resolve_scope(
             cfg, db, declared=declared, registry=registry, pass_name=pass_name, session_id=session_id
         )
     refill.anchored_root(db, declared.intake.id, registry)
-    members, why = rc._analyze_members(db, declared, registry)
+    members, why = rc.analyze_members(db, declared, registry)
     return rc.Scope(
         kind=rc.SCOPE_ANALYZE,
         name=f"INBOX / {native.ANALYZE}",
@@ -478,7 +478,7 @@ def plan_adopt(
     held = frozenset(str(content_id) for content_id in leave)
     keys = {str(key.ID): key.ScaleName for key in db.get_key()}
     rows = dict(scope.read)
-    rows.update(rc._content_rows(db, [c for c in scope.content_ids if c not in rows]))
+    rows.update(rc.rows_by_id(db, [c for c in scope.content_ids if c not in rows]))
     rules = locations.prefix_rules(cfg.resolved_prefix_map())
     items: list[Item] = []
     for content_id in scope.content_ids:

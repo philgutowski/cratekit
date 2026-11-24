@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, drift, locations, rb_writer, session, tags, tree_registry
+from cratekit.core import config, locations, rb_writer, session, tags, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
-from cratekit.intake import ingest, label_filing, native, set_playlist
+from cratekit.intake import drift, ingest, label_filing, native, set_playlist
 from cratekit.intake.native import (
     _ORIGIN,
     ADD,

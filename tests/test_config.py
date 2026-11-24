@@ -129,6 +129,24 @@ def test_the_volume_identity_key_is_published_for_the_assertion_to_read():
 # Profiles toggle module membership and nothing else (D6).
 
 
+def test_the_membership_is_the_profiles_preset_then_the_explicit_toggles(library):
+    """``Config.membership()`` is what organize and ``sync all`` read (U331)."""
+    data = valid_data(library)
+    data["profile"] = {"name": "slim"}
+    data["modules"] = {"labels": True}
+    slim = config.from_dict(data).membership()
+    assert (slim.profile, slim.modules, slim.overridden) == (
+        "slim", frozenset({"labels"}), frozenset({"labels"})
+    )
+    data["profile"] = {"name": "full"}
+    data["modules"] = {"labels": False}
+    full = config.from_dict(data).membership()
+    assert full.modules == frozenset(profiles.MODULES) - {"labels"}
+    assert full == profiles.resolve("full", {"labels": False})
+    assert config.Membership is profiles.Membership
+    assert config.install_command is profiles.install_command
+
+
 def test_a_profile_change_toggles_membership_without_touching_unrelated_keys(library):
     data = valid_data(
         library,

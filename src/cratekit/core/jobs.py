@@ -46,6 +46,14 @@ from cratekit.core.cause import (
     Scope,
     refuse,
 )
+from cratekit.core.discovery import (
+    Scan,
+    frozen_walk,
+    item_path,
+    scan_audio,
+    walk_warnings,
+    warnings_of,
+)
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.private_store import PrivateStore
 
@@ -1269,7 +1277,12 @@ for _moved in (Batching, Declined, DriveResult, Interrupt, Parked, decline_item,
     _moved.__module__ = __name__
 del _moved
 
+# A feature package reaches a job's item list (``core.discovery``) through this
+# module, its one listed home (U331). The pool that runs the items is listed
+# itself: importing it here would load its machinery with every command's
+# queue, and this module with every worker the pool spawns.
 __all__ = [
+    "Scan", "frozen_walk", "item_path", "scan_audio", "walk_warnings", "warnings_of",
     "ENTRY_MODULE", "GATE_RUN_KEY", "QUEUE_FILENAME", "SCHEMA_VERSION", "TERMINAL_STATES",
     "Artifacts", "BatchHandler", "Batching", "DriveResult", "assert_free", "DriverHeld", "Handler",
     "Interrupt", "Item", "ItemState", "Job", "Declined", "Parked", "JobState", "JobStore",

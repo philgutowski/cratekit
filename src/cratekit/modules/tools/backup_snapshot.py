@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from cratekit.core import analysis_store, backup_facts, config, preflight
+from cratekit.core import analysis_store, backup_facts, config, session
 from cratekit.modules.tools import backup_record
 from cratekit.modules.tools.backup import (
     ANALYSIS_SHARE_ABSENT,
@@ -340,7 +340,7 @@ def snapshot_identities(cfg: config.Config, snapshot: str, *, runner: Runner) ->
             f"is not planned against a snapshot this account cannot see",
         )
     found = {
-        preflight.normalize_identity(name[len(IDENTITY_MARKER_PREFIX):])
+        session.normalize_identity(name[len(IDENTITY_MARKER_PREFIX):])
         for name in (line.strip() for line in result.stdout.splitlines())
         if name.startswith(IDENTITY_MARKER_PREFIX)
     }
@@ -364,7 +364,7 @@ def resolve_snapshot(
     wanted = snapshot_volume if snapshot_volume is not None else cfg.library.volume_id
     # AN EMPTY IDENTITY IS NO IDENTITY, or an empty marker and a blank expected
     # value would match each other and a snapshot naming nobody pass as verified.
-    expected = (preflight.normalize_identity(wanted) or None) if wanted is not None else None
+    expected = (session.normalize_identity(wanted) or None) if wanted is not None else None
     whose = (
         f"the volume this restore was told to expect is {expected or 'empty'}"
         if snapshot_volume is not None

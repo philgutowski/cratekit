@@ -10,10 +10,10 @@ import shlex
 
 import pytest
 
-from cratekit.core import held_plan, provider_gate
+from cratekit.core import provider_gate
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_calls, pair_cli
+from cratekit.sync import held_plan, pair_calls, pair_cli
 from tests._sync_builders import exited
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414

@@ -10,10 +10,9 @@ import json
 
 import pytest
 
-from cratekit.core import held_plan
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
-from cratekit.sync import pair_cli, pair_merge
+from cratekit.sync import held_plan, pair_cli, pair_merge
 from cratekit.write import playlist_pair
 from tests._sync_builders import exited
 from tests.cli_drive import drive

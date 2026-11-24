@@ -278,7 +278,7 @@ def test_a_stopped_write_a_fresh_sync_finished_is_left_behind_by_the_snapshot(wo
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     # The stopped run's record is still kept, and the snapshot is later.
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     assert held_plan.steps_path(run_id).exists()
     code, again = sync()
@@ -288,7 +288,7 @@ def test_a_stopped_write_a_fresh_sync_finished_is_left_behind_by_the_snapshot(wo
 
 
 def test_a_runs_steps_that_cannot_be_read_are_named_never_read_as_no_write(world, stopped):
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     held_plan.steps_path("2026-11-05T17:42:49Z-5ddd").write_text("{not json")
     code, envelope = sync()
@@ -378,7 +378,7 @@ def _aged(run_id: str, days: int = 31) -> None:
     import os
     import time
 
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     then = time.time() - days * 86400
     for where in (held_plan.path(run_id), held_plan.steps_path(run_id)):
@@ -408,7 +408,7 @@ def test_a_stop_older_than_a_held_plan_is_kept_is_still_finished_from_the_side_t
 
 def test_a_stop_whose_held_plan_and_steps_were_pruned_is_still_finished(world, stopped):
     """A later run's hold prunes the aged plan and steps, and the stop is still read."""
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     intro, account_id, run_id = stopped
     _aged(run_id)
@@ -438,7 +438,7 @@ def test_a_continue_of_the_stopped_run_after_its_plan_aged_out_still_finishes_it
 
 
 def test_a_kept_stop_whose_pair_a_later_sync_finished_is_let_go(world, stopped):
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     _intro, account_id, run_id = stopped
     code, envelope = sync()
@@ -458,7 +458,7 @@ def test_a_kept_stop_the_snapshot_passed_is_read_as_no_write_even_when_still_on_
     world, stopped
 ):
     """A record the snapshot passed and that was never let go, read by a later plan."""
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     _intro, account_id, run_id = stopped
     kept = {one: one.read_bytes() for one in held_plan.carried_dir().glob("*.json")}
@@ -475,7 +475,7 @@ def test_a_kept_stop_the_snapshot_passed_is_read_as_no_write_even_when_still_on_
 
 
 def test_a_kept_stop_that_cannot_be_read_is_named(world, stopped):
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     _intro, _account_id, run_id = stopped
     _aged(run_id)
@@ -489,7 +489,7 @@ def test_a_kept_stop_that_cannot_be_read_is_named(world, stopped):
 
 def test_a_stop_that_cannot_be_kept_past_its_run_moves_nothing(world, monkeypatch):
     """The record is kept before the first move, so a write that cannot keep it stops first."""
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
@@ -510,7 +510,7 @@ def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_
     world, stopped
 ):
     """Its own carried record is let go when the pair is done, whatever the snapshot did."""
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     _intro, account_id, run_id = stopped
     code, envelope = sync(rekordbox="skip")
@@ -571,7 +571,7 @@ def test_a_released_pair_paired_again_after_its_steps_were_pruned_never_takes_th
     world, stopped
 ):
     """Only the carried record is left, and it outlives the release."""
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     intro, account_id, run_id = stopped
     rebuilt = _released(world, intro, account_id)

@@ -38,11 +38,11 @@ from typing import Any, Iterator, Mapping
 
 from cratekit.analysis import ahead, artifacts, decode, detect, energy, light, run, vocals
 from cratekit.cli.output import Envelope, load_config, no_job
-from cratekit.core import config, discovery, jobs, naming, pool, tags
-from cratekit.core import drift as drift_words
+from cratekit.core import config, jobs, naming, pool, tags
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import NameTemplate
+from cratekit.intake import drift as drift_words
 from cratekit.modules import extras, foreground
 
 _ORIGIN = ("analysis", "cli")
@@ -98,15 +98,15 @@ def _audio_in(folder: Path) -> list[str]:
     would fail the job. The rule lives in ``core.discovery`` so every verb
     agrees on it.
     """
-    return list(discovery.scan_audio(folder).items)
+    return list(jobs.scan_audio(folder).items)
 
 
-def walk_folder(ctx) -> tuple[Path, bool, discovery.Scan, tuple[dict[str, str], ...]]:
+def walk_folder(ctx) -> tuple[Path, bool, jobs.Scan, tuple[dict[str, str], ...]]:
     """The folder a queueing verb names, its walk, and the folders it left out."""
     folder = _folder_of(ctx.args.folder)
     recursive = bool(getattr(ctx.args, "recursive", False))
-    scan = discovery.scan_audio(folder, recursive=recursive)
-    return folder, recursive, scan, discovery.walk_warnings(scan.skipped_links, scan.unreadable)
+    scan = jobs.scan_audio(folder, recursive=recursive)
+    return folder, recursive, scan, jobs.walk_warnings(scan.skipped_links, scan.unreadable)
 
 
 def nothing_to_queue(
@@ -432,7 +432,7 @@ def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
         summary = committed_summary(cfg, job.job_id)
         # THE RESUME IS THE REPORT A PERSON KEEPS, so what the walk left out
         # rides it too, read back off the frozen payload.
-        warnings = (*warnings, *discovery.warnings_of(job.payload))
+        warnings = (*warnings, *jobs.warnings_of(job.payload))
         if job.handler_key == "analyze.restamp":
             warnings = (*warnings, DB_NOT_WRITTEN)
             # What a tail's restamp left out because the run scored it (U344).
@@ -519,11 +519,11 @@ def _refuse_missing(item, folder: Path, path: Path, what: str) -> CratekitError:
 def _folder_and_path(job, item) -> tuple[Path, Path]:
     """The frozen folder and the item's path in it, the one rule both workers use.
 
-    ``core.discovery.item_path`` refuses an id that would leave the folder: an
+    ``core.jobs.item_path`` refuses an id that would leave the folder: an
     absolute right hand side would discard the base silently (U93).
     """
     folder = Path(str((job.payload or {}).get("folder") or ""))
-    return folder, discovery.item_path(folder, str(item.item_id))
+    return folder, jobs.item_path(folder, str(item.item_id))
 
 
 def _item_path(job, item, what: str) -> Path:
@@ -886,7 +886,7 @@ def analyze_restamp(ctx) -> Envelope:
             # the tree the job was queued against.
             payload={
                 "folder": str(folder),
-                **discovery.frozen_walk(scan, recursive=recursive),
+                **jobs.frozen_walk(scan, recursive=recursive),
                 **scored_by,
             },
             cfg=cfg,

@@ -8,6 +8,12 @@ that only shrinks:
 
 1. **No private name crosses a package.**
 2. **A feature package imports from core only the named interface** below.
+   A listed module answers for the names it defines and the names it
+   re-exports from a core module off the list, each one a counted core name.
+   A module it imports at its top level is not one of them: reached as an
+   attribute of the listed module, or imported from it, it is read as a reach
+   of that module itself as well (U331). A module bound some other way is
+   not followed.
 3. **An always on package never imports a toggleable one at module top
    level**; under a function it may.
 4. **With each toggle off, every remaining verb still builds**, read
@@ -18,12 +24,17 @@ that only shrinks:
 
 And one ceiling: the count of distinct core names feature packages use may
 not grow. An allowance line is one crossing per package and name, so a split
-module adds no line. The script reads the lists below as literals.
+module adds no line, and since U331 every allowance is empty and a line put
+back fails. The script reads the lists below as literals.
 """
 
 from __future__ import annotations
 
 import collections
+import importlib
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -36,34 +47,60 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ── The lists. Literals, because the script reads them without importing this. ───
 
-#: The core modules a feature package may import: the named interface. These
-#: are the 25 that three or more feature packages reached when U290's survey
-#: measured them. The list is capped below and is not a place to park a reach:
-#: a module joins only when it replaces one that leaves.
+#: The core modules a feature package may import: the named interface. Twenty
+#: one are among the 25 that three or more feature packages reached when
+#: U290's survey measured them. The list is capped below and is not a place to
+#: park a reach: a module joins only when it replaces one that leaves.
+#:
+#: U331 MADE FOUR SWAPS, each for a module a feature package must import
+#: itself: ``art`` needs ``tags`` at import and borrows the two private
+#: container helpers the beat grid rule depends on; ``pool`` is the module the
+#: sizing guards of ``tests/test_pool_sizing.py`` are keyed on, and loads the
+#: process pool's machinery; ``restore`` imports ``session``, the module that
+#: would have to answer for it, and ``taxonomy_word`` imports the upgrade and
+#: ``routing``, which ``active_taxonomy`` answering for it would load with
+#: every importer (a cycle, until the upgrade read the loader where it calls
+#: it). The four that left are each
+#: re-exported by a listed module that loads what it needs already:
+#: ``profiles`` by ``config``, ``preflight`` and ``snapshot`` by ``session``,
+#: and ``foreign_tree`` by ``active_taxonomy``, which has the taxonomy loaded
+#: where ``tree_registry`` would load it for the restore; so every module
+#: importing ``active_taxonomy`` at its top loads the foreign tree too, which
+#: is why the doctor's two readers import it where they call it (U331's merge
+#: of U343 put the doctor's help at its ceiling). ``session`` answers
+#: for ``processes`` the same way, ``jobs`` for ``discovery``, and ``pool`` for
+#: the cores' ceiling, so a spawned worker loads nothing more for it.
+#:
+#: A RE-EXPORT IS NEVER FREE, which is why the list is not emptied into it:
+#: the listed module imports the other with every command that imports it, a
+#: guard that follows imports follows it there, and a test that patches the
+#: name patches it where the caller reads it. Loading it on demand instead
+#: hides it from those guards (``tests/modules/test_reports.py`` refuses a
+#: computed import), so it is not done.
 CORE_INTERFACE = (
     "active_taxonomy",
     "analysis_store",
+    "art",
     "backup_facts",
     "binaries",
     "cause",
     "config",
     "convergence",
     "exit_codes",
-    "foreign_tree",
     "jobs",
     "locations",
     "naming",
-    "preflight",
-    "profiles",
+    "pool",
     "provider_gate",
     "rb_writer",
+    "restore",
     "review",
     "routing",
     "secrets",
     "session",
-    "snapshot",
     "tags",
     "taxonomy",
+    "taxonomy_word",
     "tombstone",
     "tree_registry",
 )
@@ -73,10 +110,20 @@ CORE_INTERFACE_LIMIT = 25
 #: package holding any is toggleable, every other always on. ``web`` and
 #: ``desktop`` are deferred, and ``identify`` and ``repair`` gate verbs in
 #: always on packages, so those four own nothing.
+#:
+#: A HOME NEVER HOLDS WHAT BUILDS A VERB ITS TOGGLE DOES NOT GATE (U331), which
+#: rule four fails; a verb a toggle gates may still be built outside any home,
+#: as ``label.sync`` is in the shell. ``favorites`` gates one verb,
+#: ``sync.favorites`` in ``favorites/cli.py``; the rest of that package builds
+#: four verbs no toggle gates and the landing, so the toggle owns the module,
+#: as ``duplicates`` owns one module of ``reports``. ``export`` gates the verbs
+#: of ``cratekit.export``; the outbound package under ``modules`` is what the
+#: favourites sweep is built on too, and what organize, sync, label and intake
+#: call, so no toggle owns it, and rules three and four no longer read it.
 TOGGLE_HOMES = {
     "analysis": ("cratekit.analysis",),
     "vocals": ("cratekit.vocals",),
-    "favorites": ("cratekit.favorites",),
+    "favorites": ("cratekit.favorites.cli",),
     "labels": ("cratekit.label",),
     "deletion": ("cratekit.deletion",),
     "web": (),
@@ -85,7 +132,7 @@ TOGGLE_HOMES = {
     "repair": (),
     "duplicates": ("cratekit.modules.reports.duplicates",),
     "reports": ("cratekit.modules.reports",),
-    "export": ("cratekit.export", "cratekit.modules.outbound"),
+    "export": ("cratekit.export",),
     "setbuilder": ("cratekit.setbuilder", "cratekit.modules.tools.setbuilder"),
     "mastering": ("cratekit.master", "cratekit.modules.tools.mastering"),
     "backup": ("cratekit.backup", "cratekit.modules.tools.backup"),
@@ -122,7 +169,13 @@ TOGGLE_HOMES = {
 #: one: the naming engine is the one place a head is rendered, and building it
 #: in a feature package would undo what the refactor is for. U331 (#980) counts
 #: it as an interface name.
-CORE_NAMES_CEILING = 453
+#:
+#: U331 lowered it from 453 to 432, the count measured once every reach went
+#: through the list: a name re-exported by a listed module replaced the one it
+#: stood for, ``Config.membership()`` replaced ``profiles.resolve``, and the
+#: names of the modules that moved to the feature that used them (``held_plan``
+#: to sync, ``rehearsal`` and ``drift`` to intake) are core names no longer.
+CORE_NAMES_CEILING = 432
 
 
 # ── Fixtures: a package of synthetic modules ─────────────────────────────────
@@ -308,6 +361,145 @@ def test_a_reach_under_type_checking_is_still_a_reach():
 def test_a_module_on_the_list_passes_from_a_feature_package():
     tree = _tree(core__config="def load(): ...\n", intake__landing="from cratekit.core.config import load\n")
     assert measure.off_interface(tree, ["config"]) == {}
+
+
+def test_a_name_a_listed_module_re_exports_is_reached_through_the_list():
+    """How a part is reached: the listed module answers for the name, and it is counted."""
+    tree = _tree(
+        core__pool="def plan_pool(): ...\n",
+        core__jobs="from cratekit.core.pool import plan_pool as plan_pool\n",
+        analysis__light=(
+            "from cratekit.core import jobs\nfrom cratekit.core.jobs import plan_pool\n\n"
+            "jobs.plan_pool()\n"
+        ),
+    )
+    assert measure.off_interface(tree, ["jobs"]) == {}
+    assert measure.core_names(tree) == {"analysis": {"cratekit.core.jobs.plan_pool"}}
+
+
+def test_a_module_handed_over_by_a_listed_one_is_a_reach_of_that_module():
+    """Or eleven modules could hide behind eleven counted names of the list."""
+    handed = "from cratekit.core import art\n"
+    tree = _tree(
+        core__art="def read(): ...\ndef write(): ...\n",
+        core__tags=handed,
+        tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n",
+        tagging__summary="from cratekit.core.tags import art as pictures\n\npictures.write()\n",
+        sync__run="from cratekit.core import tags\n\nkept = tags.art\n",
+    )
+    assert _lines(measure.off_interface(tree, ["tags"])) == {
+        "sync": ["off-interface cratekit.core.art"],
+        "tagging": ["off-interface cratekit.core.art"],
+    }
+    # The name of ``tags`` that was written is counted too, beside what was read through it.
+    assert measure.core_names(tree) == {
+        "sync": {"cratekit.core.tags.art"},
+        "tagging": {
+            "cratekit.core.art.read", "cratekit.core.art.write", "cratekit.core.tags.art",
+        },
+    }
+    assert measure.off_interface(tree, ["art", "tags"]) == {}
+
+
+def test_a_module_handed_over_twice_is_followed_to_the_module_it_is():
+    """A chain of any length ends at a module and a name in it, never at a name of the first."""
+    tree = _tree(
+        core__codec="def decode(): ...\n",
+        core__art="from cratekit.core import codec\n",
+        core__tags="import cratekit.core.art\nfrom cratekit.core import art\n",
+        tagging__tag=(
+            "from cratekit.core import tags\n\ntags.art.codec.decode()\n"
+            "tags.cratekit.core.codec.decode()\n"
+        ),
+        tagging__rows="from cratekit.core.tags import art\n\nart.codec.decode()\n",
+    )
+    assert _lines(measure.off_interface(tree, ["tags"])) == {
+        "tagging": ["off-interface cratekit.core.art", "off-interface cratekit.core.codec"]
+    }
+    assert measure.core_names(tree) == {
+        "tagging": {
+            "cratekit.core.codec.decode", "cratekit.core.tags.art", "cratekit.core.tags.cratekit",
+        }
+    }
+
+
+def test_a_module_passed_on_by_name_through_a_third_module_is_followed_to_it():
+    """``tags`` took ``art`` from ``pictures``, which imported it: still ``core.art``."""
+    tree = _tree(
+        core__art="def read(): ...\n",
+        core__pictures="from cratekit.core import art\n",
+        core__tags="from cratekit.core.pictures import art as covers\n",
+        tagging__tag="from cratekit.core import tags\n\ntags.covers.read()\n",
+        tagging__rows="from cratekit.core.tags import covers\n\ncovers.read()\n",
+    )
+    assert _lines(measure.off_interface(tree, ["tags"])) == {
+        "tagging": ["off-interface cratekit.core.art"]
+    }
+    assert "cratekit.core.art.read" in measure.core_names(tree)["tagging"]
+
+
+def test_the_module_an_import_names_is_still_reached_when_the_name_is_a_module():
+    """Following the name adds a reach and takes none away: each rule still reads the
+    module the statement names, as it did before the follow."""
+    tree = _tree(
+        core__cause="",
+        core__preflight="from cratekit.core import cause\n",
+        core___hidden="from cratekit.core import cause\n",
+        label__registry="from cratekit.core import cause\n",
+        intake__landing="from cratekit.core.preflight import cause\n",
+        sync__run="from cratekit.label.registry import cause\n",
+        adopt__move="from cratekit.core._hidden import cause\n",
+    )
+    assert _lines(measure.off_interface(tree, ["cause"])) == {
+        "adopt": ["off-interface cratekit.core._hidden"],
+        "intake": ["off-interface cratekit.core.preflight"],
+    }
+    assert _lines(measure.top_level_toggleable(tree, HOMES)) == {
+        "sync": ["top-level cratekit.label.registry.cause"]
+    }
+    assert _lines(measure.private_crossings(tree)) == {
+        "adopt": ["private cratekit.core._hidden.cause"]
+    }
+
+
+def test_a_function_that_imports_its_module_when_called_is_not_that_module():
+    """``session_call_time.session`` is the tree's own case: the import is inside the
+    function, so the name on the module is the function and nothing is handed over."""
+    tree = _tree(
+        core__session="def lock(): ...\n",
+        core__session_call_time=(
+            "def session():\n    from cratekit.core import session\n    return session\n"
+        ),
+        core__session_ack="from cratekit.core.session_call_time import session as _session\n",
+        core__tags="def cover():\n    from cratekit.core import art\n    return art\n",
+        core__art="def read(): ...\n",
+        tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n",
+    )
+    assert tree.loads["cratekit.core.session_ack"] == frozenset({"cratekit.core.session_call_time"})
+    assert measure.off_interface(tree, ["tags"]) == {}
+
+
+def test_a_private_name_of_a_module_handed_over_is_still_a_crossing():
+    tree = _tree(
+        core__art="def _open(): ...\n",
+        core__tags="from cratekit.core import art\n",
+        tagging__tag="from cratekit.core import tags\n\ntags.art._open()\n",
+    )
+    assert _lines(measure.private_crossings(tree)) == {
+        "tagging": ["private cratekit.core.art._open"]
+    }
+
+
+def test_a_toggleable_module_handed_over_at_top_level_is_a_top_level_import():
+    """Rule three reads the module a name is, not the always on module that passed it on."""
+    tree = _tree(
+        label__registry="class Registry: ...\n",
+        intake__landing="from cratekit.label import registry\n",
+        sync__run="from cratekit.intake.landing import registry\n",
+    )
+    assert _lines(measure.top_level_toggleable(tree, HOMES))["sync"] == [
+        "top-level cratekit.label.registry"
+    ]
 
 
 # ── Rule three: an always on package never imports a toggleable one at top level ───
@@ -710,6 +902,59 @@ def test_a_starred_name_is_followed_into_the_part_that_holds_its_tuple():
 
 
 # ── The real package ─────────────────────────────────────────────────────────
+
+
+def test_a_name_a_listed_module_takes_from_another_core_module_is_that_modules_own():
+    """A re-export is a second binding, so each is held to the object it was taken from:
+    every name a listed module imports by name from a core module off the list, read off
+    the source, so a re-export added later is held without being listed here."""
+    tree = measure.Tree(measure.read_sources(REPO_ROOT, [measure.SOURCE]))
+    checked = 0
+    for listed in CORE_INTERFACE:
+        module = importlib.import_module(f"cratekit.core.{listed}")
+        taken = tree._read[tree.modules[module.__name__]].handed
+        for local, (origin, name) in taken.items():
+            parts = origin.split(".")
+            if name is None or parts[:2] != ["cratekit", "core"] or parts[2] in CORE_INTERFACE:
+                continue
+            held = getattr(importlib.import_module(origin), name)
+            assert getattr(module, local) is held, (
+                f"core.{listed}.{local} is no longer {origin}.{name}: a feature package "
+                f"reading it through the list reads something else"
+            )
+            checked += 1
+    assert checked > 100, f"only {checked} re-exported names were read off the listed modules"
+
+
+#: The toggles whose homes U331 changed or whose verbs it moved out of.
+DRIVEN_TOGGLES = ("analysis", "vocals", "favorites", "export")
+
+
+def test_with_a_toggle_off_every_remaining_verb_builds_and_formats_its_help():
+    """Rule four driven for real, for the toggles U331 touched: each toggle's homes made
+    unimportable in a fresh interpreter, then every verb the toggle does not gate imported,
+    built and its help formatted. Every toggle is ``refactor_measure.py imports --drive``."""
+    homes = {toggle: TOGGLE_HOMES[toggle] for toggle in DRIVEN_TOGGLES}
+    finished = subprocess.run(
+        [sys.executable, "-c", measure._DRIVE, json.dumps(homes)],
+        capture_output=True, text=True, check=False, cwd=REPO_ROOT,
+    )
+    assert finished.returncode == 0, finished.stderr[-2000:]
+    failed = json.loads(finished.stdout.strip().splitlines()[-1])
+    assert failed == {toggle: [] for toggle in DRIVEN_TOGGLES}
+
+
+def test_every_import_allowance_is_empty():
+    """U331 emptied every allowance; a line put back is a crossing excused, so none may stand."""
+    directory = REPO_ROOT / measure.IMPORT_ALLOWANCES
+    files = sorted(directory.glob("*.txt"))
+    assert len(files) > 10, f"read {len(files)} allowance files, too few to be the packages"
+    held = {
+        path.name: sorted(lines)
+        for path in files
+        if (lines := measure.parse_allowance(path.read_text(encoding="utf-8")))
+    }
+    assert not held, f"an allowance holds a line again, close the crossing instead: {held}"
 
 
 def test_no_package_crosses_a_seam_beyond_its_allowance():

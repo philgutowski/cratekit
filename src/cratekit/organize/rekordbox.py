@@ -30,7 +30,6 @@ from cratekit.adopt import shell as adopt_shell
 from cratekit.core import (
     active_taxonomy,
     config,
-    foreign_tree,
     jobs,
     rb_writer,
     session,
@@ -338,10 +337,10 @@ def _yours(
     declared_roots = _declared_roots(declared)
     catalog = declared.catalog.display if declared.catalog is not None else None
     # U185. ANOTHER APP'S FOLDER IS NAMED ONCE, as a fact, and is not yours.
-    foreign = {str(row.ID) for row in foreign_tree.roots_in(rows)}
+    foreign = {str(row.ID) for row in active_taxonomy.foreign_roots_in(rows)}
     if foreign:
         area.facts[FOREIGN_FACT] = (
-            f"{foreign_tree.OWNER} at the top level, {foreign_tree.LEFT_AS_IT_IS}"
+            f"{active_taxonomy.FOREIGN_OWNER} at the top level, {active_taxonomy.FOREIGN_LEFT_AS_IT_IS}"
         )
     found = 0
     for row in sorted(rows, key=lambda one: (int(getattr(one, "Seq", 0) or 0), str(one.Name))):

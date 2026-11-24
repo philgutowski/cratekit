@@ -8,6 +8,7 @@ its own ``cfg`` and ``library``.
 
 from __future__ import annotations
 
+from cratekit.core import binaries
 from tests.test_acquire_fallback import (
     BOOT,
     GLASS,
@@ -19,6 +20,7 @@ from tests.test_acquire_fallback import (
     boot_answers,
     items_of,
     tracklist,
+    unfindable,
 )
 from tests.test_acquire_fallback import cfg as cfg  # noqa: PLC0414
 from tests.test_acquire_fallback import fresh_cache as fresh_cache  # noqa: PLC0414
@@ -37,3 +39,17 @@ def test_fallback_offers_and_accepts(stage, cfg, library, tmp_path, monkeypatch)
     stage.crate("review", "resolve", offered[0].item_id, "--verdict", "accepted", "--option", choice)
     stage.json("acquire", "fallback", str(path))
     stage.crate("acquire", "fallback", str(tmp_path / "absent.txt"))
+
+
+def test_fallback_without_its_downloader_and_with_a_broken_override(
+    stage, cfg, library, tmp_path, monkeypatch
+):
+    """The refusal both verbs share, whose one spelling U331 moved into ``core.binaries``."""
+    path = tracklist(tmp_path, BOOT)
+    unfindable(monkeypatch)
+    missing = stage.json("acquire", "fallback", str(path)).envelope
+    assert missing["cause"]["reason"] == "yt-dlp-missing"
+    stage.crate("acquire", "fallback", str(path))
+    monkeypatch.setenv(binaries.env_var("yt-dlp"), str(tmp_path / "not-a-program"))
+    broken = stage.json("acquire", "fallback", str(path)).envelope
+    assert broken["cause"]["remediation"]["remedy"] == "fix-binary-override"

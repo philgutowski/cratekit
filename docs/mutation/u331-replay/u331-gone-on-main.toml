@@ -1,0 +1,8 @@
+# Rows whose line still stands where this card put it, and whose mutant reads
+# a name a unit merged from main removed, so a kill after is that name's
+# absence and not the guard. Read by without_gone.py, which checks each.
+
+[[gone]]
+id = "u327.A23_check_not_suspect_on_keys"
+absent = "key_suspect"
+reason = "U343 (b1e44ba9, main) took the key agreement out of analyze check with the key floor: Check.key_suspect and its test test_keys_far_below_the_recorded_agreement_are_reported_and_never_suspect are gone, so the mutant's `or self.key_suspect` raises AttributeError on every verdict and the guard, that keys never make a visit suspect, has no key to hold on main. This card moved the line unchanged"

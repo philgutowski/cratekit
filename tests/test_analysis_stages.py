@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 from cratekit.analysis import detect
-from cratekit.core import config, drift
+from cratekit.core import config
+from cratekit.intake import drift
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RATE = detect.MEASURE_RATE

@@ -1,0 +1,2428 @@
+{
+  "name": "u331-before-c-01",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "9a043b2a",
+  "when": "2026-11-24 00:03 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22808,
+  "baseline_exit": 1,
+  "pytest_runs": 75,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25)",
+  "reused_rows": 0,
+  "known_failures": 250,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-24 00:03 UTC for commit `9a043b2ac018`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 9,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/pool.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/pool.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2dbf272a2ae863bb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22808,
+    "baseline_collected": 22808,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u12-independent-round-6.C2_reserve_halved",
+      "description": "Halve the absolute memory reserve coefficient, two gibibytes to one. A reserve that can be halved with a green suite is a reserve nothing pins.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c80e985a4cfbda48",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_capped_service_on_a_huge_host_is_sized_by_the_service",
+        "tests/test_pool_sizing.py::test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_ours"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_MEMORY_RESERVE_BYTES = 2 * 1024**3",
+      "new": "DEFAULT_MEMORY_RESERVE_BYTES = 1 * 1024**3",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "C2_reserve_halved"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.C4_darwin_headroom",
+      "description": "Raise the darwin headroom share from half to three quarters, which is the value the measured inactive-queue split says is too optimistic.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7107922ddb7556e6",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_each_headroom_share_is_pinned_by_the_pool_it_produces[darwin-half-as-measured]",
+        "tests/test_pool_sizing.py::test_the_headroom_share_is_lower_where_the_reading_is_measurably_worse[darwin-50]",
+        "tests/test_pool_sizing.py::test_the_headroom_share_is_lower_where_the_reading_is_measurably_worse[linux-75]",
+        "tests/test_pool_sizing.py::test_the_headroom_share_is_lower_where_the_reading_is_measurably_worse[win32-75]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DARWIN_HEADROOM_PERCENT = 50",
+      "new": "DARWIN_HEADROOM_PERCENT = 75",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "C4_darwin_headroom"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.C5_swap_threshold",
+      "description": "Raise the swap pressure threshold from one gibibyte to four, so the machine the documented kill happened on is no longer refused a pool.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ea83cbac3236303c",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_gated_plan_still_reports_the_reading_it_was_gated_despite",
+        "tests/test_pool_sizing.py::test_the_machine_the_kill_happened_on_gets_no_pool_under_the_shipped_rule",
+        "tests/test_pool_sizing.py::test_the_pressure_gate_bites_at_its_two_lines_and_nowhere_else[swap-at-the-line]",
+        "tests/test_pool_sizing.py::test_the_swap_threshold_is_a_gibibyte_and_the_gibibyte_is_load_bearing[a-full-gibibyte]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_SWAP_PRESSURE_BYTES = 1 * 1024**3",
+      "new": "DEFAULT_SWAP_PRESSURE_BYTES = 4 * 1024**3",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "C5_swap_threshold"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.C6_used_percent_ceiling",
+      "description": "Raise the used-percent ceiling from eighty five to ninety five.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "85a90b84d5b7b0c8",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_pressure_gate_bites_at_its_two_lines_and_nowhere_else[percent-at-the-line]",
+        "tests/test_pool_sizing.py::test_the_used_percent_ceiling_is_eighty_five_and_the_number_is_load_bearing[at-the-line]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_USED_PERCENT_CEILING = 85",
+      "new": "DEFAULT_USED_PERCENT_CEILING = 95",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "C6_used_percent_ceiling"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.C7_max_tasks_per_child",
+      "description": "Two and a half times the recycle budget, one hundred to two hundred fifty, so a child holds an allocator two and a half times longer before retiring.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e13423782d209295",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_recycling_is_on_by_default_for_any_pool_wider_than_one",
+        "tests/test_pool_sizing.py::test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly[a-ten-thousand-track-folder]",
+        "tests/test_pool_sizing.py::test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly[an-ordinary-folder]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_MAX_TASKS_PER_CHILD = 100",
+      "new": "DEFAULT_MAX_TASKS_PER_CHILD = 250",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "C7_max_tasks_per_child"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.C8_probe_deadline",
+      "description": "Cut the probe deadline from two minutes to forty five seconds, below the twice-the-reference floor the docstring claims the suite states.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0c6c54f51f8cc833",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_probe_deadline_the_module_ships_outlasts_the_load_it_waits_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_PROBE_TIMEOUT_SECONDS = 120.0",
+      "new": "DEFAULT_PROBE_TIMEOUT_SECONDS = 45.0",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "C8_probe_deadline"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.C9_reap_budget",
+      "description": "Halve the reaping budget, one second to half a second, which the round six docstring names as the value that makes the terminate rung a race.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "640df5448c16d470",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_reaping_budget_is_a_band_around_what_a_release_costs"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_PROBE_REAP_SECONDS = 1.0",
+      "new": "_PROBE_REAP_SECONDS = 0.5",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "C9_reap_budget"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.G1_dotdot_not_refused",
+      "description": "Drop the refusal of a cgroup path containing dot dot, so a climbing path is rewritten into a real sibling cgroup and its tighter cap binds.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0aa476ace5a1d604",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_climb_that_lands_on_a_real_cgroup_inside_the_mount_is_refused_too[a-climb-in-the-middle]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if \"..\" in fields:\n        candidates = [mount]\n    else:\n",
+      "new": "    if False:\n        candidates = [mount]\n    else:\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "G1_dotdot_not_refused"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.G2_containment_dropped",
+      "description": "Stop checking that a resolved level is still inside the mount, so a symlink out of the mount is read as a level of this process's cgroup.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac35566e8dddf6d9",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_component_that_symlinks_out_of_the_mount_is_not_read",
+        "tests/test_pool_sizing.py::test_a_limit_file_that_symlinks_out_of_the_mount_is_not_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if resolved is None or not resolved.is_relative_to(anchor):\n        return None\n",
+      "new": "    if resolved is None:\n        return None\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "G2_containment_dropped"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.G3_headroom_can_go_negative",
+      "description": "Report a negative headroom for a cgroup already over its cap.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7fe8ced3d0d76eb4",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_cgroup_cap_reports_what_is_left_inside_it[over-the-cap-is-zero-never-negative]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return max(0, limit - used)\n",
+      "new": "    return limit - used\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "G3_headroom_can_go_negative"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.G4_controller_substring_match",
+      "description": "Match the memory controller by substring, so a controller named memoryfoo sends the walk to an unrelated cgroup.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "54bf94d8ba1d6e7f",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_controller_field_that_merely_contains_the_word_memory_is_not_it[a-name-that-contains-it]",
+        "tests/test_pool_sizing.py::test_a_controller_field_that_merely_contains_the_word_memory_is_not_it[a-name-that-starts-with-it]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif \"memory\" in controllers.split(\",\"):\n",
+      "new": "        elif \"memory\" in controllers:\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "G4_controller_substring_match"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.G5_loosest_cap_wins",
+      "description": "Take the loosest cap on the chain rather than the tightest, so a generous unit inside a tight slice reports the unit's number.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "72caf1d8c5f0c6a9",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_tightest_cap_on_the_chain_is_the_one_that_binds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return min(found) if found else None\n",
+      "new": "    return max(found) if found else None\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "G5_loosest_cap_wins"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.G6_cgroup_cap_ignored",
+      "description": "Ignore the cgroup cap entirely and return the host reading, which is the defect that sizes a container by its host.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4c571a90138d7a6f",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_capped_service_on_a_huge_host_is_sized_by_the_service",
+        "tests/test_pool_sizing.py::test_a_container_capped_below_its_host_is_sized_by_the_cap",
+        "tests/test_pool_sizing.py::test_a_large_container_on_a_larger_host_is_still_sized_by_the_container"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return reading if capped is None else min(reading, capped)\n",
+      "new": "    return reading\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "G6_cgroup_cap_ignored"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.G7_valueerror_escapes_the_reader",
+      "description": "Narrow the kernel-file reader back to OSError, so undecodable bytes and an embedded null byte raise out of a function that promises a number.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d4875133fcc3d61b",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_kernel_file_that_is_not_readable_as_text_is_an_absent_reading[not-text-at-all]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (OSError, ValueError):\n        return None\n",
+      "new": "    except OSError:\n        return None\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "G7_valueerror_escapes_the_reader"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M1_measurement_below_the_floor",
+      "description": "Return the measurement even when it is below the declared floor, so the floor becomes a fallback rather than a floor.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a1de6082ab271c8c",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_probe_reports_its_measure_and_never_below_the_floor[never-below-the-floor]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return max(measured, floor_bytes)\n",
+      "new": "    return measured\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M1_measurement_below_the_floor"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M2_nonsense_measurement_accepted",
+      "description": "Accept a boolean, a float or a zero from the probe as a byte count.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7d9178044e1fb941",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_probe_that_answers_with_nonsense_returns_the_floor[none]",
+        "tests/test_pool_sizing.py::test_a_probe_that_answers_with_nonsense_returns_the_floor[text]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(measured, int) or isinstance(measured, bool) or measured < 1:\n        return floor_bytes\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M2_nonsense_measurement_accepted"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M3_zero_deadline_allowed",
+      "description": "Allow a probe deadline of zero or less, which is a probe that can never answer reporting the floor as though it had measured.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "757bfef06b63a503",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_probe_with_no_time_to_answer_refuses_rather_than_reporting_the_floor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if timeout_seconds <= 0:\n        raise ValueError(\"timeout_seconds must leave the probe some time to answer\")\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M3_zero_deadline_allowed"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M4_model_freed_before_the_reading",
+      "description": "Free the loaded object before the resident set is read, the allocator retention defect the probe was rewritten to fix.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "014eb44eec4bb1ad",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_real_probe_measures_a_freshly_spawned_child"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        model = loader()\n        try:\n            measured = resident_bytes()\n        finally:\n",
+      "new": "        loader()\n        try:\n            measured = resident_bytes()\n        finally:\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M4_model_freed_before_the_reading"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M5_terminate_rung_removed",
+      "description": "Remove the terminate rung alone, so every abandoned probe child meets an unconditional kill with no chance to unwind.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "82046faf4f84501b",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_probe_child_that_can_unwind_is_asked_to_before_it_is_killed",
+        "tests/test_pool_sizing.py::test_a_probe_child_that_refuses_to_unwind_meets_the_kill_backstop",
+        "tests/test_pool_sizing.py::test_the_release_the_fixture_declares_is_what_the_ladder_was_timed_paying"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if worker.is_alive():\n        worker.terminate()\n        worker.join(_PROBE_REAP_SECONDS)\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M5_terminate_rung_removed"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M6_kill_rung_removed",
+      "description": "Remove the kill backstop alone, so a child that ignores its terminate is left running and still allocating.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0a2aac061729cde0",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_probe_child_that_refuses_to_unwind_meets_the_kill_backstop"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if worker.is_alive():\n        worker.kill()\n        worker.join(_PROBE_REAP_SECONDS)\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M6_kill_rung_removed"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M7_parent_keeps_the_write_end",
+      "description": "Leave the parent's copy of the pipe write end open, so a child that dies without answering is indistinguishable from a slow one.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e0ea63ea0ab11c5",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_probe_that_gets_no_answer_lands_on_the_floor_in_time[a-child-that-dies-without-answering]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    # exactly like a slow one until the timeout expired.\n    writer.close()\n",
+      "new": "    # exactly like a slow one until the timeout expired.\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M7_parent_keeps_the_write_end"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.M8_no_reap_after_the_probe",
+      "description": "Remove the reap from the probe's finally, so an abandoned child keeps its allocation on a machine already declared tight.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bc21fc6d6fbb3c91",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_probe_that_gave_up_leaves_no_child_still_allocating"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        reader.close()\n        _reap(worker)\n",
+      "new": "        reader.close()\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "M8_no_reap_after_the_probe"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P10_recycle_reported_for_in_process",
+      "description": "Report a recycle count on a plan that runs in the calling process and has no child to retire.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "59fe18499ab23852",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_an_in_process_plan_runs_no_generations_at_all",
+        "tests/test_pool_sizing.py::test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        max_tasks_per_child=None if workers == 1 else max_tasks_per_child,\n",
+      "new": "        max_tasks_per_child=max_tasks_per_child,\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P10_recycle_reported_for_in_process"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P12_unreadable_falls_back_to_ceiling",
+      "description": "Make the unreadable-memory fallback the declared ceiling rather than one worker, which is the exact fallback the brief forbids.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fda54e895123ffba",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_memory_read_failure_falls_back_to_one_worker_rather_than_raising",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[bool]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[float]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[negative]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[none]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[text]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[very-negative]",
+        "tests/test_pool_sizing.py::test_the_fallback_is_never_the_ceiling_or_the_item_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return PoolPlan(\n            workers=1,\n            items=items,\n            bound=Bound.MEMORY_UNREADABLE,\n",
+      "new": "        return PoolPlan(\n            workers=ceiling,\n            items=items,\n            bound=Bound.MEMORY_UNREADABLE,\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P12_unreadable_falls_back_to_ceiling"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P1_reserve_not_applied",
+      "description": "Drop the absolute reserve from the budget entirely, so the whole reading is claimable before the percent scales it.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b1dad10d55578c12",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_capped_service_on_a_huge_host_is_sized_by_the_service",
+        "tests/test_pool_sizing.py::test_a_machine_that_affords_exactly_one_worker_says_so",
+        "tests/test_pool_sizing.py::test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it_is",
+        "tests/test_pool_sizing.py::test_a_measured_worker_size_flows_into_the_plan_it_was_taken_for",
+        "tests/test_pool_sizing.py::test_a_platform_with_no_limit_contributes_nothing_to_the_arithmetic",
+        "tests/test_pool_sizing.py::test_sixteen_gigabytes_is_bound_by_the_headroom_once_the_ceiling_is_raised",
+        "tests/test_pool_sizing.py::test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_ours",
+        "tests/test_pool_sizing.py::test_the_core_count_does_not_change_the_computed_cap",
+        "tests/test_pool_sizing.py::test_the_hard_ceiling_and_the_headroom_agree_at_the_point_they_cross",
+        "tests/test_pool_sizing.py::test_the_reserve_comes_off_the_reading_before_the_percent_scales_it",
+        "tests/test_pool_sizing.py::test_the_worker_count_flips_exactly_at_the_affordable_boundary[2]",
+        "tests/test_pool_sizing.py::test_the_worker_count_flips_exactly_at_the_affordable_boundary[3]",
+        "tests/test_pool_sizing.py::test_the_worker_count_flips_exactly_at_the_affordable_boundary[4]",
+        "tests/test_pool_sizing.py::test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    budget = max(0, available - reserve_bytes)\n",
+      "new": "    budget = max(0, available)\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P1_reserve_not_applied"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P2_order_reversed",
+      "description": "Reverse the last two steps: divide into workers first and then scale the count, which the docstring says differs only at the boundaries.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4950666643859120",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_machine_that_affords_exactly_one_worker_says_so",
+        "tests/test_pool_sizing.py::test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it_is",
+        "tests/test_pool_sizing.py::test_the_hard_ceiling_and_the_headroom_agree_at_the_point_they_cross",
+        "tests/test_pool_sizing.py::test_the_headroom_is_applied_to_the_bytes_before_they_are_divided_into_workers",
+        "tests/test_pool_sizing.py::test_the_worker_count_flips_exactly_at_the_affordable_boundary[2]",
+        "tests/test_pool_sizing.py::test_the_worker_count_flips_exactly_at_the_affordable_boundary[4]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    affordable = budget * headroom_percent // 100 // worker_bytes\n",
+      "new": "    affordable = budget // worker_bytes * headroom_percent // 100\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P2_order_reversed"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P3_budget_can_go_negative",
+      "description": "Remove the floor at zero so a reading smaller than the reserve produces a negative budget and a negative affordable count.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "890529ef75032ae3",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_container_capped_below_its_host_is_sized_by_the_cap",
+        "tests/test_pool_sizing.py::test_a_reading_smaller_than_the_reserve_affords_nothing_rather_than_going_negative"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    budget = max(0, available - reserve_bytes)\n",
+      "new": "    budget = available - reserve_bytes\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P3_budget_can_go_negative"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P4_no_floor_of_one_worker",
+      "description": "Remove the floor of one worker, so a machine that affords none plans a pool of zero.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8cfcb62a38bdff70",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_container_capped_below_its_host_is_sized_by_the_cap",
+        "tests/test_pool_sizing.py::test_a_function_no_child_could_receive_is_refused_before_anything_runs",
+        "tests/test_pool_sizing.py::test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it_is",
+        "tests/test_pool_sizing.py::test_a_plan_of_one_worker_explains_itself_as_in_process",
+        "tests/test_pool_sizing.py::test_a_plan_of_one_worker_runs_the_work_in_this_process",
+        "tests/test_pool_sizing.py::test_a_reading_smaller_than_the_reserve_affords_nothing_rather_than_going_negative",
+        "tests/test_pool_sizing.py::test_an_in_process_plan_refuses_to_hand_back_pool_arguments",
+        "tests/test_pool_sizing.py::test_an_in_process_plan_runs_no_generations_at_all",
+        "tests/test_pool_sizing.py::test_an_initializer_argument_no_child_could_receive_is_refused_on_the_same_terms",
+        "tests/test_pool_sizing.py::test_no_work_at_all_plans_one_in_process_worker_rather_than_zero",
+        "tests/test_pool_sizing.py::test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    workers = max(1, smallest)\n",
+      "new": "    workers = smallest\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P4_no_floor_of_one_worker"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P5_tie_goes_to_the_ceiling",
+      "description": "Put the ceiling ahead of available memory in the precedence list, so a tie is reported as the ceiling rather than as memory.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b9320bc56063b9c",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_hard_ceiling_and_the_headroom_agree_at_the_point_they_cross"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        (Bound.AVAILABLE_MEMORY, affordable),\n        (Bound.CEILING, ceiling),\n",
+      "new": "        (Bound.CEILING, ceiling),\n        (Bound.AVAILABLE_MEMORY, affordable),\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P5_tie_goes_to_the_ceiling"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.P6_no_insufficient_memory_bound",
+      "description": "Remove the reclassification that tells a machine affording exactly one from a machine affording none.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "99bdc1919f46f3eb",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_container_capped_below_its_host_is_sized_by_the_cap",
+        "tests/test_pool_sizing.py::test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it_is",
+        "tests/test_pool_sizing.py::test_a_reading_smaller_than_the_reserve_affords_nothing_rather_than_going_negative",
+        "tests/test_pool_sizing.py::test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_ours",
+        "tests/test_pool_sizing.py::test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        bound = Bound.INSUFFICIENT_MEMORY\n",
+      "new": "        bound = Bound.AVAILABLE_MEMORY\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "P6_no_insufficient_memory_bound"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.R1_available_type_check",
+      "description": "Accept a non-integer or negative available reading as a real reading.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6cb9bd54edbb5553",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[bool]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[float]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[negative]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[text]",
+        "tests/test_pool_sizing.py::test_a_reading_that_is_not_a_byte_count_is_treated_as_unreadable[very-negative]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(value, int) or isinstance(value, bool) or value < 0:\n        return None\n    return value\n",
+      "new": "    return value\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "R1_available_type_check"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.R2_available_never_raises",
+      "description": "Remove the catch around the injected available reader, so a reader that raises raises out of plan_pool.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34f31dc259b5701d",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_memory_read_failure_falls_back_to_one_worker_rather_than_raising",
+        "tests/test_pool_sizing.py::test_the_fallback_is_never_the_ceiling_or_the_item_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        value = reader()\n    except Exception:\n        return None\n    if not isinstance(value, int)",
+      "new": "    value = reader()\n    if not isinstance(value, int)",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "R2_available_never_raises"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.R3_pressure_percent_range",
+      "description": "Accept a used-percent outside zero to one hundred as a real reading.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a9cc3dde294819ca",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_an_unreadable_pressure_reading_does_not_collapse_the_pool[impossible-percent]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not 0 <= used <= 100:\n        return None\n    return value\n",
+      "new": "    return value\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "R3_pressure_percent_range"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.R4_pressure_type_check",
+      "description": "Accept anything at all as a pressure reading, not only a Pressure.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ce3dc7c1b93e7256",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_an_unreadable_pressure_reading_does_not_collapse_the_pool[none]",
+        "tests/test_pool_sizing.py::test_an_unreadable_pressure_reading_does_not_collapse_the_pool[text]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(value, Pressure):\n        return None\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "R4_pressure_type_check"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.X1_pool_of_one_built",
+      "description": "Let executor_arguments build a pool for a plan of one worker instead of refusing at the seam.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "10f66827cb04cf34",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_an_in_process_plan_refuses_to_hand_back_pool_arguments"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if plan.in_process:\n        raise ValueError(\n            \"a plan of one worker runs in the calling process; there is no pool \"\n            \"to build. Branch on plan.in_process before asking for a pool.\"\n        )\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "X1_pool_of_one_built"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.X3_generation_boundary_removed",
+      "description": "Give one executor all of the work rather than one generation of it, which is the deadlock the generation boundary exists to prevent.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "78a34743b59f1c5e",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_no_child_survives_a_generation_boundary_and_every_one_reloads_its_model"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    generation = plan.tasks_per_generation or len(ordered) or 1\n",
+      "new": "    generation = len(ordered) or 1\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "X3_generation_boundary_removed"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.X4_initargs_not_refused",
+      "description": "Stop holding initializer arguments to the picklability rule, so the same call means two things on two machines again.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e7fadfa305a86bf2",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_an_initializer_argument_no_child_could_receive_is_refused_on_the_same_terms"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for position, argument in enumerate(initargs):\n        _refuse_what_no_child_could_receive(argument, f\"initializer argument {position}\")\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "X4_initargs_not_refused"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.X5_in_process_path_removed",
+      "description": "Build a pool even for a plan of one worker, which is the brief's third requirement inverted.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "115ec46e57c46315",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_plan_of_one_worker_runs_the_work_in_this_process"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if plan.in_process:\n        if initializer is not None:\n            initializer(*initargs)\n        return [function(item) for item in ordered]\n",
+      "new": "",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "X5_in_process_path_removed"
+      }
+    },
+    {
+      "id": "u12-independent-round-6.X7_generation_size_drops_the_width",
+      "description": "Size a generation by one child's budget rather than by the whole set of children, so the executor is rebuilt workers times too often.",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "02ae0169d7985383",
+      "subset": [
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 269,
+      "baseline_collected": 269,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_a_child_that_dies_mid_generation_ends_the_run_rather_than_hanging",
+        "tests/test_pool_sizing.py::test_a_plan_carries_the_item_count_it_was_decided_for",
+        "tests/test_pool_sizing.py::test_a_plan_says_how_many_generations_of_children_its_work_takes[16-2]",
+        "tests/test_pool_sizing.py::test_a_plan_says_how_many_generations_of_children_its_work_takes[17-3]",
+        "tests/test_pool_sizing.py::test_a_plan_says_how_many_generations_of_children_its_work_takes[8-1]",
+        "tests/test_pool_sizing.py::test_a_plan_says_how_many_generations_of_children_its_work_takes[9-2]",
+        "tests/test_pool_sizing.py::test_no_child_survives_a_generation_boundary_and_every_one_reloads_its_model",
+        "tests/test_pool_sizing.py::test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly[a-ten-thousand-track-folder]",
+        "tests/test_pool_sizing.py::test_the_recycle_budget_retires_a_child_occasionally_rather_than_constantly[an-ordinary-folder]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.workers * self.max_tasks_per_child\n",
+      "new": "        return self.max_tasks_per_child\n",
+      "source": {
+        "table": "u12-independent-round-6.json",
+        "id": "X7_generation_size_drops_the_width"
+      }
+    },
+    {
+      "id": "u241.M01_worker_takes_the_interrupt",
+      "description": "stream worker: no longer ignore the terminal's interrupt, so Ctrl-C kills a worker mid item",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "284fdc99bbbda59a",
+      "subset": [
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_the_terminals_interrupt_does_not_kill_a_stream_worker"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n    _leave_when_the_parent_does()\n",
+      "new": "    _leave_when_the_parent_does()\n",
+      "source": {
+        "table": "u241.json",
+        "id": "M01_worker_takes_the_interrupt"
+      }
+    },
+    {
+      "id": "u241.M02_worker_outlives_its_parent",
+      "description": "stream worker: do not watch the parent, so a killed driver leaves its workers holding their memory",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3fa2a10b1079caaa",
+      "subset": [
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_workers_leave_when_their_parent_is_killed_outright"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n    _leave_when_the_parent_does()\n",
+      "new": "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n",
+      "source": {
+        "table": "u241.json",
+        "id": "M02_worker_outlives_its_parent"
+      }
+    },
+    {
+      "id": "u241.M03_close_waits_for_unread_work",
+      "description": "WorkStream._stop: do not end the workers, so a close waits for every item nobody will read",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a7d60eded67215af",
+      "subset": [
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_a_close_ends_the_workers_without_waiting_for_work_nobody_will_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        _end_workers(executor)\n        executor.shutdown(wait=True, cancel_futures=True)\n",
+      "new": "        executor.shutdown(wait=True, cancel_futures=True)\n",
+      "source": {
+        "table": "u241.json",
+        "id": "M03_close_waits_for_unread_work"
+      }
+    },
+    {
+      "id": "u241.M07_used_percent_gate_is_strict",
+      "description": "_gates_refusing: the used percent gate refuses only above its limit, not at it",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3429760d7e15758d",
+      "subset": [
+        "tests/test_pool_stream.py",
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 295,
+      "baseline_collected": 295,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_pressure_gate_bites_at_its_two_lines_and_nowhere_else[percent-at-the-line]",
+        "tests/test_pool_sizing.py::test_the_used_percent_ceiling_is_eighty_five_and_the_number_is_load_bearing[at-the-line]",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_both_gates_names_both_swap_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if pressure.used_percent >= used_percent_ceiling:\n        refused.append(\n",
+      "new": "    if pressure.used_percent > used_percent_ceiling:\n        refused.append(\n",
+      "source": {
+        "table": "u241.json",
+        "id": "M07_used_percent_gate_is_strict"
+      }
+    },
+    {
+      "id": "u241.M08_plan_forgets_which_gate",
+      "description": "plan_pool: a plan refused by pressure no longer carries which gate refused it",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "51634dbc4609e991",
+      "subset": [
+        "tests/test_pool_stream.py",
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 298,
+      "baseline_collected": 298,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_machine_deep_in_swap_runs_one_worker_and_names_the_swap_gate",
+        "tests/test_analysis_ahead.py::test_a_machine_using_most_of_its_memory_names_the_used_percent_gate",
+        "tests/test_analysis_ahead.py::test_a_run_that_fails_part_way_says_its_pool_on_the_refusal_and_matches_the_serial_run",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_both_gates_names_both_swap_first",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_swap_names_the_gate_the_reading_and_the_limit",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_the_used_percent_names_that_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            ceiling=ceiling,\n            refused_by=refused,\n",
+      "new": "            ceiling=ceiling,\n",
+      "source": {
+        "table": "u241.json",
+        "id": "M08_plan_forgets_which_gate"
+      }
+    },
+    {
+      "id": "u301.P1_initargs_refused_without_an_initializer",
+      "description": "_refuse_unsendable: check the initializer's arguments only when there is an initializer, so map_workers and WorkStream pass a lambda argument on an in process plan",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "be8deb057f5e4d8d",
+      "subset": [
+        "tests/test_pool_sizing.py",
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 295,
+      "baseline_collected": 295,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_an_unsendable_function_is_refused_at_construction_on_both_paths[in-process]",
+        "tests/test_pool_stream.py::test_an_unsendable_function_is_refused_at_construction_on_both_paths[pooled]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for position, argument in enumerate(initargs):\n        _refuse_what_no_child_could_receive(argument, f\"initializer argument {position}\")\n",
+      "new": "    for position, argument in enumerate(initargs if initializer is not None else ()):\n        _refuse_what_no_child_could_receive(argument, f\"initializer argument {position}\")\n",
+      "source": {
+        "table": "u301.json",
+        "id": "P1_initargs_refused_without_an_initializer"
+      }
+    },
+    {
+      "id": "u301.P2_initializer_held_to_the_rule",
+      "description": "_refuse_unsendable: never check the initializer, so an unpicklable one passes an in process plan and fails a pooled one",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3d8b2ebda89ebd83",
+      "subset": [
+        "tests/test_pool_sizing.py",
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 295,
+      "baseline_collected": 295,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_an_initializer_no_child_could_receive_is_refused_on_the_same_terms"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if initializer is not None:\n        _refuse_what_no_child_could_receive(initializer, \"initializer\")\n    for position, argument in enumerate(initargs):",
+      "new": "    for position, argument in enumerate(initargs):",
+      "source": {
+        "table": "u301.json",
+        "id": "P2_initializer_held_to_the_rule"
+      }
+    },
+    {
+      "id": "r1372.K19_passed_by_strict",
+      "description": "passed_by: a write that began at the snapshot's very moment is not passed",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7dfa6cfe51e0a774",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if began is not None and not began > moment:",
+      "new": "            if began is not None and began < moment:",
+      "source": {
+        "table": "r1372.json",
+        "id": "K19_passed_by_strict"
+      }
+    },
+    {
+      "id": "r1372.K20_passed_by_any_pair",
+      "description": "passed_by: a snapshot lets go of every pair's carried records, not its own",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9496883a3d5d357c",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if _account_of(key, steps, new=new, made=made) != account_id:\n                continue\n            began = placeholders.parse_hearted(steps.get(account))\n            if began is not None",
+      "new": "            began = placeholders.parse_hearted(steps.get(account))\n            if began is not None",
+      "source": {
+        "table": "r1372.json",
+        "id": "K20_passed_by_any_pair"
+      }
+    },
+    {
+      "id": "r1372.K21_made_pair_unmapped",
+      "description": "_account_of: a made pair is read under its key, not the account playlist it was made as",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8952c8baf11c11fc",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_made_pair_is_read_under_the_account_playlist_it_was_made_as",
+        "tests/test_sync_pair_stopped.py::test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if key.startswith(new):\n        return steps.get(made) if isinstance(steps.get(made), str) else \"\"\n    return key",
+      "new": "    return key",
+      "source": {
+        "table": "r1372.json",
+        "id": "K21_made_pair_unmapped"
+      }
+    },
+    {
+      "id": "r1376.F14_finished_filter_gone",
+      "description": "stopped_writes (sample, U225): a stop a later run finished is still read, by a first sync among others",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4ec5dc6b0963299",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if account_id not in finished or not finished[account_id] > began",
+      "new": "        if True",
+      "source": {
+        "table": "r1376.json",
+        "id": "F14_finished_filter_gone"
+      }
+    },
+    {
+      "id": "r1394.S10_later_unsent_write_hides_the_pending",
+      "description": "stopped writes: the latest record is read whether or not it sent a move, so a refused finish hides the pending write it was finishing, round two's BLOCKING row",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3ef4a5ed1e0af081",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_stopped.py::test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):",
+      "new": "            if held is None or write.at > held[1].at:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S10_later_unsent_write_hides_the_pending"
+      }
+    },
+    {
+      "id": "r1394.S1_counts_beyond_the_moves_trusted",
+      "description": "stopped write: counts larger than the write's moves are trusted rather than read as nothing known",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "774039ae1dc6ec00",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sent is None or landed is None or not landed <= sent <= total:",
+      "new": "    if sent is None or landed is None or not landed <= sent:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S1_counts_beyond_the_moves_trusted"
+      }
+    },
+    {
+      "id": "r1394.S2_missing_counts_read_as_none_sent",
+      "description": "stopped write: a moving step with no counts reads as no move sent, so any agreed path reading finishes it, as before R-1394",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f5f5a592b284aaac",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order_it_leaves",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts0]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return 0, total\n    return landed, sent",
+      "new": "        return 0, 0\n    return landed, sent",
+      "source": {
+        "table": "r1394.json",
+        "id": "S2_missing_counts_read_as_none_sent"
+      }
+    },
+    {
+      "id": "r1394.S5_sent_read_as_landed",
+      "description": "stopped write: the sent count is read from the landed field, so a move in flight reads as known not sent",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3a6d49e1b8c2b9c1",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return at, start, end, count_of(value.get(SENT)), count_of(value.get(LANDED))",
+      "new": "    return at, start, end, count_of(value.get(LANDED)), count_of(value.get(LANDED))",
+      "source": {
+        "table": "r1394.json",
+        "id": "S5_sent_read_as_landed"
+      },
+      "moved": "Same return in _moving; U298 replaced the module's _count with cli.output.count_of"
+    },
+    {
+      "id": "r1394.S6_counts_not_wired",
+      "description": "stopped write: the counts read back never reach the stopped write, which keeps none landed and none sent",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8cc1c0acb9ffca32",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees",
+        "tests/test_sync_pair_settle.py::test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order_it_leaves",
+        "tests/test_sync_pair_settle.py::test_a_stopped_writes_counts_are_carried_past_its_runs_steps",
+        "tests/test_sync_pair_settle.py::test_every_move_accepted_and_an_agreed_reading_short_of_their_end_is_still_a_lag",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts0]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]",
+        "tests/test_sync_pair_stopped.py::test_every_move_accepted_reads_as_every_move_landed_whatever_the_counts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        landed=landed,\n        sent=reached_by,",
+      "new": "        landed=0,\n        sent=0,",
+      "source": {
+        "table": "r1394.json",
+        "id": "S6_counts_not_wired"
+      }
+    },
+    {
+      "id": "r1394.S8_positions_first_only",
+      "description": "positions: only the first count on the path that leaves the order is answered, so a track taken off since hides a later one",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "430e32758eddd6e7",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_an_unread_track_taken_off_the_account_after_the_stop_is_never_put_back",
+        "tests/test_sync_pair_stopped.py::test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(\n        index\n        for index, state in enumerate(passed(start, target))\n        if [one for one in dict.fromkeys(state) if one in common] == shown\n    )",
+      "new": "    return tuple(\n        index\n        for index, state in enumerate(passed(start, target))\n        if [one for one in dict.fromkeys(state) if one in common] == shown\n    )[:1]",
+      "source": {
+        "table": "r1394.json",
+        "id": "S8_positions_first_only"
+      }
+    },
+    {
+      "id": "r1394.S9_moving_step_counts_dropped",
+      "description": "moving step: the record written carries a sent count of 0 whatever it is told",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a54cbeecc86f96a3",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 19,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[False]",
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[True]",
+        "tests/test_sync_pair_settle.py::test_a_finish_keeps_an_unread_track_the_stopped_write_did_not_move_in_its_place",
+        "tests/test_sync_pair_settle.py::test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_reading",
+        "tests/test_sync_pair_settle.py::test_a_finish_puts_an_unread_track_the_stopped_move_put_in_front_where_the_write_was_taking_it",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_served_as_the_moves_left_it_finishes",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_removes_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_place",
+        "tests/test_sync_pair_settle.py::test_a_finish_with_no_unread_track_is_put_in_rekordboxs_order",
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_that_move_leaves_it_is_finished",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees",
+        "tests/test_sync_pair_settle.py::test_a_stop_part_way_agreed_on_the_moves_path_is_finished_from_rekordbox",
+        "tests/test_sync_pair_settle.py::test_an_unread_track_taken_off_the_account_after_the_stop_is_never_put_back",
+        "tests/test_sync_pair_settle.py::test_two_readings_agree_only_once_minutes_apart",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        SENT: int(sent),",
+      "new": "        SENT: 0,",
+      "source": {
+        "table": "r1394.json",
+        "id": "S9_moving_step_counts_dropped"
+      }
+    },
+    {
+      "id": "r1418.F7_composite_ordering_start_unread",
+      "description": "what F7 holds: a stopped write with no moving step reads no start from its ordering step, so the start F7 narrows is never read",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b9a5519739385e76",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_stopped.py",
+        "tests/test_sync_pair_window_lag.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_root_order.py",
+        "tests/test_sync_twins.py",
+        "tests/test_outbound_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 20,
+      "collected": 394,
+      "baseline_collected": 394,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_order.py::test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since",
+        "tests/test_sync_pair_settle.py::test_a_drag_to_the_top_after_a_write_that_sent_no_move_leads[all-read]",
+        "tests/test_sync_pair_settle.py::test_a_drag_to_the_top_after_a_write_that_sent_no_move_leads[t9-unread]",
+        "tests/test_sync_pair_settle.py::test_a_move_of_the_unread_track_alone_after_a_stop_that_sent_nothing_is_no_reorder",
+        "tests/test_sync_pair_settle.py::test_a_reorder_after_a_finish_stopped_before_its_first_send_leads",
+        "tests/test_sync_pair_settle.py::test_a_reorder_after_a_track_read_at_the_stop_turned_unread_leads",
+        "tests/test_sync_pair_settle.py::test_a_track_unread_at_the_stop_and_read_since_is_read_as_the_persons_when_moved",
+        "tests/test_sync_pair_settle.py::test_an_unread_track_moved_after_a_stop_before_the_first_send_is_kept_where_it_was_put",
+        "tests/test_sync_pair_stopped.py::test_a_write_begun_ordered_and_not_finished_is_read_back_whole",
+        "tests/test_sync_pair_stopped_order.py::test_a_differing_order_that_moves_again_before_it_settles_is_held_again",
+        "tests/test_sync_pair_stopped_order.py::test_a_differing_order_waits_the_agreement_window",
+        "tests/test_sync_pair_stopped_order.py::test_a_move_off_the_path_no_sync_read_before_is_not_read_as_the_persons",
+        "tests/test_sync_pair_stopped_order.py::test_a_move_the_person_made_on_the_account_after_a_sync_read_it_still_leads",
+        "tests/test_sync_pair_stopped_order.py::test_a_reading_that_moved_before_it_settled_starts_again",
+        "tests/test_sync_pair_stopped_order.py::test_a_released_pair_read_off_the_path_on_its_first_sync_keeps_rekordboxs_order",
+        "tests/test_sync_pair_stopped_order.py::test_a_reorder_seen_changing_between_two_syncs_after_the_stop_leads",
+        "tests/test_sync_pair_stopped_order.py::test_a_stop_this_version_recorded_with_no_move_sent_leaves_a_reorder_the_persons",
+        "tests/test_sync_pair_stopped_order.py::test_a_track_the_stopped_write_added_then_taken_off_in_rekordbox_comes_off_the_account",
+        "tests/test_sync_pair_stopped_order.py::test_an_order_held_as_the_one_after_waits_afresh_once_the_settled_order_is_read_between",
+        "tests/test_sync_pair_stopped_order.py::test_the_gate_says_the_account_was_read_off_the_moves_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    begin = sent[1] if sent is not None else start",
+      "new": "    begin = sent[1] if sent is not None else ()",
+      "source": {
+        "table": "r1418.json",
+        "id": "F7_composite_ordering_start_unread"
+      }
+    },
+    {
+      "id": "r1434.S2_positions_compare_every_track_listed",
+      "description": "existing guard, U225: the path compares every track listed now, a track added since included, so an addition reads the account off the path",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1b523e4fe083be24",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_stopped.py",
+        "tests/test_sync_pair_window_lag.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_root_order.py",
+        "tests/test_sync_twins.py",
+        "tests/test_outbound_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 394,
+      "baseline_collected": 394,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_track_added_or_taken_off_since_is_left_out_of_the_comparison",
+        "tests/test_sync_pair_stopped.py::test_positions_counts_the_moves_that_leave_each_order_on_the_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    common = set(current) & set(start)",
+      "new": "    common = set(current)",
+      "source": {
+        "table": "r1434.json",
+        "id": "S2_positions_compare_every_track_listed"
+      }
+    },
+    {
+      "id": "u220.A3_keep_head",
+      "description": "_to_the_front: match the asked order's head rather than its tail, the old to the end rule",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f858dc397bd9f118",
+      "subset": [
+        "tests/test_outbound_order.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_prune.py",
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_sync_pair_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 26,
+      "collected": 283,
+      "baseline_collected": 283,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_order.py::test_a_412_on_the_third_move_resends_that_move_once_and_no_other",
+        "tests/test_outbound_order.py::test_a_move_that_failed_another_way_is_left_as_maybe_landed",
+        "tests/test_outbound_order.py::test_a_move_that_lands_anywhere_else_is_not_read_back_and_the_settle_reading_shows_it",
+        "tests/test_outbound_order.py::test_a_provider_whose_move_to_the_length_lands_one_short_still_takes_the_order",
+        "tests/test_outbound_order.py::test_a_read_that_lags_every_move_does_not_stop_the_order",
+        "tests/test_outbound_order.py::test_a_recorder_that_cannot_record_has_no_further_move_sent",
+        "tests/test_outbound_order.py::test_an_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_outbound_order.py::test_every_move_is_planned_from_one_reading_and_sent_with_no_read_between",
+        "tests/test_outbound_order.py::test_every_move_is_to_the_front_where_both_ways_of_counting_agree",
+        "tests/test_outbound_order.py::test_nothing_to_move_tells_the_caller_nothing",
+        "tests/test_outbound_order.py::test_the_caller_is_told_before_each_move_how_many_may_have_landed",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before1-order1]",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before2-order2]",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before3-order3]",
+        "tests/test_outbound_order.py::test_the_pauses_after_a_412_start_again_for_each_move",
+        "tests/test_outbound_order.py::test_the_tracks_before_the_kept_tail_are_moved_last_first",
+        "tests/test_sync_pair_account.py::test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_track_kept",
+        "tests/test_sync_pair_account.py::test_a_playlist_made_by_the_product_still_takes_the_order",
+        "tests/test_sync_pair_account.py::test_a_track_held_twice_is_not_moved",
+        "tests/test_sync_pair_account.py::test_an_order_already_standing_sends_nothing",
+        "tests/test_sync_pair_account.py::test_the_order_moves_each_track_to_the_front_and_reads_back",
+        "tests/test_sync_pair_calls.py::test_a_300_track_order_with_adds_and_removals_stays_inside_its_forecast",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before0-order0]",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before1-order1]",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before2-order2]",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before3-order3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "one == wanted[len(wanted) - 1 - keep]",
+      "new": "one == wanted[keep]",
+      "source": {
+        "table": "u220.json",
+        "id": "A3_keep_head"
+      },
+      "moved": "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same tail match"
+    },
+    {
+      "id": "u220.A4_first_first",
+      "description": "_to_the_front: move the tracks first first rather than last first, so the moved ones land reversed",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1535b6192f0de36",
+      "subset": [
+        "tests/test_outbound_order.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_prune.py",
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_sync_pair_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 283,
+      "baseline_collected": 283,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_order.py::test_a_412_on_the_third_move_resends_that_move_once_and_no_other",
+        "tests/test_outbound_order.py::test_a_provider_whose_move_to_the_length_lands_one_short_still_takes_the_order",
+        "tests/test_outbound_order.py::test_a_read_that_lags_every_move_does_not_stop_the_order",
+        "tests/test_outbound_order.py::test_a_reading_holding_what_the_adds_left_in_another_order_is_not_stale",
+        "tests/test_outbound_order.py::test_an_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_outbound_order.py::test_every_move_is_planned_from_one_reading_and_sent_with_no_read_between",
+        "tests/test_outbound_order.py::test_the_caller_is_told_before_each_move_how_many_may_have_landed",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before2-order2]",
+        "tests/test_outbound_order.py::test_the_pauses_after_a_412_start_again_for_each_move",
+        "tests/test_outbound_order.py::test_the_reading_after_a_412_is_held_to_what_the_adds_left[False]",
+        "tests/test_outbound_order.py::test_the_reading_after_a_412_is_held_to_what_the_adds_left[True]",
+        "tests/test_outbound_order.py::test_the_tracks_before_the_kept_tail_are_moved_last_first",
+        "tests/test_sync_pair_account.py::test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_track_kept",
+        "tests/test_sync_pair_account.py::test_the_order_moves_each_track_to_the_front_and_reads_back"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return list(reversed(wanted[: len(wanted) - keep]))",
+      "new": "    return wanted[: len(wanted) - keep]",
+      "source": {
+        "table": "u220.json",
+        "id": "A4_first_first"
+      },
+      "moved": "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same reversal of the moves"
+    },
+    {
+      "id": "u225.M6_front_keeps_nothing",
+      "description": "front_moves: no tail is kept, every asked track is moved",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "81d93de340b67f4a",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            keep += 1\n    return list(reversed(wanted[: len(wanted) - keep]))",
+      "new": "            keep += 0\n    return list(reversed(wanted[: len(wanted) - keep]))",
+      "source": {
+        "table": "u225.json",
+        "id": "M6_front_keeps_nothing"
+      }
+    },
+    {
+      "id": "u225.M8_reached_strict_membership",
+      "description": "reached: a track added or taken off since is compared too",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "51a798a1f2a42ec3",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_track_added_or_taken_off_since_is_left_out_of_the_comparison",
+        "tests/test_sync_pair_stopped.py::test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count",
+        "tests/test_sync_pair_stopped.py::test_positions_counts_the_moves_that_leave_each_order_on_the_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    common = set(current) & set(start)",
+      "new": "    common = set(current) | set(start)",
+      "source": {
+        "table": "u225.json",
+        "id": "M8_reached_strict_membership"
+      }
+    },
+    {
+      "id": "u225.M9_finish_ignored",
+      "description": "stopped_writes: a later run that finished the pair does not hide the stopped write",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c2416cbe9437664",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan",
+        "tests/test_sync_pair_stopped.py::test_a_finished_or_unordered_write_is_no_stopped_one",
+        "tests/test_sync_pair_stopped.py::test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if done in steps:\n                if account_id not in finished",
+      "new": "            if False:\n                if account_id not in finished",
+      "source": {
+        "table": "u225.json",
+        "id": "M9_finish_ignored"
+      }
+    },
+    {
+      "id": "u234.O15_reordered_counts_additions",
+      "description": "reordered compares the readings whole, so a track added between them is read as a reorder",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8101060fac5a7981",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_track_added_or_taken_off_between_two_readings_is_no_reorder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return [one for one in current if one in common] != [\n        one for one in dict.fromkeys(kept) if one in common\n    ]\n\n\n__all__",
+      "new": "    return current != list(dict.fromkeys(kept))\n\n\n__all__",
+      "source": {
+        "table": "u234.json",
+        "id": "O15_reordered_counts_additions"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": [],
+  "left_out_as_gone_on_main": [],
+  "left_out_note": "written by without_gone.py from u331-before-c-01.json: 0 killed rows left out, each named gone in u331-after-c-01-rows.toml with its text absent from its file at e0573a66, or named in u331-gone-on-main.toml with a name its mutant reads absent from its file at e0573a66"
+}

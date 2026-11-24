@@ -17,7 +17,7 @@ from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import fallback, match, match_cli
 from cratekit.acquire.adapter import AdapterSettings, decide_lossless
 from cratekit.cli.output import Envelope
-from cratekit.core import binaries, binary_refusal, config, jobs, naming, review, tags
+from cratekit.core import binaries, config, jobs, naming, review, tags
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import candidates, missing_cli
@@ -161,7 +161,7 @@ def acquire_fallback(ctx) -> Envelope:
                     try:
                         found = searcher()
                     except binaries.BinaryNotFound as exc:
-                        raise binary_refusal.yt_dlp_missing(
+                        raise binaries.yt_dlp_missing(
                             exc, subject,
                             said="A second source search runs it, so no row was searched "
                             "and nothing was offered.",
@@ -451,7 +451,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
     except binaries.BinaryNotFound as exc:
         # Parked, not failed: a missing program fails every later item alike.
         raise jobs.Parked(
-            binary_refusal.yt_dlp_missing(
+            binaries.yt_dlp_missing(
                 exc, detail,
                 said="A second source download runs it, so the job is parked with this "
                 "item not downloaded.",

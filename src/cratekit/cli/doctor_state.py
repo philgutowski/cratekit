@@ -25,7 +25,6 @@ from cratekit.cli.doctor_model import (
     _unchecked,
 )
 from cratekit.core import (
-    active_taxonomy,
     config,
     provider_gate,
     session,
@@ -472,8 +471,12 @@ def _declared_trees(
 
     The cutover set is ``tree_registry.cutover_trees``, the one the verb accepts
     (R-787). An unusable template is reported by ``taxonomy.active``, so here it
-    costs only the declared list.
+    costs only the declared list. The loader is imported here, where it is
+    read, since it answers for the foreign tree too (U331) and the doctor's
+    help would otherwise load that module.
     """
+    from cratekit.core import active_taxonomy
+
     try:
         declared = active_taxonomy.load(cfg)
     except CratekitError as exc:

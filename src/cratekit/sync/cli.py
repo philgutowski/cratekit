@@ -36,7 +36,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import config, jobs, profiles
+from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome
 from cratekit.sync import sources
 
@@ -654,7 +654,7 @@ def _next_step(plans: list[_Plan], run_id: str) -> dict[str, Any] | None:
 def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
     """Plan every enabled source, ask the one question, then queue. See the module doc."""
     cfg = _load()
-    membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
+    membership = cfg.membership()
     run_id = ctx.run.run_id
     enabled = sources.enabled_specs(membership)
     # A GUIDED SOURCE IS NEVER PLANNED (U109), so no provider is called for it.

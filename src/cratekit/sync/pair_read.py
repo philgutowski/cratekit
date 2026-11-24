@@ -122,7 +122,7 @@ class _Reader:
         carried record gives way to its own run's steps under the same plan,
         since they say whether the pair finished.
         """
-        from cratekit.core import held_plan
+        from cratekit.sync import held_plan
 
         records, problems = held_plan.recorded_steps()
         kept, unread = held_plan.carried()

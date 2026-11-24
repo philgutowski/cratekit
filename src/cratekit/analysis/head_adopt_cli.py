@@ -22,12 +22,12 @@ from dataclasses import replace
 from typing import Any
 
 from cratekit.analysis import head_adopt as ha
-from cratekit.analysis.check_cli import template_of
 from cratekit.cli import output
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session, tree_registry
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.naming import NameTemplate
+from cratekit.intake.check_cli import template_of
 from cratekit.tagging import plan_verbs
 from cratekit.tagging.plan_verbs import counted, named, warning
 

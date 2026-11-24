@@ -14,11 +14,12 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, drift, jobs, rb_writer, session
+from cratekit.core import analysis_store, config, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.intake import (
     account_playlists,
     batch_name,
+    drift,
     filing,
     ingest,
     label_filing,

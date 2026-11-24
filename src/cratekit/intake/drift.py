@@ -1,7 +1,8 @@
 """How far a track's tempo moves, so a landing can mark rows for Dynamic analysis (U157).
 
 THE DRIFT IS NOT A TEMPO, only a percent spread; no field carries a tempo (R17).
-Shared here so the intake and analysis modules need not import each other.
+In intake, the landing that marks the rows, since no core module reads it
+(U331); the analysis module and the shell's tail import it from here.
 """
 
 from __future__ import annotations

@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, rb_writer, rehearsal, snapshot
+from cratekit.core import config, rb_writer, session, snapshot
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import batch_name, land_cli, landing, native
+from cratekit.intake import batch_name, land_cli, landing, native, rehearsal
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
     BATCH,
@@ -217,6 +217,8 @@ def test_two_areas_are_apart_and_copy_library_state_only(native_library):
         with pytest.raises(CratekitError) as caught:
             rehearsal.open_area(cfg, "2026-10-31T01:00:00Z-aaaa")
         assert caught.value.cause.reason == "output-exists"
+        # The origin a refusal carries kept its name when the module moved to intake (U331).
+        assert tuple(caught.value.cause.origin) == ("core", "rehearsal")
         assert Path(config.library_state_dir(first.cfg)).is_relative_to(first.volume)
         for key in ("tree_registry", "backup_ack"):
             assert config.state_path(key, first.cfg).is_file(), key
@@ -573,21 +575,29 @@ def test_a_failed_integrity_check_is_refused_naming_the_area(cfg, monkeypatch, f
 def test_no_room_for_the_check_refuses_before_its_copy(cfg, monkeypatch):
     """Measured before the check's copy, as the capture's is: no copy is attempted."""
     asked = _area_check_answers(monkeypatch, error=None)
-    measured: list[tuple[Path, object]] = []
-    real_measure = snapshot.assert_room_for_check
+    captured: list[object] = []
+    real_measure, real_free = snapshot.assert_room_for_check, snapshot._free_bytes
 
-    def measuring(database, **kwargs):
-        measured.append((Path(database), kwargs.get("store")))
+    def the_captures_measure(database, **kwargs):
         # The rehearsal's capture measures the same database for its own check,
-        # naming its store; only the rehearsal's own check names none.
-        if _is_the_area_database(database) and kwargs.get("store") is None:
-            return real_measure(database, free_bytes=0, **kwargs)
-        return real_measure(database, **kwargs)
+        # naming its store; the capture reads the name in ``snapshot``.
+        done = real_measure(database, **kwargs)
+        if _is_the_area_database(database):
+            captured.append(kwargs.get("store"))
+        return done
 
-    monkeypatch.setattr(snapshot, "assert_room_for_check", measuring)
+    def no_room_once_captured(root):
+        # What is measured after the capture's own check is the landing's, which
+        # names no store and reads the measure through ``core.session`` (U331):
+        # the measure itself is left real, and only the room it finds is gone.
+        return 0 if captured else real_free(root)
+
+    monkeypatch.setattr(snapshot, "assert_room_for_check", the_captures_measure)
+    monkeypatch.setattr(snapshot, "_free_bytes", no_room_once_captured)
+    assert session.assert_room_for_check is real_measure
     code, refused = _rehearse()
     assert refused["cause"]["reason"] == "snapshot-check-temp-full", refused
     assert "0 bytes free" in refused["cause"]["message"]
+    assert refused["cause"]["detail"]["shares_volume_with"] is None, "the capture's check refused"
     assert asked == [], "the area's check copied after the measure refused"
-    stores = [store for database, store in measured if _is_the_area_database(database)]
-    assert len(stores) == 2 and stores[0] is not None and stores[1] is None, stores
+    assert len(captured) == 1 and captured[0] is not None, captured

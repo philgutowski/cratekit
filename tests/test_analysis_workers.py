@@ -2448,13 +2448,14 @@ def test_the_root_with_no_loose_tracks_and_no_flag_is_told_about_the_flag(
 def test_a_refusal_known_before_the_walk_does_not_make_the_walk(cfg, silence, monkeypatch):
     root, _ = genre_tree(cfg, silence, monkeypatch)
     walked: list[Path] = []
-    real = analysis_cli.discovery.scan_audio
+    real = jobs.scan_audio
 
     def recording(folder, **kwargs):
         walked.append(folder)
         return real(folder, **kwargs)
 
-    monkeypatch.setattr(analysis_cli.discovery, "scan_audio", recording)
+    # The verb reads the walker through ``core.jobs``, which re-exports it (U331).
+    monkeypatch.setattr(jobs, "scan_audio", recording)
     drive(["analyze", "calibrate", str(root / "Music" / "House"), "--recursive"])
     drive(["analyze", "calibrate", str(root), "--recursive", "--sample", "3"])
     assert walked == []

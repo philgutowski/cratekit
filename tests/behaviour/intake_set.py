@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from cratekit.core import binaries
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import acrcloud, fetch, recognize, set_playlist
 from tests.intake.test_recognition import FakeTransport, hit
@@ -112,3 +113,23 @@ def test_a_set_with_no_recognition_key_is_refused_before_any_seam(stage, cfg, li
     assert refused.code == int(ExitCode.PRECONDITION), refused.stdout
     assert refused.envelope["cause"]["reason"] == "intake-recognition-unready"
     assert transport.requests == []
+
+
+def test_a_mix_address_with_no_downloader_is_refused_with_the_install_hint(
+    stage, cfg, library, recognised, monkeypatch
+):
+    """The refusal ``acquire fallback`` shares, whose one spelling U331 moved into ``core.binaries``."""
+    three_tracks(recognised)
+
+    def absent():
+        raise binaries.BinaryNotFound(
+            "yt-dlp was not found (checked PATH).",
+            binary="yt-dlp",
+            remedy=binaries.Remedy.INSTALL_BINARY,
+            hint=binaries.InstallHint(binaries.PackageManager.HOMEBREW, ("yt-dlp",)),
+        )
+
+    monkeypatch.setattr(fetch, "fetcher", absent)
+    refused = stage.json("intake", "set", URL).envelope
+    assert refused["cause"]["reason"] == "yt-dlp-missing"
+    stage.crate("intake", "set", URL)

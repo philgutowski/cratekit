@@ -79,7 +79,7 @@ ENV_LIBRARY_ROOT = "CRATEKIT_LIBRARY_ROOT"
 
 #: The directory the ISRC cache and its lock live in, when set (U206). A copy
 #: run points it at the live state directory so catalogue answers are not paid
-#: for twice; ``core.rehearsal`` does that for every rehearsal.
+#: for twice; ``intake.rehearsal`` does that for every rehearsal.
 ENV_ISRC_CACHE_DIR = "CRATEKIT_ISRC_CACHE_DIR"
 
 

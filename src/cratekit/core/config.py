@@ -213,6 +213,12 @@ from cratekit.core.config_validate import (
     recognition_host_problem as recognition_host_problem,
 )
 from cratekit.core.exit_codes import Remedy as Remedy
+
+# A feature package reads the membership a configuration resolves to, and the
+# extras group a module installs with (``core.profiles``), through this module,
+# their one listed home (U331); ``Config.membership()`` resolves it.
+from cratekit.core.profiles import Membership as Membership
+from cratekit.core.profiles import install_command as install_command
 from cratekit.core.state_files import (
     _LIBRARY_SUBDIR_BY_ROLE as _LIBRARY_SUBDIR_BY_ROLE,
 )
@@ -1127,7 +1133,8 @@ __all__ = [
     "SQLITE_SIDECARS", "STATE_FILES", "TAXONOMY_TEMPLATE_KEY", "VOLUME_IDENTITY_KEY",
     "AcquisitionConfig", "AnalysisConfig", "BackupConfig", "Config", "ConfigConflict",
     "ConfigCorrupt", "ConfigError", "ConfigInvalid", "ConfigLockUnavailable", "ConfigMissing",
-    "ConfigTooNew", "InstallationArea", "LibraryConfig", "Medium", "Migration", "ModulesConfig",
+    "ConfigTooNew", "InstallationArea", "LibraryConfig", "Medium", "Membership", "Migration",
+    "ModulesConfig",
     "NamingConfig", "PathsConfig", "PrefixMapping", "ProfileConfig", "RekordboxConfig",
     "RemediedError", "Remedy", "RollbackEffect", "Sidecar", "SnapshotRole", "StateFile",
     "StateRoot", "TaxonomyConfig", "append_durable_bytes", "atomic_write_bytes",
@@ -1135,7 +1142,8 @@ __all__ = [
     "config_path", "coupled_state_files", "current_adapter_name", "flush_to_disk", "from_dict",
     "installation_state_dir", "library_coupled_dir", "library_history_dir", "library_local_dir",
     "library_state_dir", "load", "load_from_path", "merge_changes", "migrate", "exclusive_lock",
-    "flock_exclusive", "held", "is_inside", "lock_now", "lock_within", "mkdir_private",
+    "flock_exclusive", "held", "install_command", "is_inside", "lock_now", "lock_within",
+    "mkdir_private",
     "out_of_band_effects", "provider_gate_dir", "read_bytes_if_present", "read_json",
     "read_json_as_text", "read_json_map", "rekey_records", "reset_cache", "save", "sidecar_paths",
     "snapshot_sources", "state_file", "state_files_for", "state_path", "template_name_is_usable",

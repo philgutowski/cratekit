@@ -152,11 +152,10 @@ dropped and why, so a truncation is not read as coverage.
   scenario is added for any touched verb that has none.
 - **Duplication and seams are battery checks** (U296):
   `tests/test_duplication.py` fails on a copied block of six logical lines
-  past its package's allowance in `tests/ratchets/duplication/`, every one
-  empty since U329, and on a function body of three lines or more defined
-  identically in two files,
-  `tests/test_import_rules.py` on an import crossing a package outside the
-  rules, and `scripts/refactor_measure.py` measures both. `docs/DEVELOPING.md`
+  and on a function body of three lines or more defined identically in two
+  files, `tests/test_import_rules.py` on an import crossing a package outside
+  the rules, every allowance under `tests/ratchets/` empty since U329 and
+  U331, and `scripts/refactor_measure.py` measures both. `docs/DEVELOPING.md`
   documents these scripts, the `cloud-unit` skill the order they run in.
 
 ## Reading discipline, because every tool result is re-sent on every call

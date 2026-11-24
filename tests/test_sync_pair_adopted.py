@@ -392,8 +392,7 @@ def test_an_adoption_whose_plan_did_not_say_what_it_held_is_recorded_as_unknown(
 
 
 def test_a_place_held_by_an_earlier_build_reads_back_as_saying_nothing():
-    from cratekit.core import held_plan
-    from cratekit.sync import pair_check
+    from cratekit.sync import held_plan, pair_check
 
     registry = pair_check._held_classes()
     place = pair_cli.Place(FOLDER, f"{FOLDER} Techno", pair_cli.FOLDER_ADOPT, "f1")

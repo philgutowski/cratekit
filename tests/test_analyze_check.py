@@ -20,13 +20,13 @@ from pathlib import Path
 import pytest
 from sqlalchemy import event
 
-from cratekit.analysis import agreement, check_cli
-from cratekit.analysis import rekordbox_check as rc
+from cratekit.analysis import agreement
 from cratekit.cli.output import digest_of
 from cratekit.core import analysis_store, config, rb_writer
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.naming import pad_camelot
-from cratekit.intake import analyzed, native
+from cratekit.intake import analyzed, check_cli, native
+from cratekit.intake import rekordbox_check as rc
 from tests.cli_drive import drive
 from tests.test_inbox_analyzed import _analyze_id, _content_id, _land
 from tests.test_inbox_refill import offline as offline  # noqa: PLC0414
@@ -407,6 +407,8 @@ def test_a_variable_grid_on_a_row_not_marked_dyn_is_suspect_and_exits_27(native_
 
     assert code == int(ExitCode.LIBRARY_PREREQUISITE), envelope
     assert envelope["cause"]["reason"] == "analysis-suspect"
+    # The origin an envelope prints kept its name when the verb moved to intake (U331).
+    assert envelope["cause"]["origin"] == ["analysis.check_cli", "cli"]
     assert "1 row(s) have variable grids" in envelope["cause"]["message"]
     assert envelope["data"]["summary"]["verdict"] == rc.SUSPECT
     charlie = _items(envelope)["Charlie"]
@@ -521,6 +523,7 @@ def test_a_landing_nothing_recorded_refuses_rather_than_reading_empty(native_lib
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "analysis-check-landing-unknown"
+    assert envelope["cause"]["origin"] == ["analysis.rekordbox_check", "cli"]
     # No landing recorded, said as that: it shares a slug with a landing whose rows went.
     assert "no closed landing is recorded" in envelope["cause"]["message"]
 
@@ -1030,7 +1033,7 @@ def test_read_row_handed_no_row_reads_it_and_answers_as_handed_one(native_librar
         keys = {str(key.ID): key.ScaleName for key in db.get_key()}
         dyn = rc.dyn_marked(db)
         members = analyzed.live_members(db, analyze)
-        held = rc._content_rows(db, members)
+        held = rc.rows_by_id(db, members)
         handed = [
             rc.read_row(cfg, db, one, keys=keys, dyn=dyn, template=template, content=held.get(one))
             for one in members
