@@ -69,6 +69,8 @@ def replay_tables() -> list[tuple[Path, dict]]:
             continue
         if path.parent == HERE and path.name.startswith("survey-"):
             continue
+        if path.name == "u337-replay.json":
+            continue  # the batches it joins are read from this directory
         found.append((path, table))
     return found
 
@@ -429,6 +431,71 @@ def cmd_join(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# combine: this card's batches as one replay table `killset.py` reads
+# ---------------------------------------------------------------------------
+
+#: The batches of this card, in the order they are joined.
+BATCHES = (
+    "u337-1",
+    "u337-2",
+    "u337-3",
+    "u337-r926",
+    "u337-analysis",
+    "u337-librosa-1-0-0",
+    "u337-moved",
+)
+
+#: A row measured again in a later batch, and the batch whose reading stands.
+SUPERSEDED = {
+    ("u264.json", "M1_fast_path_never"): "u337-librosa-1-0-0",
+    ("u264.json", "M8_finite_check"): "u337-librosa-1-0-0",
+}
+
+
+def cmd_combine(args) -> int:
+    """Join this card's batch tables into ``docs/mutation/u337-replay.json``.
+
+    `killset.py` reads only the tables at the top of `docs/mutation/`, so a row
+    this card anchored again is found there by the next `list` or `rows` only
+    through this table. It refuses a batch that is missing, unfinished or
+    invalid, and two rows from one source unless `SUPERSEDED` names the batch
+    whose reading stands.
+    """
+    rows: dict[tuple[str, str], tuple[str, dict]] = {}
+    heads, controls = [], []
+    for name in BATCHES:
+        path = HERE / f"{name}.json"
+        table = K.read_measured(path)
+        heads.append(f"{name} at {table.get('head')}")
+        control = table.get("control") or {}
+        controls.append(f"{name} {control.get('status')} ({control.get('deaths')} deaths)")
+        for row in table["rows"]:
+            key = K.source_of(row)
+            if key is None:
+                raise SystemExit(f"{name}: row {row.get('id')} names no source")
+            if key in rows and SUPERSEDED.get(key) != name:
+                if SUPERSEDED.get(key) == rows[key][0]:
+                    continue
+                raise SystemExit(f"{name}: {key} was measured in {rows[key][0]} too")
+            kept = copy.deepcopy(row)
+            kept["batch"] = name
+            rows[key] = (name, kept)
+    combined = table_head(
+        "u337-replay",
+        "U337's batches joined: "
+        + "; ".join(heads)
+        + ". Null controls: "
+        + "; ".join(controls)
+        + ". Each row names its batch under docs/mutation/u337-replay/.",
+    )
+    combined["rows"] = [row for _, row in rows.values()]
+    out = TABLES / "u337-replay.json"
+    out.write_text(json.dumps(combined, indent=1) + "\n", encoding="utf-8")
+    print(f"{len(combined['rows'])} rows from {len(BATCHES)} batches written to {out.name}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--survey-root", type=Path, required=True)
@@ -438,6 +505,7 @@ def build_parser() -> argparse.ArgumentParser:
     rows.add_argument("--out-dir", type=Path, default=HERE)
     rows.add_argument("--batches", type=int, default=3)
     rows.set_defaults(run=cmd_rows)
+    verbs.add_parser("combine").set_defaults(run=cmd_combine)
     joined = verbs.add_parser("join")
     joined.add_argument("--out-dir", type=Path, default=HERE)
     joined.add_argument(
