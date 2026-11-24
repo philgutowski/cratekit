@@ -2752,7 +2752,10 @@ def test_the_listing_carries_the_column_value_a_missed_tombstone_was_built_from(
     "named",
     [
         # The same shape as the ``'None'`` defect just closed, one step along.
-        *(pytest.param(blank, id=f"whitespace-{blank!r}") for blank in ["   ", "\t", "\n ", " "]),
+        *(
+            pytest.param(blank, id=f"whitespace-{name}")
+            for name, blank in [("spaces", "   "), ("tab", "\t"), ("newline", "\n "), ("nbsp", " ")]
+        ),
         # Round 8: ``str(False)`` is ``'False'``, truthy, and strips to itself.
         *(pytest.param(boolean, id=f"boolean-{boolean}") for boolean in [True, False]),
     ],
