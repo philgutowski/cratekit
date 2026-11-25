@@ -48,6 +48,14 @@ DEFAULT_ACK_VALIDITY = timedelta(hours=12)
 #: The actor a session records its answer to the acknowledgment's gate under (U138).
 SESSION_ACTOR = "session"
 
+#: The actor the menu bar app records its answers under (U962). It mints by the
+#: session's ages rule and never by the terminal rule, which checks no age.
+APP_ACTOR = "app"
+
+#: The answers :func:`record_acknowledgment` judges by the backup ages rather
+#: than by a terminal (U138, U962): every other actor takes the terminal rule.
+AGES_ACTORS: tuple[str, ...] = (SESSION_ACTOR, APP_ACTOR)
+
 #: The oldest any backup portion may be for a session to mint (U138).
 SESSION_MAX_BACKUP_AGE = timedelta(days=5)
 
@@ -234,19 +242,21 @@ def record_acknowledgment(
 
     ``terminal`` is a test seam, not an override. THERE IS NO ACTOR PARAMETER
     and no affirmative one, or the gate would be under the control of what it
-    gates. ``decided_by`` is a rule selector (U138): :data:`SESSION_ACTOR`
-    swaps the terminal check for the rule that every portion reads under
-    :data:`SESSION_MAX_BACKUP_AGE`.
+    gates. ``decided_by`` is a rule selector (U138): an actor in
+    :data:`AGES_ACTORS`, the session or the app (U962), swaps the terminal
+    check for the rule that every portion reads under
+    :data:`SESSION_MAX_BACKUP_AGE`, so neither is ever given the terminal rule.
     """
 
     moment = now or datetime.now(timezone.utc)
-    if decided_by == SESSION_ACTOR:
+    if decided_by in AGES_ACTORS:
         shown = _shown_ages(cfg, moment)
         stale = _too_old_for_a_session(shown)
         if stale:
+            who = "a session" if decided_by == SESSION_ACTOR else "the app"
             raise refuse(
                 "backup-acknowledgment-backup-too-old",
-                f"a session mints the backup acknowledgment only while every backup "
+                f"{who} mints the backup acknowledgment only while every backup "
                 f"portion is under {SESSION_MAX_BACKUP_AGE.days} days old, and "
                 f"{'; '.join(stale)}; run a backup first, or a person acknowledges "
                 f"from a terminal",

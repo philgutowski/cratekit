@@ -681,6 +681,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # R-1349. ``run decide`` named a plan gate the run has not reached. Not
         # ``decision-required``, which would invite the answer just refused.
         "gate-not-reached": ExitCode.PRECONDITION,
+        # U962. ``run decide`` as the app named no digest on a plan gate, or
+        # expected a digest the run does not offer now. Not ``decision-stale``,
+        # which judges an answer already recorded; nothing is recorded here.
+        "decision-digest-required": ExitCode.PRECONDITION,
+        "decision-digest-mismatch": ExitCode.PRECONDITION,
         # U11, the review queue: one code, a slug per place a person is sent.
         "review-item-unknown": ExitCode.PRECONDITION,
         # The queue refusing to overwrite a decision; clear the verdict first.

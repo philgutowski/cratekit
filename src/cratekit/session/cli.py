@@ -55,18 +55,19 @@ def build_ack(parser, entry) -> None:
     """Declare the verb's one flag. Parameters unannotated.
 
     No ``--yes``, ``--actor`` or ``--hours``: a caller must never name who
-    acknowledged (R34). ``--as session`` (U184) takes one value only and selects
-    the session's rule, which is narrower than a person's: the engine mints only
-    over young backup ages. The recorded actor is still derived.
+    acknowledged (R34). ``--as`` (U184) takes ``session`` or, since U962,
+    ``app``, and selects the ages rule, which is narrower than a person's: the
+    engine mints only over young backup ages, and never by the terminal rule.
+    The recorded actor is still derived; the value given is ``decided_by``.
     """
     del entry
     parser.add_argument(
         "--as", dest="as_actor",
-        choices=(session.SESSION_ACTOR,),
+        choices=session.AGES_ACTORS,
         default=None, help=(
-            "mint as the session in one command, with no gate: the backup ages "
-            "are read and the acknowledgment is recorded only while both are "
-            "under five days old"
+            "mint as the session or the app in one command, with no gate: the "
+            "backup ages are read and the acknowledgment is recorded only while "
+            "both are under five days old"
         ),
     )
     parser.set_defaults(_handler=record_ack)
@@ -125,11 +126,12 @@ def record_ack(ctx) -> Envelope:
 
     The gate is explicit, so the invocation that raises it cannot answer it
     (R34). Every answered drive re-mints. The engine refuses without a terminal
-    unless the recorded answer is the session's (U138), in which case it mints
-    only over young ages. ``--as session`` takes :func:`_mint_as_session`.
+    unless the recorded answer is the session's (U138) or the app's (U962), in
+    which case it mints only over young ages. ``--as`` takes :func:`_mint_by_ages`.
     """
-    if getattr(ctx.args, "as_actor", None) == session.SESSION_ACTOR:
-        return _mint_as_session(ctx)
+    given = getattr(ctx.args, "as_actor", None)
+    if given in session.AGES_ACTORS:
+        return _mint_by_ages(ctx, given)
     cfg = load_config(("session", "cli"))
     now = datetime.now(timezone.utc)
     shown = _rendered_ages(cfg, now)
@@ -195,7 +197,7 @@ def _described(acknowledgment: session.Acknowledgment) -> dict[str, Any]:
 
 
 def _summary(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[str, Any]:
-    """What ``--as session`` reports, minted now or found on record."""
+    """What ``--as`` reports, minted now or found on record."""
     return {
         "recorded": minted,
         "already_valid": not minted,
@@ -203,12 +205,13 @@ def _summary(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[st
     }
 
 
-def _mint_as_session(ctx) -> Envelope:
-    """``crate session ack --as session`` (U184): the session's mint, in one command.
+def _mint_by_ages(ctx, actor: str) -> Envelope:
+    """``crate session ack --as session`` (U184) or ``--as app`` (U962): one command.
 
-    No gate is asked. The engine's session rule is the only age check. A valid
-    acknowledgment on record is reported and not minted again; an unreadable one
-    is not valid and is replaced.
+    No gate is asked. The engine's ages rule is the only age check, and
+    ``actor`` is recorded as ``decided_by``. A valid acknowledgment on record is
+    reported and not minted again; an unreadable one is not valid and is
+    replaced.
     """
     cfg = load_config(("session", "cli"))
     now = datetime.now(timezone.utc)
@@ -224,9 +227,7 @@ def _mint_as_session(ctx) -> Envelope:
             },
             outcome=Outcome.NO_OP,
         )
-    acknowledgment = session.record_acknowledgment(
-        cfg, now=now, decided_by=session.SESSION_ACTOR
-    )
+    acknowledgment = session.record_acknowledgment(cfg, now=now, decided_by=actor)
     return ctx.envelope(
         data={
             "checks": [

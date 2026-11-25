@@ -117,8 +117,8 @@ hunt what a green suite cannot see, as METHOD lists.
   acknowledgment may be minted by the session**, decided by Phillip on
   2026-10-09, reversing the 2026-09-29 rule: it reads both backup ages,
   refuses unless both are under five days, and answers as `session`, since any
-  other actor takes the terminal rule, which checks no age.
-  `docs/METHOD-local.md` has the command.
+  actor but `session` and the menu bar app's `app` (U962) takes the terminal
+  rule, which checks no age. `docs/METHOD-local.md` has the command.
 - **DJ_tools is read-only for code.** It is the live system until each
   workflow's replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names its

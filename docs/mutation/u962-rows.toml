@@ -1,0 +1,268 @@
+name = "u962"
+pass_kind = "full"
+
+# U962, a large card: an app answers a gate bound to the digest it showed, and
+# mints the backup acknowledgment under the age rule. Rows M are the unit's own
+# guards, each reverted alone; rows E are a fixed sample of the existing guards
+# the brief says must still fire under the app.
+
+[[rows]]
+id = "M1_mismatch_dropped"
+description = "gates.record: drop the expected digest check, so an answer over a screen the run no longer offers is recorded over the moved plan"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_session_ack_by_app.py"]
+old = '''    if expect is not None and state.offers.get(spec.name) != expect:
+        raise DigestMismatch(state, spec, expect, actor)'''
+new = '''    if False:
+        raise DigestMismatch(state, spec, expect, actor)'''
+
+[[rows]]
+id = "M2_mismatch_absent_offer_passes"
+description = "gates.record: compare the expected digest only when the run holds an offer, so a gate offered no digest takes any digest expected"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_session_ack_by_app.py"]
+old = '''    if expect is not None and state.offers.get(spec.name) != expect:'''
+new = '''    if expect is not None and spec.name in state.offers and state.offers.get(spec.name) != expect:'''
+
+[[rows]]
+id = "M3_mismatch_after_the_write"
+description = "gates.record: check the expected digest after the decision is written, the performing path, so a refused answer is left recorded on the run"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_session_ack_by_app.py"]
+old = '''    if expect is not None and state.offers.get(spec.name) != expect:
+        raise DigestMismatch(state, spec, expect, actor)
+    state.decisions[spec.name] = Decision(
+        option=option,
+        actor=actor,
+        recorded=output.timestamp(),
+        digest=state.offers.get(spec.name),
+    )'''
+new = '''    state.decisions[spec.name] = Decision(
+        option=option,
+        actor=actor,
+        recorded=output.timestamp(),
+        digest=state.offers.get(spec.name),
+    )
+    if expect is not None and state.offers.get(spec.name) != expect:
+        raise DigestMismatch(state, spec, expect, actor)'''
+
+[[rows]]
+id = "M4_mismatch_offer_in_detail"
+description = "DigestMismatch: carry the expected digest as the offered one, so the app reads back the digest it sent rather than the run's current offer"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py"]
+old = '''                    "expected": expected,
+                    "offered": offered,'''
+new = '''                    "expected": expected,
+                    "offered": expected,'''
+
+[[rows]]
+id = "M5_mismatch_message_offer"
+description = "DigestMismatch: name only the expected digest in the message, so a person is not told what the run offers now"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py"]
+old = '''        now = f"offers {offered!r}" if offered is not None else "offers no digest for it"'''
+new = '''        now = "offers another digest" if offered is not None else "offers no digest for it"'''
+
+[[rows]]
+id = "M6_mismatch_steps_show"
+description = "DigestMismatch: drop the run show step, so the refusal no longer names the command that shows the current screen"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py"]
+old = '''                        f"show the gate's current screen: {show}",
+                        f"then answer over the digest it shows: crate run decide "'''
+new = '''                        f"then answer over the digest it shows: crate run decide "'''
+
+[[rows]]
+id = "M7_mismatch_reads_the_recorded_answer"
+description = "gates.record: compare the expected digest with the answer already recorded rather than the run's offer now, so after a stale refusal the app's answer over the first plan applies the moved one (round one's R7)"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_session_ack_by_app.py"]
+old = '''    if expect is not None and state.offers.get(spec.name) != expect:'''
+new = '''    if expect is not None and (state.decisions[spec.name].digest if spec.name in state.decisions else state.offers.get(spec.name)) != expect:'''
+
+[[rows]]
+id = "M8_bound_rule_dropped"
+description = "gates.record: drop the refusal of a bound answer with no digest, so the app answers a plan gate blind"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_session_ack_by_app.py"]
+old = '''    if bound and spec.digest_source is not None and expect is None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M9_bound_rule_every_gate"
+description = "gates.record: require a bound answer's digest on every gate, so the app cannot answer the acknowledgment's gate, which binds none"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_session_ack_by_app.py"]
+old = '''    if bound and spec.digest_source is not None and expect is None:'''
+new = '''    if bound and expect is None:'''
+
+[[rows]]
+id = "M10_bound_rule_any_answer"
+description = "gates.record: require a digest of every answer on a plan gate, so a terminal or session answer with no flag is refused as it never was"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_session_ack_by_app.py"]
+old = '''    if bound and spec.digest_source is not None and expect is None:'''
+new = '''    if spec.digest_source is not None and expect is None:'''
+
+[[rows]]
+id = "M11_expect_not_passed"
+description = "run decide: hand record no expected digest, so --expect-digest is accepted and never compared"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_session_ack_by_app.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_gate_siblings.py", "tests/test_run_retire.py"]
+old = '''        expect=ctx.args.expect_digest,'''
+new = '''        expect=None,'''
+
+[[rows]]
+id = "M11b_app_not_bound"
+description = "run decide: never mark the app's answer bound, so the app answers a plan gate with no digest"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_session_ack_by_app.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_gate_siblings.py", "tests/test_run_retire.py"]
+old = '''        bound=actor == APP_ACTOR,'''
+new = '''        bound=False,'''
+
+[[rows]]
+id = "M12_app_actor_spelling"
+description = "run decide: spell the app actor apart from the acknowledgment's, so the answer the app gives is not the one held to a digest"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_session_ack_by_app.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py", "tests/test_gate_siblings.py", "tests/test_run_retire.py"]
+old = '''APP_ACTOR = session.APP_ACTOR'''
+new = '''APP_ACTOR = "menubar"'''
+
+[[rows]]
+id = "M13_ages_rule_session_only"
+description = "record_acknowledgment: take the ages rule for the session alone, so an app answer mints by the terminal rule, which checks no age"
+file = "src/cratekit/core/session_ack.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_run_decide_continue.py"]
+old = '''    if decided_by in AGES_ACTORS:'''
+new = '''    if decided_by == SESSION_ACTOR:'''
+
+[[rows]]
+id = "M14_ages_actors_without_app"
+description = "AGES_ACTORS: leave the app out, so --as app is refused at the parser and an app answer takes the terminal rule"
+file = "src/cratekit/core/session_ack.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_run_decide_continue.py"]
+old = '''AGES_ACTORS: tuple[str, ...] = (SESSION_ACTOR, APP_ACTOR)'''
+new = '''AGES_ACTORS: tuple[str, ...] = (SESSION_ACTOR,)'''
+
+[[rows]]
+id = "M16_refusal_names_the_session"
+description = "record_acknowledgment: name a session as the subject of the app's refusal, so the app is told a session was refused"
+file = "src/cratekit/core/session_ack.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py"]
+old = '''            who = "a session" if decided_by == SESSION_ACTOR else "the app"'''
+new = '''            who = "a session"'''
+
+[[rows]]
+id = "M17_as_choices_session_only"
+description = "session ack --as: offer the session alone at the parser, so --as app is refused as a usage error"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_rekordbox_visit_skill.py", "tests/test_crate_sync_skill.py"]
+old = '''        choices=session.AGES_ACTORS,'''
+new = '''        choices=(session.SESSION_ACTOR,),'''
+
+[[rows]]
+id = "M18_as_dispatch_session_only"
+description = "session ack: take the one command mint for --as session alone, so --as app falls through to the gate and leaves a run waiting"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_rekordbox_visit_skill.py", "tests/test_crate_sync_skill.py"]
+old = '''    if given in session.AGES_ACTORS:'''
+new = '''    if given == session.SESSION_ACTOR:'''
+
+[[rows]]
+id = "M19_mint_records_the_session"
+description = "session ack --as: record decided_by as the session whatever was given, so the audit reads an app's mint as a session's"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_rekordbox_visit_skill.py", "tests/test_crate_sync_skill.py"]
+old = '''    acknowledgment = session.record_acknowledgment(cfg, now=now, decided_by=actor)'''
+new = '''    acknowledgment = session.record_acknowledgment(cfg, now=now, decided_by=session.SESSION_ACTOR)'''
+
+[[rows]]
+id = "M20_one_command_mints_again"
+description = "session ack --as: mint again over a valid acknowledgment, so an app's second tap writes a second window rather than reporting the first"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_rekordbox_visit_skill.py", "tests/test_crate_sync_skill.py"]
+old = '''    if recorded is not None and recorded.valid_at(now):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E1_gate_not_reached"
+description = "gates.record, existing (R-1349): drop the refusal of a plan gate the run has not reached, which must still fire under the app"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py"]
+old = '''        raise GateNotReached(state, spec)
+    if bound and'''
+new = '''        pass
+    if bound and'''
+
+[[rows]]
+id = "E2_stale_at_resume"
+description = "Gates.require, existing: drop the stale check on a recorded digest, so a bound answer applies a plan moved after it"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_siblings.py", "tests/test_run_decide_continue.py", "tests/test_run_show_gate.py"]
+old = '''            if against is not None and against != digest:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "E3_pin_at_resume"
+description = "Gates.require, existing (U161): drop the pinned fact comparison, so a bound answer applies over a moved pin"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_app_answers_a_gate.py", "tests/test_gate_not_reached.py", "tests/test_gate_stale_screen.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py"]
+old = '''                if held.get(key) != pins.get(key):'''
+new = '''                if False:'''
+
+[[rows]]
+id = "E4_age_bound_strict"
+description = "_too_old_for_a_session, existing (U138): let a portion exactly five days old through, which the app's rule shares"
+file = "src/cratekit/core/session_ack.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py"]
+old = '''        elif entry.age_seconds >= limit:'''
+new = '''        elif entry.age_seconds > limit:'''
+
+[[rows]]
+id = "E5_terminal_rule_probe"
+description = "record_acknowledgment, existing (R34): drop the terminal check, so any other actor mints with nobody at a terminal"
+file = "src/cratekit/core/session_ack.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_app.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_run_decide_continue.py"]
+old = '''        if not probe():'''
+new = '''        if False:'''
+
+[[dropped]]
+id = "D2_mismatch_remedy_answer"
+description = "DigestMismatch: carry the answer-decision remedy, so a reader takes the refusal for an open gate"
+reason = "ranked below the cap: the remedy is asserted None by a test written for it, and the same shape is measured on gate-not-reached by R-1349's table"
+
+[[dropped]]
+id = "D3_app_actor_value"
+description = "APP_ACTOR: a nearby spelling in core.session_ack"
+reason = "ranked below the cap: M12 measures the spelling run decide reads, and a test pins the value to the brief's word"
+
+[[dropped]]
+id = "D1_mismatch_before_reach"
+description = "gates.record: compare the expected digest before the reach check"
+reason = "an ordering of two refusals that both write nothing; maintainer facing, ranked below the cap"
