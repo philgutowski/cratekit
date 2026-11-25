@@ -355,7 +355,6 @@ private struct Field {
 
     /// The source's value read by `read`, or its unreadable message.
     func readable<Value: Equatable & Sendable>(_ read: (Field) throws -> Value) throws -> Readable<Value> {
-        if let message = try unreadableMessage() { return .unreadable(message) }
         return .value(try read(self))
     }
 }
