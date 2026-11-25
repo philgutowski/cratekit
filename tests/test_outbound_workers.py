@@ -1678,3 +1678,14 @@ def test_a_caller_that_changes_the_standing_warning_it_was_handed_changes_no_lat
     (later,) = favorites_cli.local_write_warning()
     assert later["code"] == "favorites-local-write-unbound"
     assert later["message"].startswith("the favourites sweep hearts matching tracks")
+
+
+def test_the_single_item_export_worker_writes_the_track_its_item_names(queue):
+    """``handle``, the per item form the batch form answers like, called on its own: the
+    driver hands an export's items to ``handle_batch``, so no drive reaches it."""
+    account = fake(1, 2, 3)
+    job = _job(queue(account))
+    with jobs.open_store() as store:
+        (second,) = [one for one in jobs.items(store, job.job_id) if str(one.item_id) == "2"]
+    export_cli.handle(job, second, jobs.frozen_config(job))
+    assert account.playlist_tracks("pl-1") == ("tid-2",)
