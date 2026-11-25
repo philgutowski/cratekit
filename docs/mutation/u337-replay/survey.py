@@ -303,6 +303,16 @@ def vouched_reason(row: K.Recorded, measured: list[tuple], pick: dict) -> str:
 #: baseline` measured them on this card's container, kept beside the tables.
 KNOWN_FAILURES = HERE / "u337-known-failures.txt"
 
+#: The two inode tests of #702, which fail on these containers alone and at
+#: times in a full run, whatever the tree. A death of theirs alone in a full
+#: run says nothing of the row mutated.
+INODE_PAIR = frozenset(
+    {
+        "tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random",
+        "tests/test_repair_rows.py::test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind",
+    }
+)
+
 #: Where the kills this card finds lost since the survey are recorded.
 LOST_RESIDUAL = "docs/residuals/u337-kills-lost-since-the-survey.md"
 
@@ -329,6 +339,14 @@ def measured_reason(row: K.Recorded, measured: list[tuple], machine: frozenset[s
     if not at:
         return ""
     when, table, _side, replayed, _ = at[-1]
+    deaths = set(replayed.get("killed") or [])
+    if K.killed(replayed) and deaths <= INODE_PAIR and not deaths & set(killers):
+        return (
+            f"not killed at the survey on Linux: its replay at ff8e5ec ({table}) read a "
+            f"death only of {', '.join(sorted(deaths))}, one of #702's inode tests, which "
+            "fail on these containers whatever the tree, and none of the tests its own "
+            f"table recorded; on main {where}"
+        )
     if K.killed(replayed):
         return (
             f"LOST: killed at the survey's commit ff8e5ec on Linux ({table}, "
