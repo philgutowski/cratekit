@@ -40,6 +40,9 @@ public actor StatusRefresher {
     /// what the app knows when it ends.
     @discardableResult
     public func refresh() async -> StatusState {
+        if let running = inFlight {
+            return await running.value
+        }
         callsStarted += 1
         // Made on this actor, so the state is recorded here, once per call,
         // however many refreshes wait on it.

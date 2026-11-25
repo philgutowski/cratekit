@@ -215,7 +215,7 @@ extension Glance {
                 try source.array().map(gateItem)
             },
             night: night,
-            otherUnreadable: [:]
+            otherUnreadable: try otherUnreadable(glance)
         )
     }
 

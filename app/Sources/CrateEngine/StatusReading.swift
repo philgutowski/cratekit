@@ -247,7 +247,7 @@ public enum StatusMenu {
     /// The menu for the current reading: the reading, then when it was read,
     /// so a reading an open menu or a sleeping Mac kept is seen as old.
     public static func lines(for reading: GoodReading, timeZone: TimeZone = .current) -> [MenuLine] {
-        readingLines(for: reading)
+        readingLines(for: reading) + [MenuLine(.item, "Read at \(stamp(reading.at, timeZone))")]
     }
 
     /// The lines of one reading, its ages measured at the reading's time.
