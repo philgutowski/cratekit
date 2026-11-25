@@ -2058,7 +2058,9 @@ whose verb is gone, is kept and named. Queued jobs are untouched.
 
 Every database write needs a backup acknowledgment on record; it lasts twelve
 hours. Run `crate doctor` first: it shows both backup ages and, on
-`backup.acknowledgment`, whether one is on record and when it expires.
+`backup.acknowledgment`, whether one is on record and when it expires. All
+three live on the library volume, so with it ejected each reads `not
+asserted` rather than never recorded or none: mount it and run doctor again.
 
 From a terminal:
 

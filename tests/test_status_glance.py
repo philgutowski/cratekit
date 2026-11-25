@@ -666,3 +666,27 @@ def test_the_attention_line_is_gated_on_the_payload_not_the_verb():
     assert "attention" not in render.render(_diagnostic({"checks": [], "summary": {}}))
     named = {"checks": [], "summary": {"glance": {"attention": 7}}}
     assert "attention" not in render.render(_diagnostic(named))
+
+
+def test_doctor_and_the_glance_agree_that_an_absent_volume_hides_the_backup_ages(cfg):
+    """R-2082: one fixture, the root ejected, and neither verb reads the ages as never."""
+    backup_facts.record(
+        cfg, backup_facts.Portion.FILES, completed_at=datetime.now(timezone.utc) - 3 * DAY,
+        destination="/backups/x",
+    )
+    backup_facts.record(
+        cfg, backup_facts.Portion.DATABASE, completed_at=datetime.now(timezone.utc) - DAY,
+        destination="/backups/x",
+    )
+    root = cfg.library.root
+    root.rename(root.with_name("ejected"))
+    found = status_glance_via_cli()
+    doctor_checks = _checks(["doctor"])
+
+    assert status_glance.is_unreadable(found["backup"])
+    for portion in backup_facts.PORTIONS:
+        check = doctor_checks[f"backup.age.{portion}"]
+        assert check["status"] == "info", check
+        assert "could not establish that the volume is there" in check["detail"], check
+        assert "could not establish that the volume is there" in found["backup"]["unreadable"]
+        assert "no completion has been recorded" not in check["detail"], check
