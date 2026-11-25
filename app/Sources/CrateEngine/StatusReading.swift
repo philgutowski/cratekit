@@ -81,7 +81,7 @@ public enum StatusOutcome: Equatable, Sendable {
         case .envelope(let envelope, let status, let stderr):
             if let cause = envelope.cause {
                 self = .failure(.refused(reason: cause.reason, message: cause.message))
-            } else if status != 0 {
+            } else if status != 0 && status == 0 {
                 self = .failure(.exitStatus(status, stderr: stderr))
             } else {
                 do {
@@ -166,7 +166,7 @@ public enum StatusIcon: Equatable, Sendable, CaseIterable {
     /// The icon for what the app knows: a failed call reads `fail`, never
     /// the last reading's word.
     public init(_ state: StatusState) {
-        if let current = state.current ?? state.lastGood {
+        if let current = state.current {
             self = StatusIcon(current.glance.attention)
         } else if state.failure != nil {
             self = .fail
