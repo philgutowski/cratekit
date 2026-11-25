@@ -1,0 +1,117 @@
+{
+  "cause": {
+    "code": 10,
+    "detail": {
+      "explicit": false,
+      "gate": "profile.set.apply",
+      "options": [
+        "apply",
+        "abort"
+      ],
+      "prompt": "Apply this change to module membership?",
+      "run_id": "run-fixture",
+      "shown": {
+        "count": 16,
+        "digest": "3495413ea8954656",
+        "disabling": 16,
+        "enabling": 0,
+        "items": [
+          {
+            "change": "off",
+            "module": "analysis"
+          },
+          {
+            "change": "off",
+            "module": "backup"
+          },
+          {
+            "change": "off",
+            "module": "deletion"
+          },
+          {
+            "change": "off",
+            "module": "desktop"
+          },
+          {
+            "change": "off",
+            "module": "duplicates"
+          },
+          {
+            "change": "off",
+            "module": "export"
+          },
+          {
+            "change": "off",
+            "module": "favorites"
+          },
+          {
+            "change": "off",
+            "module": "identify"
+          },
+          {
+            "change": "off",
+            "module": "labels"
+          },
+          {
+            "change": "off",
+            "module": "mastering"
+          },
+          {
+            "change": "off",
+            "module": "repair"
+          },
+          {
+            "change": "off",
+            "module": "reports"
+          },
+          {
+            "change": "off",
+            "module": "setbuilder"
+          },
+          {
+            "change": "off",
+            "module": "skills"
+          },
+          {
+            "change": "off",
+            "module": "vocals"
+          },
+          {
+            "change": "off",
+            "module": "web"
+          }
+        ],
+        "profile": "slim"
+      }
+    },
+    "inner": null,
+    "message": "the gate 'profile.set.apply' needs a decision before this run continues",
+    "origin": [
+      "gates",
+      "cli"
+    ],
+    "reason": "decision-required",
+    "remediation": {
+      "doc": null,
+      "remedy": "answer-decision",
+      "steps": []
+    },
+    "retryable": true,
+    "scope": "run"
+  },
+  "data": {
+    "checks": [],
+    "summary": {}
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 10,
+  "outcome": "blocked",
+  "pending_human_action": null,
+  "resumable": true,
+  "run_id": "run-fixture",
+  "schema": "diagnostic/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "profile.set",
+  "warnings": []
+}

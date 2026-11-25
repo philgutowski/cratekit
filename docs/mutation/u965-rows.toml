@@ -1,0 +1,86 @@
+name = "u965"
+pass_kind = "light"
+
+# U965 adds no source under src/. Its one Python guard is the fixture test,
+# tests/test_app_fixtures.py, which holds the JSON the Swift decoders read to
+# what the real verbs emit. These rows edit a fixture away from its verb, and
+# weaken the normaliser and the comparison, one at a time. The Swift guards are
+# measured on the App workflow instead, since no container compiles Swift, in
+# docs/mutation/u965-swift.md.
+
+[[rows]]
+id = "F1_doctor_fixture_outcome"
+description = "doctor.json: the outcome edited from ok to no_op, a fixture that no longer matches its verb"
+file = "app/Tests/CrateEngineTests/Fixtures/doctor.json"
+tests = ["tests/test_app_fixtures.py"]
+old = '''  "outcome": "ok",'''
+new = '''  "outcome": "no_op",'''
+
+[[rows]]
+id = "F2_gate_fixture_shown"
+description = "gate_refusal.json: the refusal's shown key renamed, so the app would be tested on a screen the verb never sends"
+file = "app/Tests/CrateEngineTests/Fixtures/gate_refusal.json"
+tests = ["tests/test_app_fixtures.py"]
+old = '''      "shown": {'''
+new = '''      "screen": {'''
+
+[[rows]]
+id = "F3_steps_fixture_step"
+description = "refusal_with_steps.json: the first remediation step reworded"
+file = "app/Tests/CrateEngineTests/Fixtures/refusal_with_steps.json"
+tests = ["tests/test_app_fixtures.py"]
+old = '''        "check that the export really holds the routing tree the taxonomy declares, and that it is the current export",'''
+new = '''        "check that the export holds the routing tree the taxonomy declares, and that it is the current export",'''
+
+[[rows]]
+id = "N1_times_not_fixed"
+description = "fixed: leave started and ended as the run's own times"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''    made["started"] = made["ended"] = INSTANT'''
+new = '''    made["started"] = made["started"]'''
+
+[[rows]]
+id = "N2_run_id_not_fixed"
+description = "fixed: leave the run id, and every string naming it, as the run's own"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''            return item.replace(run_id, RUN_ID)'''
+new = '''            return item'''
+
+[[rows]]
+id = "N3_roots_not_fixed"
+description = "fixed: leave the temporary roots in every path"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''                item = item.replace(prefix, named[prefix])'''
+new = '''                item = item'''
+
+[[rows]]
+id = "N4_resolved_roots_not_fixed"
+description = "fixed: drop the resolved form of each root, which differs from the given one where the temporary directory is a symlink, as macOS's is"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''    named |= {str(path.resolve()): name for path, name in places.items()}'''
+new = ''''''
+
+[[rows]]
+id = "C1_comparison_first_line"
+description = "check: compare only the first line of the fixture with the verb's text"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''    assert committed == text, ('''
+new = '''    assert committed.splitlines()[0] == text.splitlines()[0], ('''
+
+[[rows]]
+id = "C2_inventory_subset"
+description = "the inventory: allow a fixture no scenario writes, which nothing would check"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''    assert sorted(path.stem for path in listed) == sorted(SCENARIOS), listed'''
+new = '''    assert set(path.stem for path in listed) >= set(SCENARIOS), listed'''
+
+[[dropped]]
+id = "R1_regen_always_on"
+description = "test_each_fixture_is_what_its_verb_emits: rewrite the fixtures on every run, as if REGEN were set"
+reason = "it would write tracked fixtures from inside a mutation batch; the regeneration gate is a maintainer's switch, and a stray REGEN in a battery run shows as a fixture diff in git status"
