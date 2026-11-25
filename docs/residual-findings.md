@@ -1028,3 +1028,48 @@ more, options 2 and 3 are a card each. Ledger only.
 **Measured cost.** Not driven to a user. S2 and S3: no producer was found; round one checked that the binding sets no default and no insert listener on any of the ten policy columns, and the rows a plain session add creates in production (my tags, lookup rows) carry no policy column, so a pending object's stored row is written by the guard's own flush from the values the whitelist has already judged. S11 and C11: no test catches the read back's refusal and commits again on the same handle, so "a refused write never lands later" is unmeasured for this refusal. L1: reached only when the guard before the commit has failed; under r2072 G7 it is what reports the committed row, but no test asserts its refusal. A guard on the writer's path that kills nothing is board bar (d).
 
 **Closes when:** a test in `tests/test_rb_writer_db.py` plants a stored row violation on a disposable copy, catches the refusal from `commit_guarded`, commits again on the same handle and asserts nothing landed, killing S11; a test asserts `native.assert_rows_gridless`'s own refusal on a landed row, killing L1; and S2 and S3 are either killed by a pending creation carrying a stored value its object does not show, or named equivalent with that reasoning in a composite that is not a literal unit test.
+
+---
+
+## R-2076. U290's point 5 is short at its last measurement, test lines at 278,018 against 249,132 and the suite 11.4 percent faster than at ff8e5ec against 30, with 51 survey kills readable only on a Mac
+
+**Found:** at the build of #987, U338, the last measurement of U290 (#847), 2026-11-25.
+
+**The mechanism.** Point 5 of #847's definition of done: test lines at least 25 percent below the survey's 332,177, so at most 249,132; the full suite at least 30 percent faster on the cloud runner; every guard a test killed at the survey still killed. Measured on `main` at `147574d`:
+
+- **Lines: 278,018** in 528 files by `scripts/refactor_measure.py table`, 28,886 over the bar, 16.3 percent below the survey. U315 read 289,090. By the numstat of the commits in `d289f61..147574d` over Python files, renames followed, grouped by the unit their subjects name (minus 11,096 in all, 24 more than the tree's 11,072, not traced further), the epic's further cards took 21,931 net off (U333 10,731, U335 5,903, U334 3,604, U332 2,557, against 864 added by U331, U336, U329 and U328), and feature cards outside the epic added 10,835 (U339 1,064, U340 973, R-1716 836, U958 825, U344 802 the largest). R-2048, R-2051 and R-2052 record why the four slices fell short of their shares.
+- **Time: 11.4 percent faster, not 30.** `scripts/cloud_battery.py compare` three times a side on one four core container with nothing else running, `ff8e5ec` from its own clone and venv, interleaved: `main` 436.45, 422.78, 412.50 s, median **422.78**; `ff8e5ec` 476.91, 484.74, 432.59 s, median **476.91**; ratio 0.887 against the bar's 0.70 (333.84 s here). R-2068 records where the rest of the time goes.
+- **Kill set: held on Linux, not whole.** U337's `survey.py join`, rebuilt at `147574d` against a clone of `ff8e5ec`, writes tables equal to the committed ones apart from their head and time, and `killset.py check` over them reads 6,883 owed, 5,302 killed as written, 1,576 at a new anchor, 5 mapped, **0 lost**; `check` over the 122 before and after pairs the records name exits 0 on 121, and the one exit 1, U332's batch 1 (u317 Q10), is its record's intermittent death, re-measured killed on both sides. Of the 210 rows left out, **51 cannot be read on Linux** (every killer fails here for the machine, or is one of the two inode tests R-2073 names), 40 were killed by no Linux run at the survey either (R-2071, R-2072; #1073, landed after `147574d` at `baafec32`, reads 37 of R-2071's 38 killed by new tests and one removed as an equivalent, and #1074 at `75c67934` R-2072's two killed by a new test), 82 had their text or guard changed by a feature card, and 37 were never killed under the epic.
+
+**Measured cost.** Maintainer facing: the suite is larger and slower than the refactor was asked to leave it, and 51 survey kills are unproven until a Mac's test run reads them. No verb's behaviour is affected.
+
+**Closes when:** the lines read at most 249,132 and the suite reads at most 0.70 of `ff8e5ec`'s time on one container, interleaved, and the 51 rows are read on a Mac, or Phillip retires the bars. By Phillip's decision of 2026-11-24 on #847, no further area card is filed for it, and by his rule of the same day no attended card for a mutation row. Ledger only.
+
+---
+
+## R-2077. U290's point 6 is short at its last measurement, the seventeen scripts at 7,444 lines against 7,374 and the three loaded documents at 1,001 against 975
+
+**Found:** at the build of #987, U338, the last measurement of U290 (#847), 2026-11-25.
+
+**The mechanism.** Point 6 of #847's definition of done, by U313's and U314's bars as U315 read them: the seventeen scripts the survey counted (`analyze_stages.py`, `board.py`, `calibrate_timing.py`, `ci_deps.py`, `cloud_battery.py`, `cloud_session.sh`, `cyanite_trial.py`, `dump_schemas.py`, `head_agreement.py`, `mutate.py`, `mutate_table.py`, `release.py`, `revendor_downloader.py`, `sample_name_shapes.py`, `scan_repo.py`, `title_differential.py`, `wait_ci.py`) at most 7,374 lines, `board.py` and `mutate.py` each under 1,500; the documents every build thread loads (`docs/METHOD.md`, `CLAUDE.md`, the cloud-unit skill) at most 975; the ledger in files of at most 5,000 lines, searchable. Measured by `wc -l` on `main` at `147574d`:
+
+- the seventeen scripts **7,444**, 70 over. U330 left them at 7,360; U957 (`f9e0a663`, a feature card) added 116 to `scan_repo.py`, U343 took 33 off and U328 added 1. R-2036 recorded that crossing and closes on this measurement; this entry carries the shortfall from here.
+- `board.py` 1,474 and `mutate.py` 1,191, both under 1,500, so that part holds. `scripts/refactor_measure.py`, outside the seventeen, is 1,591, over the 1,500 that U330's brief also read for every file in `scripts/`: U328 left it at 1,497 and U331 added 94.
+- the three documents **1,001** (493, 141, 367), 26 over. U315 read 973 (487, 141, 345); the `merge(method)` of 2026-11-24 (`476696f9`, Phillip's rule that the macOS battery is owed by `main`) added 22 to the skill and 2 to METHOD, and U329, U336 and U331 together 4 to METHOD.
+- the ledger: `docs/residual-findings.md` 1,006 lines and twelve archive files of at most 4,997, `board.py residuals --search` naming the archive file of each hit; this part holds.
+
+**Measured cost.** Maintainer facing: every build thread loads 26 lines more than the bar, and the scripts stand 70 over theirs. No verb's behaviour is affected.
+
+**Closes when:** the seventeen scripts read at most 7,374 lines, no file in `scripts/` is over 1,500 lines (`refactor_measure.py` included), and the three documents read at most 975, or Phillip retires the bars. By Phillip's decision of 2026-11-24 on #847, no further area card is filed for it. Ledger only.
+
+---
+
+## R-2078. U290's point 2 is short at its last measurement, src/cratekit at 195,379 lines against 193,000 and write/rebuild.py at 1,517 against 1,500
+
+**Found:** at the build of #987, U338, the last measurement of U290 (#847), 2026-11-25.
+
+**The mechanism.** Point 2 of #847's definition of done: `src/cratekit` outside `_vendor` at or under 193,000 lines, and no source file over 1,500. Measured by `scripts/refactor_measure.py table` and `lines --files` on `main` at `147574d`: **195,379 lines in 413 files**, 2,379 over the bar, and **one file over 1,500, `src/cratekit/write/rebuild.py` at 1,517**. U315 read 188,904 lines and `cli/registry.py` at 2,491 on `d289f61`; U328 took the registry under 1,500. Since `d289f61` the source grew by 6,475 lines. By the numstat of the commits in `d289f61..147574d` over Python files outside `_vendor`, renames followed, grouped by the unit their subjects name (6,479 in all, 4 more than the tree, not traced further), the epic's further cards added 156 net (U328 107, U331 84, U329 minus 35), and feature cards outside the epic 6,323, the largest U339 1,413, U958 1,229 and U340 1,109; `write/rebuild.py` crossed 1,500 by R-2056 and R-2062, a crossing R-2034 foresaw: no battery check holds the 1,500 line bar on a source file. R-2037 recorded the total passing 193,000 while the further cards built and closes on this measurement; this entry carries the shortfall from here.
+
+**Measured cost.** Maintainer facing: the size the refactor was asked to reach is not where `main` stands. No verb's behaviour is affected.
+
+**Closes when:** `refactor_measure.py table` reads at most 193,000 lines and 0 files over 1,500, or Phillip retires the bar. By Phillip's decision of 2026-11-24 on #847, no further area card is filed for it. Ledger only.
