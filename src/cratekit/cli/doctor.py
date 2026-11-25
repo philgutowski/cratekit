@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from cratekit.cli import gates, output, registry, render, status_glance
+from cratekit.cli import gates, output, registry, render
 from cratekit.cli.doctor_backup import (
     FULL_COMPARISON_DUE_DAYS,  # noqa: F401
     _check_backup_acknowledgment,
@@ -624,6 +624,9 @@ def _tree_findings(cfg: config.Config) -> list[Finding]:
 
 
 def status(ctx: "Context") -> Envelope:
+    # Here, so ``crate doctor`` and its help load none of what the glance reads.
+    from cratekit.cli import status_glance  # noqa: PLC0415 - status's own assembly
+
     cfg = config.load()
     runs, folded = _run_report(timedelta(days=cfg.reports.open_gate_stale_days))
     findings = runs + _source_findings(cfg) + _tree_findings(cfg)

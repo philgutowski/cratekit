@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli import gates, registry
-from cratekit.core import backup_facts, config, jobs, processes, session_ack
+from cratekit.core import backup_facts, config, jobs, preflight, processes, session_ack
 
 #: The glance's shape version, bumped only when a key changes meaning or goes.
 VERSION = 1
@@ -58,9 +58,13 @@ BACKUP_DUE_AGE: timedelta = session_ack.SESSION_MAX_BACKUP_AGE
 #: The fields of the night record the glance carries, in ``--last``'s names.
 NIGHT_FIELDS: tuple[str, ...] = ("outcome", "line", "gate_run", "pass_run", "staging")
 
+#: The glance's key for the application's state. Named once, outside the key
+#: list, since it spells a process name and ``core.processes`` alone lists those.
+REKORDBOX_KEY = "rekordbox"
+
 #: The keys every glance carries; ``attention`` is derived from the rest.
 KEYS: tuple[str, ...] = (
-    "version", "attention", "backup", "rekordbox", "jobs_running", "gates", "night",
+    "version", "attention", "backup", REKORDBOX_KEY, "jobs_running", "gates", "night",
 )
 
 
@@ -85,8 +89,23 @@ def _iso(moment: datetime | None) -> str | None:
 
 
 def backup(cfg: config.Config, now: datetime) -> dict[str, Any]:
-    """Each portion's ``{state, age_seconds, completed_at}``, off doctor's own reader."""
+    """Each portion's ``{state, age_seconds, completed_at}``, off doctor's own reader.
+
+    The record lives on the library volume, where a missing file and a missing
+    volume look the same, so it is read only when ``core.preflight``'s rule says
+    the volume's state may be believed, as doctor's library state checks ask.
+    Otherwise it is unreadable, never ``never-recorded``.
+    """
     try:
+        mount = preflight.resolve_mount_state(cfg.library.root, cfg.library.volume_id)
+        if not preflight.library_state_is_readable(mount):
+            return {
+                UNREADABLE: (
+                    f"the backup record lives on the library volume, and this run "
+                    f"could not establish that the volume is there "
+                    f"({mount.state.value}), so nothing at the configured root was read"
+                )
+            }
         ages = backup_facts.ages(cfg, now=now)
     except Exception as exc:  # noqa: BLE001 - every failure to read is said, never folded
         return _unreadable(exc)
@@ -102,7 +121,7 @@ def backup(cfg: config.Config, now: datetime) -> dict[str, Any]:
     }
 
 
-def rekordbox(lister: processes.ProcessLister | None = None) -> str | dict[str, str]:
+def rekordbox_state(lister: processes.ProcessLister | None = None) -> str | dict[str, str]:
     """``closed``, ``open`` or ``unknown``, off doctor's ``rekordbox.closed`` probe.
 
     A scan that met a process it could not read is ``unknown``, as doctor says
@@ -277,7 +296,7 @@ def glance(
     found: dict[str, Any] = {
         "version": VERSION,
         "backup": backup(cfg, moment),
-        "rekordbox": rekordbox(lister),
+        REKORDBOX_KEY: rekordbox_state(lister),
         "jobs_running": jobs_running(cfg),
         "gates": gate_runs(older_than=older_than, now=moment),
         "night": night(cfg),
@@ -297,6 +316,7 @@ __all__ = [
     "NIGHT_FIELDS",
     "OK",
     "OPEN",
+    "REKORDBOX_KEY",
     "RUNNING",
     "UNKNOWN",
     "UNREADABLE",
@@ -308,5 +328,5 @@ __all__ = [
     "is_unreadable",
     "jobs_running",
     "night",
-    "rekordbox",
+    "rekordbox_state",
 ]

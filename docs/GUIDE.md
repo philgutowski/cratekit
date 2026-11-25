@@ -160,7 +160,8 @@ where each identity stands in the hour and any cooldown.
 ## Where it stands
 
 `crate status` opens with one word, `attention`, for what needs a person
-first: `fail` when something it reads could not be read, `gate` when a run
+first: `fail` when something it reads could not be read (the line names what)
+or a backup completion is recorded ahead of now, `gate` when a run
 waits at a gate, `running` when a job is running, `backup-due` when either
 backup portion is five days old or more or has no age on record, and
 otherwise `ok`. For an app or a script, `crate --output json status` carries
@@ -169,7 +170,9 @@ rekordbox is `closed`, `open` or `unknown`, the running jobs, every run at a
 gate (with whether it writes the database and whether `crate run retire`
 would retire it), and the last night pass as `crate sync night --last` reads
 it. A source it could not read is `{"unreadable": "..."}` in its own key,
-never an empty list or `closed`. It only reads, and
+never an empty list, `never-recorded` or `closed`; the backup ages read
+unreadable while the library volume cannot be confirmed, since their record
+is on it. It only reads, and
 `tests/schemas/status_glance.v1.json` is its shape.
 
 Which workflows have run on a real library, and with what result, is recorded

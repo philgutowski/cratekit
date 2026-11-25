@@ -345,6 +345,14 @@ def test_an_unreadable_night_record_reads_fail_not_null(cfg):
     assert found["attention"] == status_glance.FAIL
 
 
+def test_a_night_record_without_a_gate_run_keeps_its_nulls(cfg):
+    backed_up(cfg)
+    night_record()
+    night = glance_of(cfg)["night"]
+    assert night["gate_run"] is None and night["pass_run"] is None and night["staging"] is None
+    assert night["outcome"] == sync_night.NOTHING
+
+
 def test_no_night_record_reads_null(cfg):
     backed_up(cfg)
     assert not sync_night.status_path().exists()
@@ -406,6 +414,56 @@ def test_unreadable_backup_facts_read_fail_not_due(cfg):
     found = glance_of(cfg)
     assert status_glance.is_unreadable(found["backup"])
     assert found["attention"] == status_glance.FAIL
+
+
+def test_backup_ages_off_an_absent_library_volume_are_unreadable_not_never_recorded(cfg):
+    """Review round one: the record is on the volume, so an absent root is not "never"."""
+    backed_up(cfg)
+    assert glance_of(cfg)["attention"] == status_glance.OK
+    root = cfg.library.root
+    root.rename(root.with_name("ejected"))
+    found = glance_of(cfg)
+    assert status_glance.is_unreadable(found["backup"])
+    assert "could not establish that the volume is there" in found["backup"]["unreadable"]
+    assert found["attention"] == status_glance.FAIL
+
+
+def test_a_queue_that_cannot_be_looked_at_is_unreadable_not_empty(cfg):
+    """Only an absent queue is no job; a path that cannot be stat'd says so."""
+    backed_up(cfg)
+    parent = jobs.queue_path(cfg).parent
+    parent.parent.mkdir(parents=True, exist_ok=True)
+    parent.write_text("a file where the queue's folder should be")
+    found = glance_of(cfg)
+    assert status_glance.is_unreadable(found["jobs_running"])
+    assert "NotADirectoryError" in found["jobs_running"]["unreadable"]
+    assert found["attention"] == status_glance.FAIL
+
+
+def test_reading_the_queue_cannot_write_it(cfg, monkeypatch):
+    """The connection ``read_jobs`` opens is read only: a write through it is refused."""
+    import sqlite3
+
+    running_job(cfg)
+    asked: list[tuple[tuple, dict]] = []
+    real = sqlite3.connect
+
+    def recorded(*args, **kwargs):
+        asked.append((args, kwargs))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", recorded)
+    assert len(jobs.read_jobs(jobs.queue_path(cfg))) == 1
+    ((args, kwargs),) = asked
+    monkeypatch.setattr(sqlite3, "connect", real)
+    same = real(*args, **kwargs)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            same.execute("DELETE FROM jobs")
+    finally:
+        same.close()
+    with jobs.open_store(jobs.queue_path(cfg)) as store:
+        assert len(jobs.list_jobs(store)) == 1
 
 
 def test_unreadable_outranks_every_other_word(cfg, monkeypatch):
@@ -591,6 +649,17 @@ def test_the_human_rendering_keeps_its_lines_and_gains_one_naming_attention(cfg)
     assert [line for line in shown if line != "attention: gate"] == plain
     _code, out, err = drive(["status"])
     assert "attention: gate" in out.splitlines(), err
+
+
+def test_the_attention_line_names_what_could_not_be_read(cfg):
+    backed_up(cfg)
+    path = sync_night.status_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[]")
+    gates.run_dir().mkdir(parents=True, exist_ok=True)
+    gates.run_path("damaged").write_text("{not json")
+    _code, out, err = drive(["status"])
+    assert "attention: fail (gates, night unreadable)" in out.splitlines(), (out, err)
 
 
 def test_the_attention_line_is_gated_on_the_payload_not_the_verb():

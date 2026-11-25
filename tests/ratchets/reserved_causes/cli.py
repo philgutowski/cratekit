@@ -192,6 +192,8 @@ KEBAB_LITERALS = {
     ],
     # 2026-11-01, U179: the Bandcamp source of the same driver, its fetch verb's
     # words and the closing report's three warnings.
+    # 2026-11-25, U960: crate status's glance, whose attention word is no cause.
+    'cli/status_glance.py': ['backup-due'],
     'cli/sync_bandcamp.py': [
         'bandcamp-fetch',
         'sync-bandcamp-fetch-refused',
