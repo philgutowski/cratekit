@@ -6,7 +6,9 @@ true. Each fixture is driven here through the real dispatcher, its envelope
 validated, the values that differ per run put in fixed form, and the text
 compared with the committed file, so a verb that changes what it emits fails
 the battery until the fixture is regenerated and the app workflow reads the
-new one. Without it the engine and the app could drift apart silently.
+new one, so the engine and the app cannot drift apart silently over these
+three envelopes. A shape no fixture carries, a pending human action, is not
+held here; the card that first reads one adds its fixture.
 
 Regenerate an intended change with ``REGEN=1``, the convention
 ``tests/golden/`` uses, then read the diff before committing it. Never edit a
@@ -55,6 +57,9 @@ def machine(tmp_path, monkeypatch):
     (library / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
+    # Read by doctor's provider budget line, and exported by the provider gate
+    # to a detached child, so a shell that holds it would change doctor.json.
+    monkeypatch.delenv("CRATEKIT_PROVIDER_CALLS_PER_HOUR", raising=False)
     made = config.from_dict(document_for(library))
     config.save(made)
     config.reset_cache()
@@ -167,10 +172,13 @@ def test_each_fixture_is_what_its_verb_emits(name, machine, places):
 
 
 def test_the_fixtures_are_the_scenarios_and_nothing_else():
-    """A fixture no scenario writes is never checked, so it may not be there."""
-    on_disk = sorted(path.stem for path in FIXTURES.iterdir())
-    assert on_disk == sorted(SCENARIOS), on_disk
-    assert all(path.suffix == ".json" for path in FIXTURES.iterdir())
+    """A fixture no scenario writes is never checked, so it may not be there.
+
+    A hidden file, the .DS_Store Finder leaves, is no fixture and is passed over.
+    """
+    listed = [path for path in FIXTURES.iterdir() if not path.name.startswith(".")]
+    assert sorted(path.stem for path in listed) == sorted(SCENARIOS), listed
+    assert all(path.suffix == ".json" for path in listed), listed
 
 
 def test_a_fixture_edited_away_from_its_verb_fails(machine, places, tmp_path):
@@ -186,11 +194,12 @@ def test_a_fixture_edited_away_from_its_verb_fails(machine, places, tmp_path):
         check("doctor", text, edited)
 
 
-def test_a_fixture_holds_no_value_that_differs_per_run(machine, places):
+@pytest.mark.parametrize("name", sorted(SCENARIOS))
+def test_a_fixture_holds_no_value_that_differs_per_run(name, machine, places):
     """Two runs give one text, and it names no run and no temporary root."""
-    first = fixed(SCENARIOS["gate_refusal"](machine), places)
-    second = fixed(SCENARIOS["gate_refusal"](machine), places)
-    assert first["cause"]["detail"]["run_id"] == RUN_ID, first
+    first = fixed(SCENARIOS[name](machine), places)
+    second = fixed(SCENARIOS[name](machine), places)
+    assert first["run_id"] == RUN_ID, first
     assert text_of(first) == text_of(second)
     text = text_of(first)
     for path in places:

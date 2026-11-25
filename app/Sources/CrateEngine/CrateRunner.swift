@@ -21,6 +21,9 @@ public enum VerbResult: Equatable, Sendable {
     case setup(CrateSetup)
     /// The verb ran past its timeout and was ended.
     case timedOut(after: TimeInterval, stderr: String)
+    /// The verb was ended by a signal it did not send itself, numbered here,
+    /// so a signal's number is never read as one of crate's exit codes.
+    case signalled(Int32, stderr: String)
     /// Standard output was not an envelope. `firstBytes` is the start of what
     /// it held, empty only when it held nothing.
     case undecodable(status: Int32, firstBytes: String, reason: String, stderr: String)
@@ -114,8 +117,8 @@ public struct CrateRunner: Sendable {
             timedOut = true
             process.terminate()
             if exited.wait(timeout: .now() + Self.terminationGrace) == .timedOut {
-                kill(process.processIdentifier, SIGKILL)
-                exited.wait()
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                _ = exited.wait(timeout: .now() + Self.terminationGrace)
             }
         }
         _ = drained.wait(timeout: .now() + Self.drainGrace)
@@ -124,6 +127,9 @@ public struct CrateRunner: Sendable {
 
         let errText = String(decoding: err.data, as: UTF8.self)
         if timedOut { return .timedOut(after: call.timeout, stderr: errText) }
+        if process.terminationReason == .uncaughtSignal {
+            return .signalled(process.terminationStatus, stderr: errText)
+        }
         return Self.read(out.data, status: process.terminationStatus, stderr: errText)
     }
 

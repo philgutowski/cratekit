@@ -179,6 +179,14 @@ final class CrateRunnerTests: XCTestCase {
         try assertEnded(pidFile)
     }
 
+    func testASignalDeathIsNotReadAsAnExitCode() throws {
+        // Signal 9 would otherwise read as exit status 9; a SIGBUS, 10, as a gate.
+        let path = try fake("echo 'half an envelope' \necho 'ended' >&2\nkill -KILL $$")
+        XCTAssertEqual(
+            CrateRunner(path: path).runBlocking(VerbCall(["doctor"])),
+            .signalled(SIGKILL, stderr: "ended\n"))
+    }
+
     func testUndecodableOutputIsReportedWithItsFirstBytes() throws {
         let path = try fake("echo 'Traceback (most recent call last):'\nexit 1")
         guard case .undecodable(let status, let first, _, _) = CrateRunner(path: path)
