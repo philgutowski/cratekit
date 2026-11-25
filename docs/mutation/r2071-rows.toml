@@ -118,7 +118,7 @@ source = { table = "r923.json", id = "N12_digest_drops_values" }
 description = "The digest no longer covers the values written"
 file = "src/cratekit/write/row_defaults.py"
 surface = "maintainer"
-tests = ["tests/test_repair_rows.py", "tests/test_export_set.py"]
+tests = ["tests/test_repair_rows.py::test_the_digest_moves_when_a_value_written_changes", "tests/test_export_set.py"]
 old = '''                "defaults": {column: str(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()},
 '''
 new = ''
