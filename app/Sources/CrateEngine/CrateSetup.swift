@@ -28,6 +28,7 @@ public enum CrateSetup: Equatable, Sendable {
             return .missing(path)
         }
         if isDirectory.boolValue { return .directory(path) }
+        guard fileManager.isExecutableFile(atPath: path) else { return .notExecutable(path) }
         return .ready(URL(fileURLWithPath: path))
     }
 

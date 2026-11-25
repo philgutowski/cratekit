@@ -72,7 +72,7 @@ public struct CrateRunner: Sendable {
 
     /// The arguments crate is started with for `call`.
     public static func arguments(for call: VerbCall) -> [String] {
-        ["--output", "json"] + call.arguments
+        call.arguments
     }
 
     /// Run `call` off the caller's thread.
