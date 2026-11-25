@@ -112,4 +112,5 @@ SCOWL and carries SCOWL's permission notice in its header.
 ## Developing
 
 [`docs/DEVELOPING.md`](docs/DEVELOPING.md). None of it is needed to run
-Cratekit.
+Cratekit. A macOS menu bar app over the same verbs is being built under
+`app/`; it is not yet ready to install.

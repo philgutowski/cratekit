@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli import gates, registry, render
+from cratekit.cli import progress as progress_writer
 from cratekit.cli.output import load_config
 from cratekit.core import config, jobs, profiles, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
@@ -286,18 +287,40 @@ class Chain:
             }
         )
 
-    def say(self, step: str, what: str) -> None:
-        if self.progress is not None:
-            self.progress(
-                f"{self.title}, step {self.steps.index(step) + 1} of {len(self.steps)}, "
-                f"{step}: {what}"
-            )
+    def say(self, step: str, what: str, *, command: str | None = None) -> None:
+        """One progress line for ``step``, counted in the verb's order.
 
-    def call(self, step: str, argv: Sequence[str]) -> Child:
-        """Run one step's verb through :func:`dispatch`, keeping its command and warnings."""
-        self.say(step, "crate " + " ".join(argv))
+        A writer with a ``step`` form takes the step's place, name and
+        ``command`` as structure (U963); any other callable takes the line.
+        """
+        if self.progress is None:
+            return
+        index = self.steps.index(step) + 1
+        line = f"{self.title}, step {index} of {len(self.steps)}, {step}: {what}"
+        structured = getattr(self.progress, "step", None)
+        if structured is None:
+            self.progress(line)
+            return
+        structured(
+            index=index,
+            of=len(self.steps),
+            name=step,
+            command=command,
+            detail=None if command is not None else what,
+            line=line,
+        )
+
+    def call(self, step: str, argv: Sequence[str], *, job_id: str | None = None) -> Child:
+        """Run one step's verb through :func:`dispatch`, keeping its command and warnings.
+
+        ``job_id`` names the job the verb drives, watched while it runs when
+        the progress writes events (U963).
+        """
+        command = "crate " + " ".join(argv)
+        self.say(step, command, command=command)
         self.summary["commands"].append(["crate", *argv])
-        code, envelope = dispatch(list(argv))
+        with progress_writer.watching(self.progress, step, job_id):
+            code, envelope = dispatch(list(argv))
         for warning in envelope.get("warnings") or ():
             if isinstance(warning, dict) and warning.get("code"):
                 self.warnings.append(
@@ -371,7 +394,7 @@ def settle(chain: Chain, step: str, job: jobs.Job) -> jobs.Job:
     if not job.is_open():
         return job
     argv = argv_for(job)
-    code, envelope = chain.call(step, argv)
+    code, envelope = chain.call(step, argv, job_id=job.job_id)
     chain.settled[step] = envelope
     with jobs.open_store() as store:
         settled = jobs.get(store, job.job_id)

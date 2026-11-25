@@ -1269,3 +1269,112 @@ ordinary state of being unplugged.
 
 **Closes when:** the menu bar app's card (#1085) decides whether an absent
 volume earns a word of its own ahead of `fail`. Ledger only.
+
+---
+
+## R-2088. a job a chain drives in under a second never reports running under --progress json
+
+**Found:** at the review of #1082, U963, 2026-11-25.
+
+**The mechanism.** Under `--progress json` the job watch in
+`src/cratekit/cli/progress.py` reads the job off the queue once as the drive
+starts, then every `WATCH_SECONDS` (one second) and once after the drive. A
+job whose whole drive is shorter than the interval goes from `queued` to its
+settled state between two readings, so the stream says `queued` then
+`succeeded` and never `running`. The brief asks for at least one event per
+state change while a chain waits on a job.
+
+**Measured cost.** Driven by the review at the shipped interval, two items of
+0.2 seconds each: `queued`, then `succeeded`. No one is told anything false:
+the job's last event is its settled state as the queue holds it, and a job
+long enough for an app to show it running (a download, an analysis of a real
+pass) is read while it runs. A shorter interval reads the queue more often
+for every driven job.
+
+**Closes when:** the engine announces each transition it makes, rather than
+the watch sampling it, or the sampling is judged enough. Ledger only:
+maintainer facing, nothing is lost or misreported.
+
+---
+
+## R-2089. crate sync night under --progress json writes only its end, none of its nested pass's steps or jobs
+
+**Found:** at the review of #1082, U963, 2026-11-25.
+
+**The mechanism.** `sync night` runs its nested `sync land` through
+`tail.dispatch`, which calls the dispatcher with `--output json` and no
+`--progress`, and keeps the child's standard error in memory. So under
+`crate --output json --progress json sync night` the pass's fifteen or so
+child commands write no event, and the stream is one `end`. Human output of
+`sync night` shows none of the pass's steps either, so the flag matches it.
+
+**Measured cost.** Driven by the review in process over the suite's fakes:
+fifteen child commands ran and the only event was `end`. No producer asks
+for it: the scheduled night's command, `schedule.py`'s `NIGHT_ARGV`, passes
+no flag, and the menu bar app's Sync (U967) runs `sync land`, which streams.
+The guide says to follow a pass with `sync land`.
+
+**Closes when:** a card has the app follow a night pass, which hands the
+night's writer to its nested pass as `run decide --continue` does, or the
+night is judged to need no stream. Ledger only: nothing is misreported, and
+no workflow is blocked.
+
+---
+
+## R-2090. The app's runner shows a verb that printed a whole envelope and then died of a signal as a signal death alone
+
+**Found:** at the review round two of #1084, U965, 2026-11-25.
+
+**The mechanism.** `CrateRunner.runBlocking` returns `.signalled` whenever `terminationReason` is an uncaught signal, before it reads standard output, so a verb that printed a complete envelope and then died of a signal (in interpreter shutdown, say) is shown only as a signal death, its envelope dropped. The fix round chose this so a signal's number is never read as one of crate's exit codes (a SIGBUS, 10, read as a gate).
+
+**Measured cost.** Argued from reading only; no verb was driven to die of a signal after printing its envelope, and no shipped caller runs a verb yet.
+
+**Closes when:** the card that first shows a verb's result in the app carries the envelope, when one decodes, beside the signal in the `.signalled` case, with a test over a fake that prints an envelope and then kills itself. Ledger only.
+
+---
+
+## R-2091. The app's runner signals a timed out verb's own process and not its children, reports a verb a SIGKILL has not yet ended as ended, and gives a job three seconds to stop cleanly
+
+**Found:** at the reviews of #1084, U965, 2026-11-25.
+
+**The mechanism.** `CrateRunner.runBlocking` in `app/Sources/CrateEngine/CrateRunner.swift` sends SIGTERM to crate's own pid at the timeout, then SIGKILL after `terminationGrace`, three seconds, and signals no other process. A child crate started (rclone, ffmpeg, a pool worker) is not signalled and keeps running after the app reports `timedOut`. swift-corelibs-foundation starts the child in a process group of its own (`POSIX_SPAWN_SETPGROUP`, its commit faef552, which says this matches Darwin), so signalling the group, `kill(-pid, ...)`, may be enough; whether Apple's Foundation does the same was not driven. After the SIGKILL the wait is bounded by the same grace, so a verb a SIGKILL has not ended within it (one held in uninterruptible I/O on a hung volume) is reported as `timedOut`, whose comment says ended. A job driver that stops cleanly on SIGTERM at an item boundary may need longer than three seconds, and every call defaults to a 60 second timeout whatever the verb.
+
+**Measured cost.** On Linux the review killed only a fake shell's pid and its `sleep` child stayed in the group, holding the pipe 0.71 seconds; on the App workflow `testAVerbThatIgnoresTerminateIsKilled` takes about 4.2 seconds, 0.9 past its timeout and grace, the orphaned `sleep 1` holding the pipe. The unkillable case was not driven: no test environment holds a process SIGKILL cannot end. No shipped caller runs a long verb, since the app in U965 only shows the crate setup state, so nobody pays today; the cost lands when a later card runs `sync` or a job through the runner.
+
+**Closes when:** the card that first runs a long verb through the runner (the Sync card) ends the whole group, reports a verb still running after the kill as still running, sets a timeout per verb, and gives a job driver the grace it needs to stop at an item boundary, each with a test over a fake that leaves a child. Ledger only: no shipped caller pays it.
+
+---
+
+## R-2092. No app fixture carries a pending human action, so a change to that shape passes the fixture guard
+
+**Found:** at the review of #1084, U965, 2026-11-25.
+
+**The mechanism.** `tests/test_app_fixtures.py` holds three envelopes to the real verbs (doctor, a gate refusal, a refusal with steps). None has a `pending_human_action`, and the Swift test of that shape decodes a dictionary built by hand. The review renamed `verify_verb` in `PendingHumanAction.to_json` and all six fixture tests passed.
+
+**Measured cost.** Driven by the review on 13e3eee: the rename passes the battery. No shipped caller reads a pending action yet, so nobody pays today; a pending envelope from `sync land` would decode as undecodable in the app once a card reads one.
+
+**Closes when:** the first card that reads a pending action in the app (the Sync card) adds a fixture from a real verb that leaves one, and its Swift test decodes that fixture. Ledger only.
+
+---
+
+## R-2093. crate started by the app inherits the app's controlling terminal when the app was started from one, so the session reads a person at a terminal
+
+**Found:** at the review of #1084, U965, 2026-11-25.
+
+**The mechanism.** `CrateRunner` sets standard input to the null device but cannot detach crate from the app's session, since Foundation's `Process` has no `setsid`. When the app is started from Terminal (as `swift run` does), crate's `has_controlling_terminal` in `cratekit.core.session` finds the terminal, so a gate answered through the app may be recorded as answered at the command line. The app started from Finder or as a login item has no terminal and is unaffected.
+
+**Measured cost.** Argued from reading; not driven, since no container runs Swift and the app in U965 runs no gated verb.
+
+**Closes when:** the gate card (the one gate view) starts crate in a new session, or passes the actor explicitly, and a test reads the recorded actor of a gate answered through the runner. Ledger only.
+
+---
+
+## R-2094. The app decodes every JSON number in a verb's data as a Double, so an integer above two to the fifty third loses precision
+
+**Found:** at the review of #1084, U965, 2026-11-25.
+
+**The mechanism.** `JSONValue` in `app/Sources/CrateEngine/JSONValue.swift` holds every number as `Double`. An integer above 2^53 in a verb's `data` or a cause's `detail`, such as a 64 bit database id, would read back rounded.
+
+**Measured cost.** Not driven. The review found no verb that emits an integer above 2^53 into an envelope; the envelope's own integers (`envelope`, `exit_code`, `code`) are decoded as `Int`. No shipped caller reads such a field.
+
+**Closes when:** a card that shows a large integer from a verb's data keeps integers whole (an integer case in `JSONValue`, decoded before the double), with a fixture carrying one. Ledger only.

@@ -251,7 +251,11 @@ the slim profile pulls in no DSP and no ML stack, the vendored downloader
 shipped, ruff is clean, and no personal path or credential reached the tree.
 **A step in `.github/workflows/ci.yml` must be able to pass**; a check that
 cannot belongs in the battery (R-115). **Nothing is deselected.** Before
-blaming the platform for a red run, drive it.
+blaming the platform for a red run, drive it. **The menu bar app's Swift is
+built and tested by `.github/workflows/app.yml`** on a macOS runner (U965), the
+one gate a Swift change has, since no container compiles Swift: it runs when
+`app/`, `tests/test_app_fixtures.py` or itself changes, a pull request touching
+them merges only on its green run, and its every step must be able to pass.
 
 ## Committing and merging
 

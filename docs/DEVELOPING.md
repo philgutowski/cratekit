@@ -359,13 +359,38 @@ commands in:
 
 ## CI
 
-`.github/workflows/ci.yml` proves packaging and portability, not the suite:
+`.github/workflows/ci.yml` proves packaging and portability, not the suite
+(`.github/workflows/app.yml` is the menu bar app's, below):
 
 | Job | Runs |
 |---|---|
 | `scan` | `scan_repo.py`, then `board.py closing` over the pushed range or pull request |
 | `portable` | slim install on 3.12 and 3.13, a check that no heavy extra came with it, ruff |
 | `cold-install` | a clean `pip install .` on 3.12 and 3.13, `crate --help`, the eager parser on the full preset (since U248 it, and not `crate --help`, proves every verb's module imports), and an import of the vendored downloader from the installed package |
+
+## The menu bar app
+
+`app/` is a Swift package for a macOS menu bar app, built with SwiftPM alone
+(no Xcode project), macOS 13 the floor (U965). The engine stays the authority:
+the app reads and calls verbs and holds no logic about the library, and no
+LLM connection.
+
+| Target | What it is |
+|---|---|
+| `CrateEngine` | runs a verb as `crate --output json <verb>` by the absolute path in the app's settings (the `cratePath` default), never a shell or a search of `PATH`; a minimal environment (`HOME`, the locale keys, `TMPDIR`, and `PATH` of crate's own directory then the system directories); a timeout per call that terminates, then kills; and the version 1 envelope decoded, a refusal included, as a value. A missing, relative, folder or non executable path is a setup state the UI shows |
+| `CratekitBar` | the `MenuBarExtra` app, no Dock icon |
+| `CrateEngineTests` | XCTest over the envelope fixtures and fake `crate` scripts |
+
+The fixtures in `app/Tests/CrateEngineTests/Fixtures` are written from the real
+verbs by `tests/test_app_fixtures.py`, which fails the battery when a verb no
+longer emits its fixture; regenerate with `REGEN=1 .venv/bin/python -m pytest
+tests/test_app_fixtures.py` and read the diff. On a Mac with a Swift toolchain,
+from `app/`: `swift build`, `swift test`, and `scripts/bundle.sh`, which
+bundles the release build into `build/CratekitBar.app` with `LSUIElement` set,
+signs it ad hoc (no Apple account), and zips it. No container compiles Swift,
+so `.github/workflows/app.yml` does all three on a macOS runner whenever `app/`,
+the fixture test or the workflow changes, and uploads the zip for seven days;
+the repository is public, so those minutes cost nothing.
 
 ## Deferred guards
 
