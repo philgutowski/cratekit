@@ -678,6 +678,107 @@ def test_the_binding_close_alone_does_not_release_the_database(database, tmp_pat
     W.close_db(reopened)
 
 
+# The read back of the rows a session creates, against a real session (R-2075)
+
+#: What the SQL read back says when it refuses, and what the whitelist says.
+_READ_BACK_REFUSES = "a row this session creates carries analysis data"
+_WHITELIST_REFUSES = "declaring analysis column"
+
+#: A key row and a content row of the tests' own, so a supplied snapshot holds neither.
+_KEY_ID = "990001"
+_CONTENT_ID = "990002"
+
+
+def _committed_key(db):
+    """A key row committed through the guard, as a lookup table creation is admitted (A4)."""
+    from pyrekordbox.db6 import tables
+
+    key = _row(tables.DjmdKey, ID=_KEY_ID, ScaleName="1A", Seq=1)
+    db.add(key)
+    W.commit_guarded(db)
+    return key
+
+
+def _content_row():
+    """A content row carrying no analysis value of its own."""
+    from pyrekordbox.db6 import tables
+
+    return _row(tables.DjmdContent, ID=_CONTENT_ID, Title="r2075", FolderPath="/r2075/One.flac")
+
+
+def _stored_content(db):
+    """The content row as SQL holds it now, or None, read past every object the session keeps."""
+    from pyrekordbox.db6 import tables
+
+    db.session.expire_all()
+    return db.session.get(tables.DjmdContent, _CONTENT_ID)
+
+
+def _refused_by_the_read_back(db) -> str:
+    """The refusal of a guarded commit admitting a content row, held to the read back's wording."""
+    error = _raised(W.RekordboxUnavailable, W.commit_guarded, db, creations=(W.CONTENT_TABLE,))
+    message = str(error)
+    assert error.cause.reason == "whitelist-violation"
+    assert _READ_BACK_REFUSES in message and _WHITELIST_REFUSES not in message, message
+    assert f"djmdContent.KeyID = '{_KEY_ID}'" in message, message
+    return message
+
+
+def test_a_refusal_by_the_read_back_leaves_nothing_a_later_commit_on_the_handle_lands(
+    opened, cloud_sync_off
+):
+    """The read back refuses INSIDE the block that rolls back (R-2075, S11).
+
+    A key is planted by SQL on the stored row after its flush, so the object never
+    holds it and only the read back can refuse. Then the binding's own commit is
+    called on the same handle, as any later writer would: a refusal left pending
+    would land there, under that writer's name, and nothing may.
+    """
+    from sqlalchemy import text
+
+    key = _committed_key(opened)
+    content = _content_row()
+    opened.add(content)
+    opened.flush()
+    opened.session.execute(
+        text("UPDATE djmdContent SET KeyID = :key WHERE ID = :id"),
+        {"key": str(key.ID), "id": _CONTENT_ID},
+    )
+    _refused_by_the_read_back(opened)
+    opened.commit()
+    assert _stored_content(opened) is None, "a refused creation landed on the next commit"
+
+
+@pytest.mark.parametrize("tracked", [True, False], ids=["through-the-binding", "tracking-off"])
+def test_a_key_the_mapper_writes_only_at_the_flush_is_refused_by_the_read_back(
+    opened, cloud_sync_off, tracked
+):
+    """A value the object never shows and the flushed row holds (R-2075, S2 and S3).
+
+    A key given through the row's relationship sits in the instance as ``Key``,
+    never as ``KeyID``, so the whitelist's in memory judge, which reads column
+    names, cannot see it; the mapper writes ``KeyID`` only when the row is
+    flushed. The row is still pending at the commit, since every check there runs
+    with the automatic flush suspended, so the read back must flush it to read it
+    (S3). Added with the binding's tracking off, the row is in the session's
+    pending set and not in the binding's buffer, which only the pending source
+    reads (S2). No writer in ``src`` gives a key, or adds with tracking off; the
+    case stands for the next one that does.
+    """
+    key = _committed_key(opened)
+    content = _content_row()
+    if tracked:
+        opened.add(content)
+    else:
+        with opened.registry.disabled():
+            opened.add(content)
+    content.Key = key
+    assert "KeyID" not in vars(content), "the object shows the key, so the judge would see it"
+    assert content in opened.session.new
+    _refused_by_the_read_back(opened)
+    assert _stored_content(opened) is None, "a refused creation is still on the handle"
+
+
 # The lock, held across a real write
 
 
