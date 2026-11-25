@@ -215,7 +215,7 @@ extension Glance {
                 try source.array().map(gateItem)
             },
             night: night,
-            otherUnreadable: try otherUnreadable(glance)
+            otherUnreadable: [:]
         )
     }
 
@@ -292,7 +292,9 @@ private struct Field {
 
     /// A required key: absent is malformed, null is a value.
     func member(_ key: String) throws -> Field {
-        let found = try object()[key] ?? .null
+        guard let found = try object()[key] else {
+            throw GlanceError.missing("\(path).\(key)")
+        }
         return Field(found, "\(path).\(key)")
     }
 
