@@ -200,3 +200,30 @@ def test_the_stand_in_answers_the_removal_the_client_offers():
     provider.version += 1
     with pytest.raises(Stale):
         playlist.remove_by_indices([0])
+
+
+@pytest.mark.parametrize(
+    ("members", "declared"),
+    [(["a", "b"], True), (["a", "b", "c", "d"], 3.0)],
+    ids=["a-flag-equal-to-one", "a-fraction-equal-to-after"],
+)
+def test_a_count_that_is_no_whole_number_refuses_even_where_it_equals_the_after(
+    installed, members, declared
+):
+    """R-2071: a flag or a float is not a count, whatever it compares equal to."""
+    provider = Provider(members)
+    provider.shown = (declared, 0)
+    cause, slept = _removing_b(installed, provider)
+    assert cause.detail["problem"] == "read-back-differs"
+    assert cause.detail["lagged"] == "no"
+    assert slept == []
+    assert len(provider.removals) == 1
+
+
+def test_a_read_that_never_catches_up_names_the_whole_seconds_it_waited(installed):
+    """R-2071: the wait is named as a person reads it, ``7`` and never ``7.0``."""
+    cause, slept = _removing_b(installed, _lagging(["a", "b", "c", "d"], 99, "whole"))
+    waited = sum(slept)
+    assert waited == int(waited) > 0
+    assert cause.detail["waited"] == str(int(waited))
+    assert f" and {int(waited)} seconds," in cause.message

@@ -708,3 +708,19 @@ def test_two_emoji_rows_are_each_searched_and_listed(tmp_path, monkeypatch):
     assert sorted(fake.searched_for) == sorted([("Aurora Bloom", drop), ("Aurora Bloom", wave)])
     body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())
     assert sorted(t["id"] for t in body["tracks"]) == ["7001", "7002"]
+
+
+def test_the_written_check_a_person_reads_names_the_next_command(
+        cfg, library, tmp_path, monkeypatch):
+    """The check line itself carries the literal download command, on both renderers."""
+    from tests.cli_drive import drive_human
+
+    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
+    searching(monkeypatch, {SUN: [Hit("7001", "Aurora Bloom", "Sun Path")]})
+    envelope = ok(path)[0]
+    (written,) = lists_dir(library).glob("*.list.json")
+    said = f"written to {written}; next: crate acquire download {written}"
+    assert checks(envelope)["written"]["detail"] == f"1 missing track(s) {said}"
+    code, text = drive_human(["intake", "missing", "--list", str(path)])
+    assert code == int(ExitCode.OK), text
+    assert said in text

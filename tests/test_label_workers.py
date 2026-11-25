@@ -1414,3 +1414,30 @@ def test_a_harvest_over_a_full_playlist_warns_nothing(installed, monkeypatch):
     bind(monkeypatch, FakeCatalogue(playlists=listing, known_labels={CONFIRMED}))
     envelope = harvest_ok()
     assert envelope.get("warnings", []) == []
+
+
+# ── R-2071: the ownership container driven alone ─────────────────────────────
+
+
+def unwalkable_library() -> sweep.LibraryView:
+    """A library that cannot be walked, so a walk shows as a failure."""
+    raise RuntimeError("the library could not be walked")
+
+
+def test_a_release_listing_no_tracks_is_not_owned_and_walks_no_library(installed):
+    """Nothing to resolve, so the library is never walked and the release is offered."""
+    owned = sweep.OwnedReleases(
+        installed, tracked(releases={"hf-1": ([], 2026)}), library=unwalkable_library
+    )
+    assert "hf-1" not in owned
+
+
+def test_an_ownership_answer_is_kept_after_the_shared_reader_forgets_its_reads(installed):
+    """The sweep and the increment both ask, and a release is read from the provider once."""
+    fake = tracked(releases={"hf-1": ([], 2026)})
+    reader = catalogue.ReleaseTracks(fake)
+    owned = sweep.OwnedReleases(installed, reader, library=unwalkable_library)
+    assert "hf-1" not in owned
+    reader.forget()
+    assert "hf-1" not in owned
+    assert fake.releases_asked_for == ["hf-1"]

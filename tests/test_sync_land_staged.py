@@ -277,3 +277,38 @@ def test_a_stop_that_is_not_rename_incomplete_or_cannot_read_the_queue_is_unchan
     monkeypatch.setattr(jobs, "open_store", unreadable)
     held = tail_chain.Stop.of(sync_land.NAME, _rename_incomplete(ISRC["101"]))
     assert tail_chain.second_copies(held, cfg) is held
+
+
+# The download step alone: in the verb, the staging check before it refuses a
+# pass whose staged tracks are not its own, so these reach it directly.
+
+
+def test_the_download_step_with_no_list_asks_no_download_and_lands_what_is_staged(machine, tail):
+    cfg, script = machine
+    report = sync_land._report(None)
+    listed = sync_land._Listed(path=None, land_name="a-pass", staged=1)
+    assert sync_land._download(report, listed, cfg) == 0
+    assert not any(argv[:2] == ["acquire", "download"] for argv in tail.calls)
+    assert _by_key("acquire.download") == []
+    assert script.fetched == []
+
+
+def test_the_download_step_that_landed_nothing_still_lands_what_is_staged(
+    machine, monkeypatch, tail
+):
+    """Every track refused, yet one is staged: the step answers none, and does not end the pass."""
+    cfg, script = machine
+    for n in ("101", "102"):
+        script.landings[n] = Landing(kind="lossy")
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _rows("101", "102")))
+    code, first = drive(["sync", "land"])
+    assert code == int(ExitCode.OK) and first["outcome"] == "no_op", first
+    (refused,) = _by_key("acquire.download")
+    summary = _summary(first)
+    report = sync_land._report(None)
+    listed = sync_land._Listed(
+        path=Path(summary["list"]), land_name=summary["land_name"], staged=1
+    )
+    assert sync_land._download(report, listed, cfg) == 0
+    assert report.summary["download_job"] == refused.job_id
+    assert len(report.summary["download_refused"]) == 2

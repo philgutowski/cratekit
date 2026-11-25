@@ -518,3 +518,17 @@ def test_no_room_for_the_check_refuses_before_its_copy(cfg, monkeypatch):
     assert refused["cause"]["detail"]["shares_volume_with"] is None, "the capture's check refused"
     assert asked == [], "the area's check copied after the measure refused"
     assert len(captured) == 1 and captured[0] is not None, captured
+
+
+def test_a_stale_refusal_on_a_drive_that_never_moved_names_each_pair_once(cfg, monkeypatch):
+    """R-2071. The stored pair repeats the folder pair here, and is dropped, not shown twice."""
+    monkeypatch.setattr(rehearsal, "mapped", lambda value, _pairs: value)
+    code, refused = _rehearse()
+    assert code != int(ExitCode.OK), refused
+    cause = refused["cause"]
+    assert cause["reason"] == "decision-stale", refused
+    pairs = [tuple(pair) for pair in cause["detail"]["mapped"]]
+    assert len(pairs) == 2, pairs
+    assert len(set(pairs)) == len(pairs), pairs
+    for scratch, live in pairs:
+        assert cause["message"].count(f"{scratch} to {live}") == 1, cause["message"]

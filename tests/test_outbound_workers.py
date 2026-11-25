@@ -1663,3 +1663,29 @@ def test_a_filing_failure_is_a_warning_on_a_finished_export(monkeypatch, queue):
     assert "OSError: ledger write failed" in warning["message"]
     assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3")
     assert account.moves == []
+
+
+def test_a_caller_that_changes_the_standing_warning_it_was_handed_changes_no_later_pass(
+    monkeypatch,
+):
+    """R-424's warning is handed out a copy per call, so one caller's edit reaches no other."""
+    monkeypatch.setattr(
+        favorites_cli, "LOCAL_WRITE_WARNING", dict(favorites_cli.LOCAL_WRITE_WARNING)
+    )
+    (handed,) = favorites_cli.local_write_warning()
+    handed["code"] = "edited-by-a-caller"
+    handed["message"] = "edited by a caller"
+    (later,) = favorites_cli.local_write_warning()
+    assert later["code"] == "favorites-local-write-unbound"
+    assert later["message"].startswith("the favourites sweep hearts matching tracks")
+
+
+def test_the_single_item_export_worker_writes_the_track_its_item_names(queue):
+    """``handle``, the per item form the batch form answers like, called on its own: the
+    driver hands an export's items to ``handle_batch``, so no drive reaches it."""
+    account = fake(1, 2, 3)
+    job = _job(queue(account))
+    with jobs.open_store() as store:
+        (second,) = [one for one in jobs.items(store, job.job_id) if str(one.item_id) == "2"]
+    export_cli.handle(job, second, jobs.frozen_config(job))
+    assert account.playlist_tracks("pl-1") == ("tid-2",)

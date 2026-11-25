@@ -209,3 +209,22 @@ def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path, out
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "unchecked"
     assert target.is_file()
+
+
+def test_a_system_temporary_folder_reached_through_a_link_is_compared_resolved(unisolated, monkeypatch):
+    """macOS spells its temporary folder through a link, /var for /private/var; a link
+    stands in for it here, and a scratch write under the real folder still lands."""
+    scratch = Path(tempfile.mkdtemp(prefix="cratekit-r926-"))
+    try:
+        real = scratch / "private-temporary"
+        real.mkdir()
+        spelled = scratch / "temporary"
+        spelled.symlink_to(real, target_is_directory=True)
+        monkeypatch.setattr(tempfile, "tempdir", str(spelled))
+        target = real / "token.json"
+        config.atomic_write_bytes(b"{}", target)
+        with config.exclusive_lock(real / "token.lock"):
+            pass
+        assert target.read_bytes() == b"{}"
+    finally:
+        shutil.rmtree(scratch)

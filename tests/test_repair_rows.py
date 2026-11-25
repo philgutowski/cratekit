@@ -822,3 +822,17 @@ def test_assert_read_back_refuses_and_names_the_undo(found, reason):
     assert caught.value.cause.reason == reason
     assert "restore session s" in " ".join(caught.value.cause.remediation.steps)
 
+
+def test_the_digest_moves_when_a_value_written_changes(machine, monkeypatch):
+    """R-2071. Same rows and same columns, another value: an approval must not carry over."""
+    build(machine)
+    before = _planned(machine)
+    # The digest is computed when read, so it is read before the values change.
+    approved = before.digest
+    other = {**rb_writer.CONTENT_ROW_DEFAULTS, "SamplerGain": 1.0}
+    monkeypatch.setattr(rb_writer, "CONTENT_ROW_DEFAULTS", other)
+    after = _planned(machine)
+    assert before.items, "nothing is planned, so this pins nothing"
+    assert [item.to_json() for item in after.items] == [item.to_json() for item in before.items]
+    assert after.digest != approved
+

@@ -380,3 +380,13 @@ def test_a_heart_whose_job_froze_no_date_key_joins_all_favorites_and_no_month(cf
     assert by_name["Old.flac"]["heart"] == "month left to the backfill"
     assert by_name["New.flac"]["heart"] == "2026-11"
     assert acted["data"]["totals"]["hearts placed"] == 3
+
+
+def test_two_dated_mentions_of_one_heart_keep_the_earlier_jobs_in_queue_order(cfg, silence):
+    """Both know a date, so only the queue order decides: the first job queued wins."""
+    first = hearts_swept(cfg, {"Twice": SEP})
+    hearts_swept(cfg, {"Twice": NOV})
+    (row,) = account_playlists.hearts(cfg, PASS)
+    assert (row.ref, row.job_id, row.hearted.isoformat()) == ("tid-Twice", first.job_id, SEP)
+    (found,) = account_playlists.hearted(cfg, PASS, [_stage(cfg, silence, "Twice")])
+    assert (found.month, found.known) == ("2026-09", True)
