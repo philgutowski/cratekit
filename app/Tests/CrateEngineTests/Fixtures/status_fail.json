@@ -1,0 +1,102 @@
+{
+  "cause": null,
+  "data": {
+    "checks": [
+      {
+        "detail": "the run record for 'run-fixture-damaged' is not readable JSON",
+        "key": "run.run-fixture-damaged",
+        "remedy": "report-defect",
+        "status": "fail",
+        "title": "run record"
+      },
+      {
+        "detail": "open gate intake.land.native, started 2026-01-01T09:00:00+00:00",
+        "key": "run.run-fixture-landing",
+        "remedy": "answer-decision",
+        "status": "info",
+        "title": "intake.land"
+      },
+      {
+        "detail": "no favorites worker records a cursor, so a completed sync leaves nothing to report here",
+        "key": "source.favorites.watermark",
+        "remedy": null,
+        "status": "info",
+        "title": "favorites watermark"
+      },
+      {
+        "detail": "label releases are taken by crate label sync, which keeps its own marker per label of the releases it has asked about rather than a cursor here",
+        "key": "source.labels.watermark",
+        "remedy": null,
+        "status": "info",
+        "title": "labels watermark"
+      },
+      {
+        "detail": "no clean increment has completed",
+        "key": "source.playlists.watermark",
+        "remedy": null,
+        "status": "info",
+        "title": "playlists watermark"
+      }
+    ],
+    "summary": {
+      "glance": {
+        "attention": "fail",
+        "backup": {
+          "database": {
+            "age_seconds": null,
+            "completed_at": "2026-01-03T12:00:00+00:00",
+            "state": "recorded-in-the-future"
+          },
+          "files": {
+            "age_seconds": 86400,
+            "completed_at": "2025-12-31T12:00:00+00:00",
+            "state": "known"
+          }
+        },
+        "gates": [
+          {
+            "run_id": "run-fixture-damaged",
+            "unreadable": "CratekitError: the run record for 'run-fixture-damaged' is not readable JSON"
+          },
+          {
+            "explicit": true,
+            "gate": "intake.land.native",
+            "old": false,
+            "options": [
+              "apply",
+              "abort"
+            ],
+            "run_id": "run-fixture-landing",
+            "since": "2026-01-01T09:00:00+00:00",
+            "verb": "intake.land",
+            "writes_database": true
+          }
+        ],
+        "jobs_running": [],
+        "night": {
+          "unreadable": "ValueError: /fixture-state/state/cratekit/night_status.json is not a night pass record this build reads"
+        },
+        "rekordbox": {
+          "unreadable": "RuntimeError: the process table could not be read"
+        },
+        "version": 1
+      },
+      "library": "/fixture/library",
+      "old_gates": 0,
+      "open_runs": 2,
+      "sources": 3,
+      "trees": 0
+    }
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 0,
+  "outcome": "ok",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "run-fixture",
+  "schema": "diagnostic/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "status",
+  "warnings": []
+}

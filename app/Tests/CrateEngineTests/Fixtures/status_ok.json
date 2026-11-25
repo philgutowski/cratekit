@@ -1,0 +1,66 @@
+{
+  "cause": null,
+  "data": {
+    "checks": [
+      {
+        "detail": "no favorites worker records a cursor, so a completed sync leaves nothing to report here",
+        "key": "source.favorites.watermark",
+        "remedy": null,
+        "status": "info",
+        "title": "favorites watermark"
+      },
+      {
+        "detail": "label releases are taken by crate label sync, which keeps its own marker per label of the releases it has asked about rather than a cursor here",
+        "key": "source.labels.watermark",
+        "remedy": null,
+        "status": "info",
+        "title": "labels watermark"
+      },
+      {
+        "detail": "no clean increment has completed",
+        "key": "source.playlists.watermark",
+        "remedy": null,
+        "status": "info",
+        "title": "playlists watermark"
+      }
+    ],
+    "summary": {
+      "glance": {
+        "attention": "ok",
+        "backup": {
+          "database": {
+            "age_seconds": 172800,
+            "completed_at": "2025-12-30T12:00:00+00:00",
+            "state": "known"
+          },
+          "files": {
+            "age_seconds": 86400,
+            "completed_at": "2025-12-31T12:00:00+00:00",
+            "state": "known"
+          }
+        },
+        "gates": [],
+        "jobs_running": [],
+        "night": null,
+        "rekordbox": "closed",
+        "version": 1
+      },
+      "library": "/fixture/library",
+      "old_gates": 0,
+      "open_runs": 0,
+      "sources": 3,
+      "trees": 0
+    }
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 0,
+  "outcome": "ok",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "run-fixture",
+  "schema": "diagnostic/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "status",
+  "warnings": []
+}

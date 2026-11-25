@@ -7,8 +7,13 @@ validated, the values that differ per run put in fixed form, and the text
 compared with the committed file, so a verb that changes what it emits fails
 the battery until the fixture is regenerated and the app workflow reads the
 new one, so the engine and the app cannot drift apart silently over these
-three envelopes. A shape no fixture carries, a pending human action, is not
-held here; the card that first reads one adds its fixture.
+envelopes. A shape no fixture carries, a pending human action, is not held
+here; the card that first reads one adds its fixture.
+
+The status fixtures (U966) are ``crate status`` once per ``attention`` word,
+each state built the way ``tests/test_status_glance.py`` builds it (backup
+records, runs at a gate, a running job, a night record, the process table),
+read at a held clock so every age and wait is the same on every run.
 
 Regenerate an intended change with ``REGEN=1``, the convention
 ``tests/golden/`` uses, then read the diff before committing it. Never edit a
@@ -17,18 +22,21 @@ fixture by hand: the verb is the source of truth.
 
 from __future__ import annotations
 
+import functools
 import io
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 import pytest
 
 from cratekit import cli
-from cratekit.cli import output
-from cratekit.core import config
-from cratekit.core.exit_codes import ExitCode
+from cratekit.cli import gates, output, registry, status_glance, sync_night
+from cratekit.core import backup_facts, config, jobs, processes
+from cratekit.core.cause import Cause, Remediation
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.taxonomy import default_taxonomy
 from tests import doctor_machines
 from tests.test_doctor import document_for, seed_taxonomy
@@ -145,10 +153,153 @@ def refusal_with_steps(library: Path) -> dict[str, Any]:
     return document
 
 
+# The status fixtures, one per attention word (U966).
+
+#: The instant every status fixture is read at.
+STATUS_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+DAY = timedelta(days=1)
+LANDING_RUN = "run-fixture-landing"
+PROFILE_RUN = "run-fixture-profile"
+DAMAGED_RUN = "run-fixture-damaged"
+RUNNING_JOB = "job-fixture-running"
+
+
+def _held_clock(patch: pytest.MonkeyPatch) -> None:
+    """``crate status`` reads its clock in two places; both read :data:`STATUS_NOW`."""
+    from cratekit.cli import doctor
+
+    patch.setattr(doctor, "_run_report", functools.partial(doctor._run_report, now=STATUS_NOW))
+    real = status_glance.glance
+    patch.setattr(status_glance, "glance", lambda cfg, **kw: real(cfg, now=STATUS_NOW, **kw))
+
+
+def _backed_up(files: timedelta | None = DAY, database: timedelta | None = 2 * DAY) -> None:
+    """Each portion completed that long before the held clock; None records nothing."""
+    cfg = config.load()
+    for portion, age in (
+        (backup_facts.Portion.FILES, files), (backup_facts.Portion.DATABASE, database),
+    ):
+        if age is not None:
+            backup_facts.record(
+                cfg, portion, completed_at=STATUS_NOW - age, destination="/backups/fixture")
+
+
+def _at_gate(run_id: str, verb: str, gate: str, *, idle: timedelta) -> None:
+    state = gates.new_run(registry.entry(verb), run_id=run_id)
+    state.open_gate = gate
+    state.created = (STATUS_NOW - idle).isoformat()
+    path = gates.save(state)
+    stamp = (STATUS_NOW - idle).timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+def _night(text: str | None = None, **fields: Any) -> None:
+    """The night pass record, ``text`` written as it is when given."""
+    record = {
+        "schema": sync_night.STATUS_SCHEMA, "night": "2025-12-31",
+        "line": "night of 2025-12-31: nothing new to land", "outcome": sync_night.NOTHING,
+        **fields,
+    }
+    path = sync_night.status_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record) if text is None else text, encoding="utf-8")
+
+
+def _rekordbox_lists(patch: pytest.MonkeyPatch, answer: Any) -> None:
+    """The process table doctor and the glance both read, answering ``answer``."""
+
+    def listed():
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    patch.setattr(processes, "running_process_names", listed)
+
+
+def status_of(prepare: Callable[[pytest.MonkeyPatch], None], word: str) -> dict[str, Any]:
+    """``crate status`` after ``prepare``, at the held clock, reading ``word``."""
+    with pytest.MonkeyPatch.context() as patch:
+        _held_clock(patch)
+        prepare(patch)
+        document = emitted(["status"])
+    assert document["exit_code"] == 0, document
+    glance = document["data"]["summary"]["glance"]
+    assert glance["attention"] == word, glance
+    return document
+
+
+def status_ok(library: Path) -> dict[str, Any]:
+    return status_of(lambda patch: _backed_up(), status_glance.OK)
+
+
+def status_gate(library: Path) -> dict[str, Any]:
+    def prepare(patch: pytest.MonkeyPatch) -> None:
+        _backed_up()
+        _at_gate(LANDING_RUN, "intake.land", "intake.land.native", idle=timedelta(hours=3))
+        past = timedelta(days=config.load().reports.open_gate_stale_days + 10)
+        _at_gate(PROFILE_RUN, "profile.set", "profile.set.apply", idle=past)
+        _night(
+            outcome=sync_night.WAITING_GATE, gate_run=LANDING_RUN, pass_run="pass-fixture",
+            staging="/fixture-staging", land_name="pass-fixture",
+            line="night of 2025-12-31: the landing waits at its gate",
+        )
+
+    document = status_of(prepare, status_glance.GATE)
+    old = {item["run_id"]: item["old"] for item in document["data"]["summary"]["glance"]["gates"]}
+    assert old == {LANDING_RUN: False, PROFILE_RUN: True}, old
+    return document
+
+
+def status_running(library: Path) -> dict[str, Any]:
+    def prepare(patch: pytest.MonkeyPatch) -> None:
+        _backed_up()
+        cfg = config.load()
+        if not jobs.read_jobs(jobs.queue_path(cfg), states=(jobs.JobState.RUNNING,)):
+            with jobs.open_store(jobs.queue_path(cfg)) as store:
+                jobs.enqueue(store, handler_key="intake.tidal", payload={}, cfg=cfg,
+                             job_id=RUNNING_JOB)
+                jobs.transition(store, RUNNING_JOB, jobs.JobState.RUNNING)
+        _rekordbox_lists(patch, ("launchd", processes.REKORDBOX_PROCESSES[0]))
+
+    return status_of(prepare, status_glance.RUNNING)
+
+
+def status_backup_due(library: Path) -> dict[str, Any]:
+    def prepare(patch: pytest.MonkeyPatch) -> None:
+        _backed_up(files=9 * DAY, database=None)
+        _night()
+        _rekordbox_lists(patch, processes.AbsenceUnconfirmed(
+            Cause(reason=processes.UNCONFIRMED, message="pid 7 could not be read",
+                  remediation=Remediation(remedy=Remedy.QUIT_REKORDBOX))))
+
+    return status_of(prepare, status_glance.BACKUP_DUE)
+
+
+def status_fail(library: Path) -> dict[str, Any]:
+    def prepare(patch: pytest.MonkeyPatch) -> None:
+        _backed_up(database=-2 * DAY)
+        _at_gate(LANDING_RUN, "intake.land", "intake.land.native", idle=timedelta(hours=3))
+        gates.run_path(DAMAGED_RUN).write_text("{not json", encoding="utf-8")
+        _night(text="[]")
+        _rekordbox_lists(patch, RuntimeError("the process table could not be read"))
+
+    document = status_of(prepare, status_glance.FAIL)
+    glance = document["data"]["summary"]["glance"]
+    assert status_glance.is_unreadable(glance["rekordbox"]), glance
+    assert status_glance.is_unreadable(glance["night"]), glance
+    assert any(status_glance.is_unreadable(item) for item in glance["gates"]), glance
+    return document
+
+
 SCENARIOS: dict[str, Callable[[Path], dict[str, Any]]] = {
     "doctor": doctor_on_a_green_machine,
     "gate_refusal": gate_refusal_with_its_screen,
     "refusal_with_steps": refusal_with_steps,
+    "status_ok": status_ok,
+    "status_gate": status_gate,
+    "status_running": status_running,
+    "status_backup_due": status_backup_due,
+    "status_fail": status_fail,
 }
 
 
