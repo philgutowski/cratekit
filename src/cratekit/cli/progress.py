@@ -97,7 +97,11 @@ class Writer:
 
     def _write(self, text: str) -> None:
         # Flushed, since standard error is not line buffered everywhere, and
-        # under a lock, since a job's watcher writes from its own thread.
+        # under a lock, since a job's watcher writes from its own thread. A
+        # process started with standard error closed has None there, and
+        # print would take that for standard output, the envelope's own.
+        if self._stream is None:
+            return
         with self._lock:
             try:
                 print(text, file=self._stream, flush=True)

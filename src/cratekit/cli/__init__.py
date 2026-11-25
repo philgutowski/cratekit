@@ -445,8 +445,12 @@ def _to_stderr(text: str, stderr) -> None:
     """Write to standard error, dropping what a closed reader cannot take (U963).
 
     So a reader that closed the pipe never turns the run's own exit code into
-    a traceback, the rule the progress writer keeps.
+    a traceback, the rule the progress writer keeps. A process started with
+    standard error closed has None there, which print would take for standard
+    output, so nothing is written.
     """
+    if stderr is None:
+        return
     try:
         print(text, end="", file=stderr, flush=True)
     except (OSError, ValueError):

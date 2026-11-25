@@ -366,10 +366,12 @@ def test_a_job_event_arrives_over_a_real_pipe_while_the_job_still_runs(tmp_path)
     assert all(output.progress_problems(event) == [] for event in events)
 
 
+@pytest.mark.parametrize("human", [False, True])
 def test_a_reader_that_closes_standard_error_leaves_the_run_its_exit_and_its_saved_run(
-    tmp_path,
+    tmp_path, human
 ):
-    process, result = _child(tmp_path)
+    """Human output too: its refusal and gate screen go to standard error."""
+    process, result = _child(tmp_path, **({"CRATEKIT_PROGRESS_CHILD_HUMAN": "1"} if human else {}))
     process.stderr.close()
     process.wait(timeout=300)
 
@@ -408,10 +410,24 @@ def test_a_watched_job_is_reported_on_each_change_and_once_after_the_drive(machi
 
     first, last = (json.loads(line) for line in stream.getvalue().splitlines())
     assert (first["state"], first["progress"]["settled"]) == ("queued", 0)
+    assert (last["state"], last["progress"]["settled"], last["step"]) == ("succeeded", 2, "tag")
 
-    # Read again after a drive that changed nothing, the settled state is written once more.
+    # A watch over a drive that changed nothing reads the job as it starts and
+    # writes it once more after, unchanged, since the last event of a drive
+    # is always its job as the queue holds it then.
     with progress.watching(writer, "tag", job.job_id):
         pass
     again = [json.loads(line) for line in stream.getvalue().splitlines()][2:]
-    assert [(event["state"], event["progress"]["settled"]) for event in again][-1] == ("succeeded", 2)
-    assert (last["state"], last["progress"]["settled"], last["step"]) == ("succeeded", 2, "tag")
+    assert [(event["state"], event["progress"]["settled"]) for event in again] == [
+        ("succeeded", 2), ("succeeded", 2)
+    ]
+
+
+def test_a_writer_over_a_closed_standard_error_writes_nothing_anywhere(capsys):
+    """A process started with fd 2 closed has None there, which print reads as stdout."""
+    writer = progress.Writer(None, verb="v", events=True)
+    writer("dropped")
+    writer.end(run_id="r", exit_code=0)
+    cli._to_stderr("a person's copy", None)
+
+    assert capsys.readouterr().out == ""
