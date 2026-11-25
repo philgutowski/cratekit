@@ -1,8 +1,8 @@
 {
  "name": "survey-before",
  "pass_kind": "replay",
- "head": "7bbbc82e",
- "when": "2026-11-25 05:30 UTC",
+ "head": "9234fb2c",
+ "when": "2026-11-25 05:31 UTC",
  "valid": true,
  "invalid_reason": "",
  "note": "The survey of U290 at ff8e5ec: 7093 live killed rows, 6883 held to a kill and 210 left out, each named under excluded with its reason. Each row as its own table recorded it.",

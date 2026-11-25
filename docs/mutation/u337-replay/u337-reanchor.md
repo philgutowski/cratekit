@@ -477,9 +477,9 @@ the portability scanner stops looking for a hardcoded volume path at all
 - Kills: 4 (killed)
 - Killed:
   - `tests/test_portability.py::test_any_volume_is_caught_not_just_one`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[docs/install.md-Put the library at /Volumes/BigAudioDrive/Music\n]`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[scripts/backup.sh-VOLUME=/Volumes/BigAudioDrive/Music\n]`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[src/cratekit/core/config.py-ROOT = "/Volumes/BigAudioDrive/Music"\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[docs/install.md-Put the library at /Volumes/<a-planted-volume>/Music\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[scripts/backup.sh-VOLUME=/Volumes/<a-planted-volume>/Music\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[src/cratekit/core/config.py-ROOT = "/Volumes/<a-planted-volume>/Music"\n]`
 
 Old text:
 

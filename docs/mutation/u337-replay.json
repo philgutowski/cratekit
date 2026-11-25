@@ -1,8 +1,8 @@
 {
  "name": "u337-replay",
  "pass_kind": "replay",
- "head": "a8f9b964",
- "when": "2026-11-25 05:11 UTC",
+ "head": "9234fb2c",
+ "when": "2026-11-25 05:31 UTC",
  "valid": true,
  "invalid_reason": "",
  "note": "U337's batches joined: u337-1 at bd7fe6810; u337-2 at bd7fe6810; u337-3 at bd7fe6810; u337-r926 at bd7fe6810; u337-analysis at bd7fe681; u337-librosa-1-0-0 at 8db7401d; u337-librosa-1-0-0-b at 21b4051a; u337-moved at 59cc5358; u337-c7 at b16354fc; u337-reanchor at 5671db8c8. Null controls: u337-1 zero (0 deaths); u337-2 zero (0 deaths); u337-3 zero (0 deaths); u337-r926 zero (0 deaths); u337-analysis zero (0 deaths); u337-librosa-1-0-0 zero (0 deaths); u337-librosa-1-0-0-b zero (0 deaths); u337-moved zero (0 deaths); u337-c7 zero (0 deaths); u337-reanchor zero (0 deaths). Each row names its batch under docs/mutation/u337-replay/.",
@@ -5660,9 +5660,9 @@
    "collect_errors": [],
    "killed": [
     "tests/test_portability.py::test_any_volume_is_caught_not_just_one",
-    "tests/test_portability.py::test_guard_covers_every_shipped_surface[docs/install.md-Put the library at /Volumes/BigAudioDrive/Music\\n]",
-    "tests/test_portability.py::test_guard_covers_every_shipped_surface[scripts/backup.sh-VOLUME=/Volumes/BigAudioDrive/Music\\n]",
-    "tests/test_portability.py::test_guard_covers_every_shipped_surface[src/cratekit/core/config.py-ROOT = \"/Volumes/BigAudioDrive/Music\"\\n]"
+    "tests/test_portability.py::test_guard_covers_every_shipped_surface[docs/install.md-Put the library at /Volumes/<a-planted-volume>/Music\\n]",
+    "tests/test_portability.py::test_guard_covers_every_shipped_surface[scripts/backup.sh-VOLUME=/Volumes/<a-planted-volume>/Music\\n]",
+    "tests/test_portability.py::test_guard_covers_every_shipped_surface[src/cratekit/core/config.py-ROOT = \"/Volumes/<a-planted-volume>/Music\"\\n]"
    ],
    "promoted": false,
    "subset_deaths": null,
