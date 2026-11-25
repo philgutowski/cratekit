@@ -152,11 +152,25 @@ where each identity stands in the hour and any cooldown.
    rekordbox database refuses while either runs.
 2. Mount the library volume.
 3. `crate doctor`; read the `FAIL` lines first.
-4. `crate status`: open runs, each source's sync state, and any tree whose
-   membership no longer matches the database. Gates idle over a week are
-   summarised in one line with the command that retires them.
+4. `crate status`: one `attention` line first, then open runs, each source's
+   sync state, and any tree whose membership no longer matches the database.
+   Gates idle over a week are summarised in one line with the command that
+   retires them.
 
 ## Where it stands
+
+`crate status` opens with one word, `attention`, for what needs a person
+first: `fail` when something it reads could not be read, `gate` when a run
+waits at a gate, `running` when a job is running, `backup-due` when either
+backup portion is five days old or more or has no age on record, and
+otherwise `ok`. For an app or a script, `crate --output json status` carries
+the same facts as one object, `data.summary.glance`: both backup ages, whether
+rekordbox is `closed`, `open` or `unknown`, the running jobs, every run at a
+gate (with whether it writes the database and whether `crate run retire`
+would retire it), and the last night pass as `crate sync night --last` reads
+it. A source it could not read is `{"unreadable": "..."}` in its own key,
+never an empty list or `closed`. It only reads, and
+`tests/schemas/status_glance.v1.json` is its shape.
 
 Which workflows have run on a real library, and with what result, is recorded
 per workflow in [`cutover.md`](cutover.md). For a workflow not recorded there,
