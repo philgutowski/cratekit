@@ -193,6 +193,8 @@ KEBAB_LITERALS = {
         'vocal-model',  # 2026-11-01, U181
         'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
+    # 2026-11-25, U960: crate status's glance, whose attention word is no cause.
+    'cli/status_glance.py': ['backup-due'],
     # 2026-11-01, U179: the Bandcamp source of the same driver, its fetch verb's
     # words and the closing report's three warnings.
     'cli/sync_bandcamp.py': [

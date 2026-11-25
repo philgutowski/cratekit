@@ -242,6 +242,13 @@ is yours: rerun it alone first, since one test is known to be intermittent on
 ext4 under a parallel run, and fix every one that fails alone. A test under
 `no longer failing` is worth a line in the record.
 
+**A Swift card**, one that changes `app/` (U965), has no Swift toolchain in
+the container: its battery is this Python battery plus a green `App` workflow
+(`.github/workflows/app.yml`) on its pull request, which step 9's wait reads
+with CI. Keep each Swift change small, push it, and read the workflow's log,
+since the container cannot compile it. A Swift guard's mutation is read the
+same way: revert it in a pushed commit, read the run, and restore it.
+
 ## 8. Record
 
 **Docs first** (METHOD's Docs always current): correct every line the change

@@ -1139,3 +1139,298 @@ misread.
 it, with a timing test holding a scan of records with cut screens to the
 ratio of one without, or the count of kept screens in a real state directory
 is read at an attended sitting and found small. Ledger only.
+
+---
+
+## R-2082. Doctor's backup age checks read an ejected library volume as never recorded
+
+**Found:** at review round two of #1079, U960, 2026-11-25.
+
+**The mechanism.** The backup facts file is library scoped (`state_files`
+`_library("backup_facts")`), and `backup_facts._read` takes a missing file
+for no fact. `doctor_backup._check_backup_portion` calls `backup_facts.ages`
+with no mount gate, while `_check_backup_acknowledgment` beside it asks
+`_library_state_unreadable` first. So with the library root absent, as
+`/Volumes/<name>` is after an eject, `backup.age.files` and
+`backup.age.database` read INFO "no completion has been recorded for this
+portion here, which is the state of every library before a backup has run
+once". U960's glance asks `core.preflight`'s rule first and reads the same
+state unreadable, so doctor and the glance now disagree on that input.
+
+**Measured cost.** Driven on the branch at `f10a9afb`: the root renamed
+away, `crate --output json doctor` read both portions as never recorded. A
+person is told no backup exists when the record is on the unplugged drive;
+doctor reports the volume in its own rows, but these two rows say something
+false (board bar b). On main before U960, unchanged by it.
+
+**Closes when:** `_check_backup_portion` asks `_library_state_unreadable`
+before reading and answers its note, as the acknowledgment check does, with
+a test that renames the root and reads both rows. It earns an issue under
+the board bar's (b), a clean report over state it could not read.
+
+---
+
+## R-2083. The status glance reads a running job whose driver died as running until something reconciles it
+
+**Found:** at review round one of #1079, U960, 2026-11-25.
+
+**The mechanism.** The glance lists jobs in state `running` off the queue,
+as `crate job list --state running` does. A job whose driver was killed
+keeps `running` in the queue until `crate job show` or a resume reconciles
+it against its driver lock (`jobs.reconcile`), which a read only glance does
+not do.
+
+**Measured cost.** Driven with a job moved to `running` and no driver lock
+held: the glance and `job list` both read `running`, and `attention` reads
+`running`; after `crate job show` reconciled it to `queued`, the glance read
+`ok`. A killed driver, the real producer, was not driven. The menu bar icon
+would say running for work nothing is doing.
+
+**Closes when:** the menu bar app's card (#1085) decides whether the glance
+asks the driver lock read only (`jobs.assert_free` without the reconcile) so
+a job with no live driver reads apart from one that runs. Ledger only.
+
+---
+
+## R-2084. crate status reads every run record twice, and each call of it adds one
+
+**Found:** at review round one of #1079, U960, 2026-11-25.
+
+**The mechanism.** `crate status` lists and loads every run record for its
+own run lines (`doctor._run_report`) and again for the glance
+(`status_glance.gate_runs`), and the dispatcher saves a run record for every
+verb, `status` included, so an app that polls the verb grows the directory
+it reads by one record a call.
+
+**Measured cost.** At 20,000 records, three repeats on the cloud container:
+the glance's scan 0.65 to 0.88 seconds, `_run_report` 0.66 to 0.73, the
+whole verb 1.39 to 1.54. At 200 records the verb answered in 0.40 to 0.69.
+An app polling once a minute adds 1,440 records a day; the count on
+Phillip's machine is unmeasured.
+
+**Closes when:** the status verb loads the records once and hands them to
+both readers, and the menu bar app's card decides whether its polling verb
+records a run at all. Ledger only.
+
+---
+
+## R-2085. A night pass waiting at the acknowledgment leaves the status glance's attention at ok
+
+**Found:** at review round one of #1079, U960, 2026-11-25.
+
+**The mechanism.** `attention` reads `gate` from the run records with an
+open gate. A night pass that stopped at `waiting-at-acknowledgment`, or at
+plain `waiting`, holds no open gate, so `attention` can read `ok` while
+`night.outcome` says the pass waits on a person. The brief's precedence
+names no night word, and the glance carries the outcome for the app.
+
+**Measured cost.** Read, not driven: the producer, a night pass stopping at
+the acknowledgment, was not driven. The icon would read `ok` while a pass
+waits; the glance's `night` key says so to anything that reads it.
+
+**Closes when:** the menu bar app's card (#1085) decides whether a waiting
+night outcome raises the icon, and if so the glance's `attention` takes it.
+Ledger only.
+
+---
+
+## R-2086. Runs waiting on a pending action with no open gate are not in the status glance
+
+**Found:** at the plan of #1079, U960, 2026-11-25.
+
+**The mechanism.** The glance's `gates` lists runs with an open gate, each
+with the gate's options, as the brief's shape asks. A run that waits on a
+pending human action and no gate has nothing to answer through
+`crate run decide`, so it is left out; `crate status`'s own check lines still
+list it as awaiting that action.
+
+**Measured cost.** Driven only as a run saved with no gate, which reads
+`gates` empty; a run carrying a pending action was read, not driven. An app
+reading the glance alone does not see such a run.
+
+**Closes when:** the menu bar app's card decides whether a pending action is
+shown, and the glance gains a key for it with a schema version bump. Ledger
+only.
+
+---
+
+## R-2087. An unplugged library drive reads the status glance's attention as fail for as long as it is unplugged
+
+**Found:** at review round two of #1079, U960, 2026-11-25.
+
+**The mechanism.** The backup record is on the library volume, so with the
+drive unplugged the glance reads `backup` unreadable and `attention` `fail`,
+as the brief's rule for an unreadable source asks; the human line reads
+`attention: fail (backup unreadable)`.
+
+**Measured cost.** Driven with the root renamed away. On a laptop that is
+often away from its library drive, the icon would read `fail` for the
+ordinary state of being unplugged.
+
+**Closes when:** the menu bar app's card (#1085) decides whether an absent
+volume earns a word of its own ahead of `fail`. Ledger only.
+
+---
+
+## R-2088. a job a chain drives in under a second never reports running under --progress json
+
+**Found:** at the review of #1082, U963, 2026-11-25.
+
+**The mechanism.** Under `--progress json` the job watch in
+`src/cratekit/cli/progress.py` reads the job off the queue once as the drive
+starts, then every `WATCH_SECONDS` (one second) and once after the drive. A
+job whose whole drive is shorter than the interval goes from `queued` to its
+settled state between two readings, so the stream says `queued` then
+`succeeded` and never `running`. The brief asks for at least one event per
+state change while a chain waits on a job.
+
+**Measured cost.** Driven by the review at the shipped interval, two items of
+0.2 seconds each: `queued`, then `succeeded`. No one is told anything false:
+the job's last event is its settled state as the queue holds it, and a job
+long enough for an app to show it running (a download, an analysis of a real
+pass) is read while it runs. A shorter interval reads the queue more often
+for every driven job.
+
+**Closes when:** the engine announces each transition it makes, rather than
+the watch sampling it, or the sampling is judged enough. Ledger only:
+maintainer facing, nothing is lost or misreported.
+
+---
+
+## R-2089. crate sync night under --progress json writes only its end, none of its nested pass's steps or jobs
+
+**Found:** at the review of #1082, U963, 2026-11-25.
+
+**The mechanism.** `sync night` runs its nested `sync land` through
+`tail.dispatch`, which calls the dispatcher with `--output json` and no
+`--progress`, and keeps the child's standard error in memory. So under
+`crate --output json --progress json sync night` the pass's fifteen or so
+child commands write no event, and the stream is one `end`. Human output of
+`sync night` shows none of the pass's steps either, so the flag matches it.
+
+**Measured cost.** Driven by the review in process over the suite's fakes:
+fifteen child commands ran and the only event was `end`. No producer asks
+for it: the scheduled night's command, `schedule.py`'s `NIGHT_ARGV`, passes
+no flag, and the menu bar app's Sync (U967) runs `sync land`, which streams.
+The guide says to follow a pass with `sync land`.
+
+**Closes when:** a card has the app follow a night pass, which hands the
+night's writer to its nested pass as `run decide --continue` does, or the
+night is judged to need no stream. Ledger only: nothing is misreported, and
+no workflow is blocked.
+
+---
+
+## R-2090. The app's runner shows a verb that printed a whole envelope and then died of a signal as a signal death alone
+
+**Found:** at the review round two of #1084, U965, 2026-11-25.
+
+**The mechanism.** `CrateRunner.runBlocking` returns `.signalled` whenever `terminationReason` is an uncaught signal, before it reads standard output, so a verb that printed a complete envelope and then died of a signal (in interpreter shutdown, say) is shown only as a signal death, its envelope dropped. The fix round chose this so a signal's number is never read as one of crate's exit codes (a SIGBUS, 10, read as a gate).
+
+**Measured cost.** Argued from reading only; no verb was driven to die of a signal after printing its envelope, and no shipped caller runs a verb yet.
+
+**Closes when:** the card that first shows a verb's result in the app carries the envelope, when one decodes, beside the signal in the `.signalled` case, with a test over a fake that prints an envelope and then kills itself. Ledger only.
+
+---
+
+## R-2091. The app's runner signals a timed out verb's own process and not its children, reports a verb a SIGKILL has not yet ended as ended, and gives a job three seconds to stop cleanly
+
+**Found:** at the reviews of #1084, U965, 2026-11-25.
+
+**The mechanism.** `CrateRunner.runBlocking` in `app/Sources/CrateEngine/CrateRunner.swift` sends SIGTERM to crate's own pid at the timeout, then SIGKILL after `terminationGrace`, three seconds, and signals no other process. A child crate started (rclone, ffmpeg, a pool worker) is not signalled and keeps running after the app reports `timedOut`. swift-corelibs-foundation starts the child in a process group of its own (`POSIX_SPAWN_SETPGROUP`, its commit faef552, which says this matches Darwin), so signalling the group, `kill(-pid, ...)`, may be enough; whether Apple's Foundation does the same was not driven. After the SIGKILL the wait is bounded by the same grace, so a verb a SIGKILL has not ended within it (one held in uninterruptible I/O on a hung volume) is reported as `timedOut`, whose comment says ended. A job driver that stops cleanly on SIGTERM at an item boundary may need longer than three seconds, and every call defaults to a 60 second timeout whatever the verb.
+
+**Measured cost.** On Linux the review killed only a fake shell's pid and its `sleep` child stayed in the group, holding the pipe 0.71 seconds; on the App workflow `testAVerbThatIgnoresTerminateIsKilled` takes about 4.2 seconds, 0.9 past its timeout and grace, the orphaned `sleep 1` holding the pipe. The unkillable case was not driven: no test environment holds a process SIGKILL cannot end. No shipped caller runs a long verb, since the app in U965 only shows the crate setup state, so nobody pays today; the cost lands when a later card runs `sync` or a job through the runner.
+
+**Closes when:** the card that first runs a long verb through the runner (the Sync card) ends the whole group, reports a verb still running after the kill as still running, sets a timeout per verb, and gives a job driver the grace it needs to stop at an item boundary, each with a test over a fake that leaves a child. Ledger only: no shipped caller pays it.
+
+---
+
+## R-2092. No app fixture carries a pending human action, so a change to that shape passes the fixture guard
+
+**Found:** at the review of #1084, U965, 2026-11-25.
+
+**The mechanism.** `tests/test_app_fixtures.py` holds three envelopes to the real verbs (doctor, a gate refusal, a refusal with steps). None has a `pending_human_action`, and the Swift test of that shape decodes a dictionary built by hand. The review renamed `verify_verb` in `PendingHumanAction.to_json` and all six fixture tests passed.
+
+**Measured cost.** Driven by the review on 13e3eee: the rename passes the battery. No shipped caller reads a pending action yet, so nobody pays today; a pending envelope from `sync land` would decode as undecodable in the app once a card reads one.
+
+**Closes when:** the first card that reads a pending action in the app (the Sync card) adds a fixture from a real verb that leaves one, and its Swift test decodes that fixture. Ledger only.
+
+---
+
+## R-2093. crate started by the app inherits the app's controlling terminal when the app was started from one, so the session reads a person at a terminal
+
+**Found:** at the review of #1084, U965, 2026-11-25.
+
+**The mechanism.** `CrateRunner` sets standard input to the null device but cannot detach crate from the app's session, since Foundation's `Process` has no `setsid`. When the app is started from Terminal (as `swift run` does), crate's `has_controlling_terminal` in `cratekit.core.session` finds the terminal, so a gate answered through the app may be recorded as answered at the command line. The app started from Finder or as a login item has no terminal and is unaffected.
+
+**Measured cost.** Argued from reading; not driven, since no container runs Swift and the app in U965 runs no gated verb.
+
+**Closes when:** the gate card (the one gate view) starts crate in a new session, or passes the actor explicitly, and a test reads the recorded actor of a gate answered through the runner. Ledger only.
+
+---
+
+## R-2094. The app decodes every JSON number in a verb's data as a Double, so an integer above two to the fifty third loses precision
+
+**Found:** at the review of #1084, U965, 2026-11-25.
+
+**The mechanism.** `JSONValue` in `app/Sources/CrateEngine/JSONValue.swift` holds every number as `Double`. An integer above 2^53 in a verb's `data` or a cause's `detail`, such as a 64 bit database id, would read back rounded.
+
+**Measured cost.** Not driven. The review found no verb that emits an integer above 2^53 into an envelope; the envelope's own integers (`envelope`, `exit_code`, `code`) are decoded as `Int`. No shipped caller reads such a field.
+
+**Closes when:** a card that shows a large integer from a verb's data keeps integers whole (an integer case in `JSONValue`, decoded before the double), with a fixture carrying one. Ledger only.
+
+---
+
+## R-2095. Other readers of library scoped state read an absent volume as no state, unmeasured
+
+**Found:** at review round one of #1093, R-2082, 2026-11-25.
+
+**The mechanism.** The class of R-2082 one file over, named by the review
+and not driven: `backup_facts.ages` is also read with no mount gate by
+`backup/cli.py` and `modules/tools/backup.py`, and doctor reads two more
+library scoped files the same way, the vocal calibration
+(`doctor_model._vocals_scored`) and the taxonomy origin
+(`doctor_library.py`). Off an ejected volume each would take a missing file
+for none.
+
+**Measured cost.** Not driven, so unmeasured: whether any of them says
+something false to a person, or refuses first on the volume through a gate
+of its own, was not established. The backup verb is known to refuse
+`library-root-unproven` before it reads anything of the library.
+
+**Closes when:** each is driven with the root renamed away and either gated
+by `core.preflight.library_state_is_readable` with a test, or shown to
+refuse on the volume first. Ledger only, until one is driven to a false
+sentence.
+
+---
+
+## R-2096. The backup acknowledgment reads an ejected library volume's backup ages as never recorded, and the terminal rule mints over them
+
+**Found:** at review round one of #1093, R-2082, 2026-11-25.
+
+**The mechanism.** `session_ack._shown_ages` calls `backup_facts.ages` with
+no mount gate, and the backup record is library scoped, so off an ejected
+volume the missing file reads as no fact. The session rule then refuses with
+`backup-acknowledgment-backup-too-old`, saying the files portion's age is not
+known (never-recorded) and to run a backup first. The terminal rule mints
+over the same never recorded ages and writes the acknowledgment under the
+configured root, recreating the root's state folder where the volume should
+mount. Doctor's backup rows ask `core.preflight`'s rule first since R-2082;
+this reader does not.
+
+**Measured cost.** Driven at `46830cb7`: both portions recorded a day ago,
+the library root renamed away. `crate --output json session ack --as
+session` exits 32 with the false advice; nothing is lost, since it refuses.
+`session_ack.record_acknowledgment(cfg, terminal=lambda: True)` minted over
+never recorded ages and recreated the root's state folder, driven through the
+terminal seam, not through the gate a person answers. On a Mac that folder
+would sit at the volume's mount point on the boot disk (board bar b, and d
+for the write).
+
+**Closes when:** `_shown_ages`, or `record_acknowledgment` before it, asks
+`core.preflight.library_state_is_readable` for the mount and refuses with a
+cause naming the absent volume, never reading the ages or writing; tests
+rename the root and drive both rules through the CLI. Earns an issue under
+the board bar's (b), the product saying something false, and (d), a write
+with no guard against an absent volume.

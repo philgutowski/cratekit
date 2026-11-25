@@ -1,0 +1,100 @@
+name = "r2082"
+pass_kind = "light"
+
+[[rows]]
+id = "G01_helper_reads_regardless"
+description = "_before_the_record: never answer the volume note, so every check reads the backup record off an ejected volume and says never recorded"
+file = "src/cratekit/cli/doctor_backup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_status_glance.py", "tests/test_backup_quick.py", "tests/test_backup_comparison.py"]
+old = '''    unreadable = _library_state_unreadable(inputs, _RECORD)
+    if unreadable is None:
+        return None'''
+new = '''    unreadable = _library_state_unreadable(inputs, _RECORD)
+    if True:
+        return None'''
+
+[[rows]]
+id = "G02_portion_gate"
+description = "_check_backup_portion: drop the gate's answer, so backup.age.files and backup.age.database read an ejected volume as never recorded"
+file = "src/cratekit/cli/doctor_backup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_status_glance.py", "tests/test_backup_quick.py", "tests/test_backup_comparison.py"]
+old = '''    title = f"backup age, {portion} portion"
+    before = _before_the_record(key, title, inputs)
+    if before is not None:
+        return before'''
+new = '''    title = f"backup age, {portion} portion"
+    before = _before_the_record(key, title, inputs)
+    if before is not None and inputs.cfg is None:
+        return before'''
+
+[[rows]]
+id = "G03_full_comparison_gate"
+description = "_check_full_comparison: drop the gate's answer, so backup.full_comparison says no backup here has compared off an ejected volume"
+file = "src/cratekit/cli/doctor_backup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_status_glance.py", "tests/test_backup_quick.py", "tests/test_backup_comparison.py"]
+old = '''    key, title = "backup.full_comparison", "backup, last full comparison"
+    before = _before_the_record(key, title, inputs)
+    if before is not None:
+        return before'''
+new = '''    key, title = "backup.full_comparison", "backup, last full comparison"
+    before = _before_the_record(key, title, inputs)
+    if before is not None and inputs.cfg is None:
+        return before'''
+
+[[rows]]
+id = "G04_full_check_gate"
+description = "_check_full_check: drop the gate's answer, so backup.full_check says no full check is on record off an ejected volume"
+file = "src/cratekit/cli/doctor_backup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_status_glance.py", "tests/test_backup_quick.py", "tests/test_backup_comparison.py"]
+old = '''    key, title = "backup.full_check", "backup, last full check"
+    before = _before_the_record(key, title, inputs)
+    if before is not None:
+        return before'''
+new = '''    key, title = "backup.full_check", "backup, last full check"
+    before = _before_the_record(key, title, inputs)
+    if before is not None and inputs.cfg is None:
+        return before'''
+
+[[rows]]
+id = "G05_deadca7_gate"
+description = "_check_deadca7_push: read the backup record off an ejected volume, so a push is warned as held by no database backup"
+file = "src/cratekit/cli/doctor_backup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_status_glance.py"]
+old = '''    if _library_state_unreadable(inputs, _RECORD) is None:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "G06_note_is_a_note"
+description = "_before_the_record: answer the volume note as a failure, so an ejected volume fails four backup rows where the volume is reported once by its own checks"
+file = "src/cratekit/cli/doctor_backup.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_status_glance.py"]
+old = '''        return None
+    return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)'''
+new = '''        return None
+    return Finding(key=key, title=title, status=Status.FAIL, detail=unreadable)'''
+
+[[rows]]
+id = "G07_unconfigured_first"
+description = "_before_the_record: drop the unconfigured answer, so a check with no configuration asks the mount of None and raises"
+file = "src/cratekit/cli/doctor_backup.py"
+surface = "maintainer"
+tests = ["tests/test_doctor.py", "tests/test_backup_quick.py", "tests/test_backup_comparison.py"]
+old = '''    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, _RECORD)'''
+new = '''    unreadable = _library_state_unreadable(inputs, _RECORD)'''
+
+[[rows]]
+id = "S01_glance_gate"
+description = "status_glance.backup, the existing guard sampled: read the record off an ejected volume, so the glance reads never recorded where doctor now says unread"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        if not preflight.library_state_is_readable(mount):'''
+new = '''        if False:'''

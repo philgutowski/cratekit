@@ -126,7 +126,36 @@ crate -d route.inbox.apply=apply route inbox   # answer a gate inline
 crate --run RUN_ID route inbox       # continue a run stopped at a gate
 crate --calls 1000 --run RUN_ID sync pair   # raise the provider call ceiling for one run
 crate --calls-per-hour 3000 label sync --go # raise the hour's provider budget for one run
+crate --output json --progress json sync land  # follow a long verb as JSON lines
 ```
+
+`--progress json` is for a program following a long verb while it runs. It
+writes one JSON object per line on standard error, each flushed as it
+happens, while the result stays where `--output` puts it. Every event carries
+`schema` (`progress/1`), `verb`, `run_id`, `at` and `kind`, and by kind:
+
+- `step`: a chained verb's step, `index` of `of` in its order, its `name`,
+  and the `command` it runs, or `detail` when what it says is not a command.
+- `job`: a job a step drives, its `step`, `job_id`, `state` and `progress`
+  counts as `crate job show` reports them, written whenever they change while
+  the step waits on it, and once more when the drive returns.
+- `line`: any other progress line, its `text` as human output says it.
+- `end`: the last event, with the `exit_code`, written just before the
+  envelope.
+
+`tests/schemas/progress.v1.json` is the declaration. Anything after `end` on
+standard error is the person's copy of a refusal, and a line that does not
+parse is not an event. `crate --progress json run decide ... --continue`
+continues its verb with events too, each carrying that verb's name and run.
+`crate sync night` runs its pass as a child verb and writes only its own
+`end`, as its human output shows none of the pass's steps; follow a pass with
+`sync land`. A
+reader that closes standard error never ends the run: what cannot be written
+is dropped, and the exit code stays the run's. Without the flag nothing
+changes: JSON output writes no progress of its own on standard error, human
+output writes its English progress lines there, and a verb continued by `run
+decide --continue` writes its English lines there in either mode, all as
+before.
 
 ### The hour's provider budget
 
@@ -152,11 +181,28 @@ where each identity stands in the hour and any cooldown.
    rekordbox database refuses while either runs.
 2. Mount the library volume.
 3. `crate doctor`; read the `FAIL` lines first.
-4. `crate status`: open runs, each source's sync state, and any tree whose
-   membership no longer matches the database. Gates idle over a week are
-   summarised in one line with the command that retires them.
+4. `crate status`: one `attention` line first, then open runs, each source's
+   sync state, and any tree whose membership no longer matches the database.
+   Gates idle over a week are summarised in one line with the command that
+   retires them.
 
 ## Where it stands
+
+`crate status` opens with one word, `attention`, for what needs a person
+first: `fail` when something it reads could not be read (the line names what)
+or a backup completion is recorded ahead of now, `gate` when a run
+waits at a gate, `running` when a job is running, `backup-due` when either
+backup portion is five days old or more or has no age on record, and
+otherwise `ok`. For an app or a script, `crate --output json status` carries
+the same facts as one object, `data.summary.glance`: both backup ages, whether
+rekordbox is `closed`, `open` or `unknown`, the running jobs, every run at a
+gate (with whether it writes the database and whether `crate run retire`
+would retire it), and the last night pass as `crate sync night --last` reads
+it. A source it could not read is `{"unreadable": "..."}` in its own key,
+never an empty list, `never-recorded` or `closed`; the backup ages read
+unreadable while the library root is absent, or is not on the volume recorded
+for it, since their record is on that volume. It only reads, and
+`tests/schemas/status_glance.v1.json` is its shape.
 
 Which workflows have run on a real library, and with what result, is recorded
 per workflow in [`cutover.md`](cutover.md). For a workflow not recorded there,
@@ -192,6 +238,9 @@ missing list, the download, then the tail in this order: `tag folder`, `tag
 guess`, `analyze run`, `analyze vocals --unscored`, `analyze restamp`, `name
 apply`. It then plans `intake land` and stops at `intake.land.native`, printing
 the two commands that answer and apply it and the rekordbox visit after.
+Each step is a line on standard error as it starts; `crate --output json
+--progress json sync land` writes them, and each job a step drives, as JSON
+events an app follows the pass by (see the root options above).
 
 - A tail step that fails ends the pass there; no landing is planned over
   files the tail did not run on.
@@ -2019,7 +2068,9 @@ whose verb is gone, is kept and named. Queued jobs are untouched.
 
 Every database write needs a backup acknowledgment on record; it lasts twelve
 hours. Run `crate doctor` first: it shows both backup ages and, on
-`backup.acknowledgment`, whether one is on record and when it expires.
+`backup.acknowledgment`, whether one is on record and when it expires. All
+three live on the library volume, so with it ejected each reads `not
+asserted` rather than never recorded or none: mount it and run doctor again.
 
 From a terminal:
 
