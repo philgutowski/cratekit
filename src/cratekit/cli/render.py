@@ -936,7 +936,7 @@ def render_waiting_gate(envelope: Envelope) -> list[str]:
     if gate.get("shown") is not None:
         detail["shown"] = gate["shown"]
     screen = Cause(
-        reason=gates.SCREEN_STALE if stale else gates.SCREEN_REQUIRED,
+        reason="decision-stale" if stale else "decision-required",
         message=f"run {summary.get('run_id')} waits at the gate {name!r}",
         remediation=cause_module.Remediation(
             remedy=Remedy.REPLAN_THEN_DECIDE if stale else Remedy.ANSWER_DECISION

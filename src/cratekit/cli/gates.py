@@ -271,12 +271,12 @@ class Decision:
 
 
 #: What a kept screen was raised as (U961): an open gate's refusal, the gate's
-#: own stale over a moved plan, or an option the gate does not offer. The first
-#: two are the refusal's reason, so a screen renders as its refusal did.
-SCREEN_REQUIRED = "decision-required"
-SCREEN_STALE = "decision-stale"
+#: own stale over a moved plan, or an option the gate does not offer. Words of
+#: their own, never a cause's reason, since a screen is not a refusal.
+SCREEN_OPEN = "open"
+SCREEN_STALE = "stale"
 SCREEN_UNKNOWN_OPTION = "unknown-option"
-SCREEN_KINDS: tuple[str, ...] = (SCREEN_REQUIRED, SCREEN_STALE, SCREEN_UNKNOWN_OPTION)
+SCREEN_KINDS: tuple[str, ...] = (SCREEN_OPEN, SCREEN_STALE, SCREEN_UNKNOWN_OPTION)
 
 #: The most a kept screen's ``shown`` takes, in characters of its compact JSON
 #: (U961). Every reader that scans the run records reads each one whole, the
@@ -703,13 +703,13 @@ class Gates:
             # resumable without reading as both answered and waiting.
             if recorded is None:
                 self.state.open_gate = spec.name
-            self._keep(spec, SCREEN_REQUIRED, digest, context)
+            self._keep(spec, SCREEN_OPEN, digest, context)
             raise DecisionRequired(spec, self.state.run_id, context)
 
         chosen = inline if inline is not None else (recorded.option if recorded else None)
         if chosen is None:
             self.state.open_gate = spec.name
-            self._keep(spec, SCREEN_REQUIRED, digest, context)
+            self._keep(spec, SCREEN_OPEN, digest, context)
             raise DecisionRequired(spec, self.state.run_id, context)
         if chosen not in spec.options:
             self._keep(spec, SCREEN_UNKNOWN_OPTION, digest, context)
