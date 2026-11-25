@@ -220,3 +220,16 @@ def test_a_person_reading_the_default_output_sees_what_was_added(installed):
     lines = out.getvalue().splitlines()
     added = "Hotflush Recordings: added as hotflush-recordings"
     assert any(line.strip().endswith(added) for line in lines), out.getvalue()
+
+
+def test_a_renamed_label_is_held_by_its_name_and_not_filed_again(installed):
+    """A rename keeps the identifier, so presence is the name as verbs resolve it."""
+    for argv in (["add", "Kompakt"], ["rename", "kompakt", "--to", "Sueño"]):
+        code, envelope = drive(["label", "registry", *argv])
+        assert code == int(ExitCode.OK), envelope
+    ids = offer(installed, "Sueño")
+    answer(ids["Sueño"])
+    summary = adopt()["data"]["summary"]
+    assert summary["added"] == []
+    assert summary["present"] == ["kompakt"]
+    assert listed() == {"kompakt": "Sueño"}
