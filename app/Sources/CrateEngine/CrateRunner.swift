@@ -127,7 +127,7 @@ public struct CrateRunner: Sendable {
 
         let errText = String(decoding: err.data, as: UTF8.self)
         if timedOut { return .timedOut(after: call.timeout, stderr: errText) }
-        if false {
+        if process.terminationReason == .uncaughtSignal {
             return .signalled(process.terminationStatus, stderr: errText)
         }
         return Self.read(out.data, status: process.terminationStatus, stderr: errText)
