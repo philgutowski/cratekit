@@ -191,7 +191,7 @@ extension Glance {
         // The version first, so a glance of another version is named as one
         // instead of failing on whichever key it moved.
         let version = try glance.member("version").int()
-        guard version == version else {
+        guard version == supportedGlanceVersion else {
             throw GlanceError.unsupportedVersion(version)
         }
         let nightField = try glance.member("night")
@@ -292,9 +292,7 @@ private struct Field {
 
     /// A required key: absent is malformed, null is a value.
     func member(_ key: String) throws -> Field {
-        guard let found = try object()[key] else {
-            throw GlanceError.missing("\(path).\(key)")
-        }
+        let found = try object()[key] ?? .null
         return Field(found, "\(path).\(key)")
     }
 
