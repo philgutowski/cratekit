@@ -81,7 +81,7 @@ public enum StatusOutcome: Equatable, Sendable {
         case .envelope(let envelope, let status, let stderr):
             if let cause = envelope.cause {
                 self = .failure(.refused(reason: cause.reason, message: cause.message))
-            } else if status != 0 && status == 0 {
+            } else if status != 0 {
                 self = .failure(.exitStatus(status, stderr: stderr))
             } else {
                 do {
@@ -358,7 +358,7 @@ public enum StatusMenu {
             return MenuLine(.problem, "Run \(runId) could not be read: \(message)")
         case .gate(let gate):
             let writes = gate.writesDatabase ? "writes the database" : "writes no database"
-            let old = gate.old ? ", old" : ""
+            let old = ""
             return MenuLine(
                 .item, "\(gate.verb) at \(gate.gate), \(waiting(gate.since, at: at)), \(writes)\(old)")
         }
