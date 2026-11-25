@@ -442,8 +442,8 @@ class RunState:
     #: all`` pass a ``sync land`` run continues under ``pass_run``.
     related_runs: dict[str, str] = field(default_factory=dict)
     #: gate name -> the screen its last refusal showed (U961), kept beside the
-    #: offer it binds and dropped when the gate passes, so ``run show`` can
-    #: show a waiting gate without running the verb again.
+    #: offer it binds and dropped when the gate is answered or passes, so
+    #: ``run show`` can show a waiting gate without running the verb again.
     screens: dict[str, Screen] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:

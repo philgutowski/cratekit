@@ -1895,7 +1895,8 @@ without one.
 - `crate run show RUN_ID` shows the gate the run waits at as its refusal
   showed it, the question, the options, the plan and its digest, from any
   terminal and without running the verb again: the screen is kept with the run
-  when the gate refuses and dropped when it passes. `--output json` carries it
+  when the gate refuses, and dropped when it is answered (`run decide`, `run
+  retire`) or passes. `--output json` carries it
   as `data.summary.gate`, null when nothing waits. A plan past 64 KiB is kept
   short, the first items of each list and a count of the rest, and says so
   with the command that shows it whole. A gate that opened before screens were
