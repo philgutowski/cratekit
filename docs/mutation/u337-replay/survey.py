@@ -441,6 +441,12 @@ def cmd_join(args) -> int:
                     pick["moved"] = reason
             after_rows[row.source] = pick
         held = bool(after) and K.strength(after_rows[row.source]) >= K.strength(was)
+        if held and set(after_rows[row.source].get("killed") or []) <= INODE_PAIR:
+            raise SystemExit(
+                f"{K.row_id(row.source)}: its newest measurement, in "
+                f"{after_rows[row.source]['measured_in']}, was killed only by #702's inode "
+                "tests, which is no kill of the row; measure it again"
+            )
         if not held and row.source not in by_hand and not seen.mapped.get(row.source):
             reason = measured_reason(row, measured, machine)
             if reason:
@@ -535,6 +541,7 @@ BATCHES = (
     "u337-r926",
     "u337-analysis",
     "u337-librosa-1-0-0",
+    "u337-librosa-1-0-0-b",
     "u337-moved",
     "u337-c7",
 )
@@ -543,6 +550,7 @@ BATCHES = (
 SUPERSEDED = {
     ("u264.json", "M1_fast_path_never"): "u337-librosa-1-0-0",
     ("u264.json", "M8_finite_check"): "u337-librosa-1-0-0",
+    ("u264.json", "M7_three_channels_one_add"): "u337-librosa-1-0-0-b",
     ("r658-a.json", "C7_state_roots_not_redirected"): "u337-c7",
 }
 
