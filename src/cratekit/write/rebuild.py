@@ -768,6 +768,18 @@ def _untagged(
     return tuple(entry for entry in scored if entry.sub in vocal and entry not in placed)
 
 
+def reads_vox_tag(declared: taxonomy.Taxonomy, vocal_threshold: float | None) -> bool:
+    """Whether a derivation over ``declared`` could file a vocal sub, so the vox My Tag is read.
+
+    A calibrated library whose declaration has a vocal sub, the one place the
+    tag decides anything (R-2056). THE ONE RULE every path that files a vocal
+    sub reads the tag by (R-2062): the rebuild and the resort, the account's
+    mirror edits and ``route inbox``, so an uncalibrated library opens and
+    reads nothing for it on any of them.
+    """
+    return vocal_threshold is not None and bool(_additive_ids(declared, taxonomy.SIGNAL_VOX))
+
+
 def vox_carrier(
     cfg: config.Config,
     db: Any,
@@ -992,9 +1004,7 @@ class _Tree:
         The tag is read only where it could file something: a calibrated
         library whose declaration has a vocal sub, as adoption reads it.
         """
-        reads_tag = vocal_threshold is not None and bool(
-            _additive_ids(self.declared, taxonomy.SIGNAL_VOX)
-        )
+        reads_tag = reads_vox_tag(self.declared, vocal_threshold)
         return declared_membership(
             self.cfg,
             self.declared,
@@ -1493,6 +1503,7 @@ __all__ = [
     "plan_destinations",
     "read_tree",
     "read_truth",
+    "reads_vox_tag",
     "rebuild_governed_tree",
     "rebuild_tree",
     "report_convergence",
@@ -1500,6 +1511,7 @@ __all__ = [
     "undeclared_destinations",
     "unidentified_message",
     "unidentified_warnings",
+    "vox_carrier",
     "with_favorites",
     "with_steps",
 ]
