@@ -1795,3 +1795,19 @@ def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_t
     # The continue reaches no rekordbox gate, and says why.
     assert code == OK, done
     assert _areas(done)[rekordbox.AREA]["refused"]["reason"] == "backup-acknowledgment-missing"
+
+
+def test_an_exported_playlist_the_filing_leaves_at_the_root_is_still_not_listed_as_yours(world):
+    """Two root folders named Exports leave the exported playlist where it is, so the filing
+    does not move it, and only the ledger's product made read keeps it off the author's list."""
+    cfg, fake, held, _inbox, _ids = world
+    ledger.reserve_playlist(cfg, "crate-export", lambda: "exported-1")
+    fake.account.append(AccountPlaylist("exported-1", "Exported 2025", 3))
+    held.create_folder("Exports")
+    held.create_folder("Exports")
+    envelope = _report()
+    row = _file_rows(envelope)["exported-1"]
+    assert row["action"] == filing.LEFT and "2 root folders" in row["why"]
+    mine = _yours(envelope, account_area.AREA)
+    assert "Exported 2025" not in mine
+    assert mine == {MINE_ON_ACCOUNT}
