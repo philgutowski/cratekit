@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -142,6 +143,27 @@ def test_an_unknown_inline_option_keeps_its_screen_and_the_run_waits_on_it():
     assert gates.waiting(_reloaded(state)) == gates.Waiting(GATE, screen=screen)
 
 
+def test_an_explicit_gates_refused_inline_answer_keeps_its_screen():
+    """R34's refusal of ``-d`` on an explicit gate shows the plan, and run show keeps it (round one)."""
+    state = _state()
+    plan = _plan(SHOWN, "One")
+    with pytest.raises(gates.DecisionRequired) as raised:
+        gates.Gates(state=state, supplied={GATE: "apply"}).require(_spec(), plan=plan)
+    screen = state.screens[GATE]
+    assert (screen.kind, screen.shown) == (gates.SCREEN_OPEN, raised.value.cause.detail["shown"])
+    assert gates.waiting(_reloaded(state)) == gates.Waiting(GATE, screen=screen)
+
+
+def test_an_explicit_gates_refused_inline_answer_over_a_moved_plan_waits_on_the_new_screen():
+    """A recorded answer stands beside the refusal; the moved offer is what a decide binds now."""
+    state = _answered()
+    with pytest.raises(gates.DecisionRequired):
+        gates.Gates(state=state, supplied={GATE: "apply"}).require(_spec(), plan=_plan(MOVED, "Two"))
+    assert state.open_gate is None
+    found = gates.waiting(_reloaded(state))
+    assert (found.gate, found.screen.digest) == (GATE, MOVED)
+
+
 def test_a_recorded_option_the_gate_no_longer_offers_still_waits_on_its_screen():
     """A decision from a build whose gate offered it: every resume refuses it."""
     state = _answered()
@@ -221,11 +243,46 @@ def test_a_stale_answer_from_before_this_card_waits_with_its_screen_missing():
     assert (found.gate, found.screen) == (GATE, None)
 
 
+def test_an_unknown_option_from_before_this_card_waits_with_its_screen_missing():
+    """An offer, no answer and no open gate: the run refuses again when continued (round one)."""
+    found = gates.waiting(gates.RunState.from_json(_old_record(open_gate=None)))
+    assert (found.gate, found.screen) == (GATE, None)
+    assert "no screen of stale.probe that can be shown" in found.missing
+
+
 def test_an_unreadable_kept_screen_is_left_out_and_the_gate_named_missing():
     for broken in ("not a screen", {"kind": "open"}, {"shown": "{not json"}):
         state = gates.RunState.from_json(_old_record(screens={GATE: broken}))
         assert state.screens == {}
         assert gates.waiting(state).missing is not None
+
+
+def test_a_kept_screen_of_an_unknown_kind_is_left_out():
+    state = _state()
+    _reached(state, _spec(), plan=_plan(SHOWN, "One"))
+    record = _reloaded(state).to_json()
+    record["screens"][GATE]["kind"] = "decision-required"
+    assert gates.RunState.from_json(record).screens == {}
+
+
+def test_a_gate_that_binds_no_digest_keeps_its_screen_with_none():
+    """A digest given to a gate with no digest source is no offer, so the screen holds none."""
+    unbound = registry.GateSpec("probe.unbound", ("proceed", "abort"), "Proceed?")
+    state = _state()
+    _reached(state, unbound, digest=SHOWN, context={"area": "a"})
+    assert state.offers == {}
+    assert state.screens["probe.unbound"].digest is None
+    assert gates.waiting(state).screen is state.screens["probe.unbound"]
+
+
+def test_the_kept_screen_holds_json_whatever_the_context_carried():
+    """A tuple reads back as a list and a path as its text, so the record always saves."""
+    state = _state()
+    _reached(state, _spec(), plan=_plan(SHOWN, "One"),
+             context={"left": ("a", "b"), "where": PurePosixPath("x/y")})
+    shown = state.screens[GATE].shown
+    assert (shown["left"], shown["where"]) == (["a", "b"], "x/y")
+    assert _reloaded(state).screens[GATE].shown == shown
 
 
 def test_nothing_waits_on_a_run_that_offered_nothing():
@@ -260,6 +317,11 @@ def test_facts_too_large_to_keep_leave_only_the_digest_and_the_count():
     kept, cut = gates.cut_shown(shown)
     assert kept == {"digest": SHOWN, "count": 3}
     assert cut == {"limit": gates.SCREEN_LIMIT, "dropped": ["note", "items"]}
+
+
+def test_a_digest_too_large_to_keep_leaves_the_screen_empty_and_says_so():
+    shown = {"digest": "z" * (gates.SCREEN_LIMIT + 1), "count": 1, "items": []}
+    assert gates.cut_shown(shown) == ({}, {"limit": gates.SCREEN_LIMIT, "dropped": ["digest", "count", "items"]})
 
 
 def test_an_oversized_plan_is_kept_cut_in_the_record_its_refusal_saves():
@@ -435,6 +497,12 @@ def test_run_show_stays_on_its_declared_surface(configured):
     assert output.envelope_problems(shown) == []
 
 
-def test_the_gate_is_read_by_one_reader():
-    """``run show`` builds its gate from :func:`gates.waiting` alone."""
-    assert runs.waiting_gate(_state()) is None
+def test_run_show_builds_its_gate_from_the_one_reader(configured, monkeypatch):
+    """``run show`` names the gate :func:`gates.waiting` names, and no other (round one)."""
+    _, refused = _json(TO_SLIM)
+    monkeypatch.setattr(gates, "waiting", lambda state: gates.Waiting("probe.named", missing="probe"))
+    gate = _gate_of(refused["run_id"])
+    assert (gate["name"], gate["screen_missing"]["reason"]) == ("probe.named", "probe")
+    monkeypatch.setattr(gates, "waiting", lambda state: None)
+    assert _gate_of(refused["run_id"]) is None
+    assert runs.waiting_gate(gates.load(refused["run_id"])) is None
