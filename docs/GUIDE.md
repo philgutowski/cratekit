@@ -126,7 +126,29 @@ crate -d route.inbox.apply=apply route inbox   # answer a gate inline
 crate --run RUN_ID route inbox       # continue a run stopped at a gate
 crate --calls 1000 --run RUN_ID sync pair   # raise the provider call ceiling for one run
 crate --calls-per-hour 3000 label sync --go # raise the hour's provider budget for one run
+crate --output json --progress json sync land  # follow a long verb as JSON lines
 ```
+
+`--progress json` is for a program following a long verb while it runs. It
+writes one JSON object per line on standard error, each flushed as it
+happens, while the result stays where `--output` puts it. Every event carries
+`schema` (`progress/1`), `verb`, `run_id`, `at` and `kind`, and by kind:
+
+- `step`: a chained verb's step, `index` of `of` in its order, its `name`,
+  and the `command` it runs, or `detail` when what it says is not a command.
+- `job`: a job a step drives, its `step`, `job_id`, `state` and `progress`
+  counts as `crate job show` reports them, written whenever they change while
+  the step waits on it, and once more when the drive returns.
+- `line`: any other progress line, its `text` as human output says it.
+- `end`: the last event, with the `exit_code`, written just before the
+  envelope.
+
+`tests/schemas/progress.v1.json` is the declaration. Anything after `end` on
+standard error is the person's copy of a refusal, and a line that does not
+parse is not an event. A reader that closes standard error never ends the
+run: what cannot be written is dropped. Without the flag nothing changes: JSON
+output says nothing on standard error until its result, and human output
+writes its English progress lines there as before.
 
 ### The hour's provider budget
 
@@ -192,6 +214,9 @@ missing list, the download, then the tail in this order: `tag folder`, `tag
 guess`, `analyze run`, `analyze vocals --unscored`, `analyze restamp`, `name
 apply`. It then plans `intake land` and stops at `intake.land.native`, printing
 the two commands that answer and apply it and the rekordbox visit after.
+Each step is a line on standard error as it starts; `crate --output json
+--progress json sync land` writes them, and each job a step drives, as JSON
+events an app follows the pass by (see the root options above).
 
 - A tail step that fails ends the pass there; no landing is planned over
   files the tail did not run on.
