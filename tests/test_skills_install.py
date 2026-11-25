@@ -210,3 +210,81 @@ def test_a_refusal_leaves_no_half_written_target(tmp_path):
             type("Ctx", (), {"args": type("A", (), {"into": str(blocked / "agent")})()})()
         )
     assert blocked.is_file(), "the blocking file was replaced"
+
+
+def test_each_stamp_names_the_skill_it_belongs_to(installed):
+    """A stamp copied from one skill into another is told apart by the skill it names."""
+    import tomllib  # noqa: PLC0415
+
+    into = installed[2]
+    for name in skills_cli.shipped_names():
+        stamp = tomllib.loads((into / name / skills_cli.STAMP_NAME).read_text())
+        assert stamp["skill"] == name
+        assert stamp["version"] == __version__
+        assert "SKILL.md" in stamp["files"]
+
+
+def test_a_target_given_with_a_tilde_is_written_under_home_and_not_beside_it(
+    monkeypatch, tmp_path
+):
+    """``--into ~/agent`` is expanded, so no directory named ``~`` is made where it ran."""
+    home, ran = tmp_path / "home", tmp_path / "ran-here"
+    home.mkdir()
+    ran.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(ran)
+    code, envelope = drive(["skills", "install", "--into", "~/agent"])
+    assert code == int(ExitCode.OK), envelope
+    name = skills_cli.shipped_names()[0]
+    assert (home / "agent" / name / "SKILL.md").is_file()
+    assert envelope["data"]["summary"]["target"] == str(home / "agent")
+    assert list(ran.iterdir()) == []
+
+
+def test_a_package_shipping_no_skill_installs_nothing_and_says_so(monkeypatch, tmp_path):
+    """An empty package is not a successful install."""
+    empty = tmp_path / "assets"
+    empty.mkdir()
+    monkeypatch.setattr(skills_cli, "packaged_root", lambda: empty)
+    code, envelope = _install(tmp_path / "agent")
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["checks"] == []
+    assert list((tmp_path / "agent").iterdir()) == []
+
+
+def test_the_skills_are_found_when_the_package_is_imported_from_a_zip(tmp_path):
+    """A wheel need not be unpacked on a filesystem: the package imported from a zip archive
+    still finds and installs its skills, which arithmetic on ``__file__`` cannot."""
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    import cratekit  # noqa: PLC0415
+
+    package = Path(cratekit.__file__).parent
+    archive = shutil.make_archive(
+        str(tmp_path / "zipped"), "zip", root_dir=package.parent, base_dir=package.name
+    )
+    into = tmp_path / "agent"
+    probe = (
+        "import sys\n"
+        f"sys.path.insert(0, {archive!r})\n"
+        "from pathlib import Path\n"
+        "from cratekit.skills import cli\n"
+        f"assert cli.__file__.startswith({archive!r}), cli.__file__\n"
+        "names = cli.shipped_names()\n"
+        "assert names, 'no skill was found in the archive'\n"
+        f"print(cli.install_one(names[0], Path({str(into)!r})), names[0])\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", probe], capture_output=True, text=True, cwd=tmp_path
+    )
+    assert done.returncode == 0, done.stderr
+    outcome, name = done.stdout.split()
+    assert outcome == "installed"
+    assert name in skills_cli.shipped_names()
+    assert (into / name / "SKILL.md").read_bytes() == (
+        skills_cli.packaged_root() / name / "SKILL.md"
+    ).read_bytes()
