@@ -211,13 +211,15 @@ The menu bar app under `app/` shows that glance, and nothing it does not say
 same reading. Its icon is one shape per `attention` word: a check for `ok`, a
 raised hand for `gate`, circling arrows for `running`, a drive with an
 exclamation mark for `backup-due` and a crossed octagon for `fail`, so it
-reads without colour; a word the app does not know, from a newer `crate`, is
-shown as `fail` with the word named. Its menu lists both backup ages in whole
+reads without colour, and three dots before its first reading; a word the
+app does not know, from a newer `crate`, is shown as `fail` with the word
+named. Its menu lists both backup ages in whole
 days (or never recorded, or recorded ahead of now), whether rekordbox is
 closed, open or unknown, each running job, each run waiting at a gate with its
 verb, gate, how long it has waited, whether it writes the database and `old`
 when `crate run retire` would retire it, and the night pass's line; a source
-the glance could not read shows its message in its place.
+the glance could not read shows its message in its place, and the last line
+says when the reading was taken.
 
 It runs `crate --output json status` and no other verb, by the path in its
 settings, every minute and when the menu opens, never two calls at once. A

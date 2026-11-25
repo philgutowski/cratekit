@@ -332,6 +332,15 @@ def test_the_fixtures_are_the_scenarios_and_nothing_else():
     assert all(path.suffix == ".json" for path in listed), listed
 
 
+def test_there_is_a_status_fixture_for_every_attention_word():
+    """A word the glance gains needs its fixture, so the app is tested on it (U966)."""
+    words = {
+        name.removeprefix("status_").replace("_", "-")
+        for name in SCENARIOS if name.startswith("status_")
+    }
+    assert words == set(status_glance.ATTENTION)
+
+
 def test_a_fixture_edited_away_from_its_verb_fails(machine, places, tmp_path):
     """The comparison is what fails the battery, so it must see a one value edit."""
     text = text_of(fixed(SCENARIOS["gate_refusal"](machine), places))

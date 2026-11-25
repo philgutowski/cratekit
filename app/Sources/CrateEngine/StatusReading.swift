@@ -8,11 +8,11 @@ public enum StatusFailure: Equatable, Sendable {
     /// The process could not be started.
     case launchFailed(String)
     /// The call ran past its timeout and was stopped.
-    case timedOut(after: TimeInterval)
+    case timedOut(after: TimeInterval, stderr: String)
     /// The call was ended by a signal the app did not send.
-    case signalled(Int32)
+    case signalled(Int32, stderr: String)
     /// Standard output was not an envelope.
-    case undecodable(reason: String, firstBytes: String)
+    case undecodable(status: Int32, reason: String, firstBytes: String, stderr: String)
     /// The verb refused, its cause's reason and message.
     case refused(reason: String, message: String)
     /// The verb printed an envelope but exited non zero.
@@ -26,29 +26,36 @@ public enum StatusFailure: Equatable, Sendable {
             return setup.summary
         case .launchFailed(let reason):
             return "crate could not be started: \(reason)"
-        case .timedOut(let after):
-            return "crate status did not answer within \(Int(after)) seconds"
-        case .signalled(let signal):
-            return "crate status was ended by signal \(signal)"
-        case .undecodable(let reason, let firstBytes):
+        case .timedOut(let after, let stderr):
+            return "crate status did not answer within \(Int(after)) seconds" + Self.said(stderr)
+        case .signalled(let signal, let stderr):
+            return "crate status was ended by signal \(signal)" + Self.said(stderr)
+        case .undecodable(let status, let reason, let firstBytes, let stderr):
             let start = firstBytes.isEmpty ? "nothing" : "\"\(Self.oneLine(firstBytes))\""
-            return "crate status printed no envelope (\(reason)); it printed \(start)"
+            return "crate status printed no envelope (\(reason)), exiting with status \(status);"
+                + " it printed \(start)" + Self.said(stderr)
         case .refused(let reason, let message):
             return "crate status refused (\(reason)): \(message)"
         case .exitStatus(let status, let stderr):
-            let said = Self.oneLine(stderr)
-            return said.isEmpty
-                ? "crate status exited with status \(status)"
-                : "crate status exited with status \(status): \(said)"
+            return "crate status exited with status \(status)" + Self.said(stderr)
         case .glance(let error):
             return error.message
         }
     }
 
-    /// At most a line's worth of `text`, its whitespace runs folded.
+    /// At most a line's worth of `text`, its whitespace runs folded, kept
+    /// from its start.
     static func oneLine(_ text: String, limit: Int = 200) -> String {
         let folded = text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
         return folded.count > limit ? String(folded.prefix(limit)) + "..." : folded
+    }
+
+    /// What crate said on standard error, as a clause, kept from its end,
+    /// since a traceback's last line names the error and its first does not.
+    static func said(_ stderr: String, limit: Int = 200) -> String {
+        let folded = stderr.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        if folded.isEmpty { return "" }
+        return folded.count > limit ? ": ..." + String(folded.suffix(limit)) : ": " + folded
     }
 }
 
@@ -64,12 +71,13 @@ public enum StatusOutcome: Equatable, Sendable {
             self = .failure(.setup(setup))
         case .launchFailed(let reason):
             self = .failure(.launchFailed(reason))
-        case .timedOut(let after, _):
-            self = .failure(.timedOut(after: after))
-        case .signalled(let signal, _):
-            self = .failure(.signalled(signal))
-        case .undecodable(_, let firstBytes, let reason, _):
-            self = .failure(.undecodable(reason: reason, firstBytes: firstBytes))
+        case .timedOut(let after, let stderr):
+            self = .failure(.timedOut(after: after, stderr: stderr))
+        case .signalled(let signal, let stderr):
+            self = .failure(.signalled(signal, stderr: stderr))
+        case .undecodable(let status, let firstBytes, let reason, let stderr):
+            self = .failure(
+                .undecodable(status: status, reason: reason, firstBytes: firstBytes, stderr: stderr))
         case .envelope(let envelope, let status, let stderr):
             if let cause = envelope.cause {
                 self = .failure(.refused(reason: cause.reason, message: cause.message))
@@ -183,7 +191,7 @@ public enum StatusIcon: Equatable, Sendable, CaseIterable {
     public var label: String {
         switch self {
         case .reading: return "Cratekit: reading status"
-        case .ok: return "Cratekit: nothing needs you"
+        case .ok: return "Cratekit: ok"
         case .gate: return "Cratekit: a gate is waiting"
         case .running: return "Cratekit: a job is running"
         case .backupDue: return "Cratekit: a backup is due"
@@ -219,7 +227,7 @@ public enum StatusMenu {
     /// and shows the last good reading under its time, never as current.
     public static func lines(for state: StatusState, timeZone: TimeZone = .current) -> [MenuLine] {
         if let current = state.current {
-            return lines(for: current)
+            return lines(for: current, timeZone: timeZone)
         }
         guard let failure = state.failure else {
             return [MenuLine(.heading, "Reading crate status")]
@@ -233,11 +241,17 @@ public enum StatusMenu {
             return made
         }
         made.append(MenuLine(.heading, "Last good reading, at \(stamp(last.at, timeZone)):"))
-        return made + lines(for: last)
+        return made + readingLines(for: last)
     }
 
-    /// The menu for one reading, its ages measured at the reading's time.
-    public static func lines(for reading: GoodReading) -> [MenuLine] {
+    /// The menu for the current reading: the reading, then when it was read,
+    /// so a reading an open menu or a sleeping Mac kept is seen as old.
+    public static func lines(for reading: GoodReading, timeZone: TimeZone = .current) -> [MenuLine] {
+        readingLines(for: reading) + [MenuLine(.item, "Read at \(stamp(reading.at, timeZone))")]
+    }
+
+    /// The lines of one reading, its ages measured at the reading's time.
+    public static func readingLines(for reading: GoodReading) -> [MenuLine] {
         let glance = reading.glance
         return [attentionLine(glance.attention)]
             + backupLines(glance.backup)
@@ -245,12 +259,16 @@ public enum StatusMenu {
             + jobLines(glance.jobsRunning)
             + gateLines(glance.gates, at: reading.at)
             + [nightLine(glance.night)]
+            + glance.otherUnreadable.keys.sorted().map { key in
+                MenuLine(.problem, "\(key) could not be read: \(glance.otherUnreadable[key] ?? "")")
+            }
     }
 
     static func attentionLine(_ attention: Attention) -> MenuLine {
         switch attention {
         case .ok:
-            return MenuLine(.heading, "ok: nothing needs you")
+            return MenuLine(
+                .heading, "ok: nothing unreadable, no gate, no job running, both backups under five days")
         case .gate:
             return MenuLine(.heading, "gate: a run is waiting for an answer")
         case .running:
@@ -291,7 +309,7 @@ public enum StatusMenu {
             return MenuLine(.problem, "\(name): recorded ahead of now\(when)")
         case .unknown(let word):
             let age = portion.ageSeconds.map { ", \(days($0)) old" } ?? ""
-            return MenuLine(.item, "\(name): \(word)\(age)")
+            return MenuLine(.problem, "\(name): \"\(word)\", a state this app does not know\(age)")
         }
     }
 
@@ -306,7 +324,7 @@ public enum StatusMenu {
         case .value(.unknown):
             return MenuLine(.item, "rekordbox: unknown, the scan could not confirm it is closed")
         case .value(.unrecognised(let word)):
-            return MenuLine(.item, "rekordbox: \(word)")
+            return MenuLine(.problem, "rekordbox: \"\(word)\", a state this app does not know")
         }
     }
 

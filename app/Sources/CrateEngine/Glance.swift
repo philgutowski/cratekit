@@ -148,6 +148,10 @@ public struct Glance: Equatable, Sendable {
     public let gates: Readable<[GateItem]>
     /// Nil when no night pass is recorded.
     public let night: Readable<NightPass>?
+    /// Any key this app does not know that carries an unreadable message,
+    /// from a newer engine at the same version, so a source it could not read
+    /// is still said rather than dropped.
+    public let otherUnreadable: [String: String]
 }
 
 /// Why a status envelope's glance could not be read.
@@ -210,8 +214,22 @@ extension Glance {
             gates: try glance.member("gates").readable { source in
                 try source.array().map(gateItem)
             },
-            night: night
+            night: night,
+            otherUnreadable: try otherUnreadable(glance)
         )
+    }
+
+    /// The keys a version 1 glance carries.
+    static let knownKeys: Set<String> = [
+        "version", "attention", "backup", "rekordbox", "jobs_running", "gates", "night",
+    ]
+
+    private static func otherUnreadable(_ glance: Field) throws -> [String: String] {
+        var found: [String: String] = [:]
+        for key in try glance.object().keys where !knownKeys.contains(key) {
+            if let message = try glance.member(key).unreadableMessage() { found[key] = message }
+        }
+        return found
     }
 
     private static func portion(_ field: Field) throws -> BackupPortion {

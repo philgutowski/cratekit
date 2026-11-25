@@ -29,7 +29,14 @@ final class StatusFixtureTests: XCTestCase {
     }
 
     private func texts(_ name: String) throws -> [String] {
-        StatusMenu.lines(for: GoodReading(glance: try glance(name), at: Self.heldNow)).map(\.text)
+        StatusMenu.readingLines(for: GoodReading(glance: try glance(name), at: Self.heldNow)).map(\.text)
+    }
+
+    func testEveryStatusFixtureIsListedHere() throws {
+        let found = try FileManager.default.contentsOfDirectory(atPath: Fixtures.directory.path)
+            .filter { $0.hasPrefix("status_") && $0.hasSuffix(".json") }
+            .map { String($0.dropLast(".json".count)) }
+        XCTAssertEqual(Set(found), Set(Self.words.map { $0.fixture }))
     }
 
     func testEachAttentionFixtureMapsToItsIcon() throws {
@@ -44,7 +51,7 @@ final class StatusFixtureTests: XCTestCase {
 
     func testTheQuietFixtureShowsBothAgesAndNothingWaiting() throws {
         XCTAssertEqual(try texts("status_ok"), [
-            "ok: nothing needs you",
+            "ok: nothing unreadable, no gate, no job running, both backups under five days",
             "Files backup: 1 day old",
             "Database backup: 2 days old",
             "rekordbox: closed",
@@ -125,7 +132,7 @@ final class StatusFixtureTests: XCTestCase {
         let night = try XCTUnwrap(read.night)
         guard case .unreadable(let nightMessage) = night else { return XCTFail("night read") }
 
-        let lines = StatusMenu.lines(for: GoodReading(glance: read, at: Self.heldNow))
+        let lines = StatusMenu.readingLines(for: GoodReading(glance: read, at: Self.heldNow))
         let problems = lines.filter { $0.kind == .problem }.map(\.text)
         XCTAssertTrue(problems.contains("rekordbox could not be checked: \(rekordbox)"), "\(problems)")
         XCTAssertTrue(

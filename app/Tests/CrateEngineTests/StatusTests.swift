@@ -162,7 +162,7 @@ final class StatusTests: XCTestCase {
         XCTAssertEqual(glance.jobsRunning, .unreadable("DatabaseError: locked"))
         XCTAssertEqual(glance.gates, .unreadable("PermissionError: runs"))
         XCTAssertEqual(glance.night, .some(.unreadable("JSONDecodeError: night")))
-        let lines = StatusMenu.lines(for: GoodReading(glance: glance, at: Self.noon))
+        let lines = StatusMenu.readingLines(for: GoodReading(glance: glance, at: Self.noon))
         for message in [
             "the volume is not there", "OSError: no process table", "DatabaseError: locked",
             "PermissionError: runs", "JSONDecodeError: night",
@@ -194,7 +194,7 @@ final class StatusTests: XCTestCase {
                  "gate_run": null, "pass_run": null, "staging": null}
                 """,
         ])
-        let texts = StatusMenu.lines(for: GoodReading(glance: glance, at: Self.noon)).map(\.text)
+        let texts = StatusMenu.readingLines(for: GoodReading(glance: glance, at: Self.noon)).map(\.text)
         XCTAssertEqual(texts, [
             "gate: a run is waiting for an answer",
             "Files backup: 1 day old",
@@ -216,10 +216,10 @@ final class StatusTests: XCTestCase {
     }
 
     func testAQuietGlanceSaysNothingWaitsAndNoNightPass() throws {
-        let texts = StatusMenu.lines(for: GoodReading(glance: try Self.glance(), at: Self.noon))
+        let texts = StatusMenu.readingLines(for: GoodReading(glance: try Self.glance(), at: Self.noon))
             .map(\.text)
         XCTAssertEqual(texts, [
-            "ok: nothing needs you",
+            "ok: nothing unreadable, no gate, no job running, both backups under five days",
             "Files backup: 1 day old",
             "Database backup: under a day old",
             "rekordbox: closed",
@@ -269,10 +269,12 @@ final class StatusTests: XCTestCase {
         let cases: [(StatusOutcome, StatusFailure, String)] = [
             (StatusOutcome(.setup(.unset)), .setup(.unset), "Set the path to crate"),
             (StatusOutcome(.launchFailed("denied")), .launchFailed("denied"), "denied"),
-            (StatusOutcome(.timedOut(after: 30, stderr: "")), .timedOut(after: 30), "30 seconds"),
-            (StatusOutcome(.signalled(9, stderr: "")), .signalled(9), "signal 9"),
+            (StatusOutcome(.timedOut(after: 30, stderr: "slow\n")), .timedOut(after: 30, stderr: "slow\n"),
+             "within 30 seconds: slow"),
+            (StatusOutcome(.signalled(9, stderr: "")), .signalled(9, stderr: ""), "signal 9"),
             (outcome(Data("Traceback (most recent call last)".utf8), status: 1),
-             .undecodable(reason: "", firstBytes: "Traceback (most recent call last)"),
+             .undecodable(
+                status: 1, reason: "", firstBytes: "Traceback (most recent call last)", stderr: ""),
              "Traceback (most recent call last)"),
             (outcome(Self.envelope(glance: "null", cause: refusal, exitCode: 3), status: 3),
              .refused(reason: "config-missing", message: "no config at the path"),
@@ -286,9 +288,10 @@ final class StatusTests: XCTestCase {
             guard case .failure(let failed) = found else {
                 XCTFail("\(found) is not a failure"); continue
             }
-            if case .undecodable = failure, case .undecodable(_, let first) = failed {
+            if case .undecodable = failure, case .undecodable(let status, _, let first, _) = failed {
                 // The decoder's own reason is the platform's text; the bytes are ours.
                 XCTAssertEqual(first, "Traceback (most recent call last)")
+                XCTAssertEqual(status, 1)
             } else {
                 XCTAssertEqual(failed, failure)
             }
@@ -308,7 +311,7 @@ final class StatusTests: XCTestCase {
         let later = Self.noon.addingTimeInterval(120)
         let state = StatusState.initial
             .recording(.reading(good), at: Self.noon)
-            .recording(.failure(.timedOut(after: 30)), at: later)
+            .recording(.failure(.timedOut(after: 30, stderr: "")), at: later)
         XCTAssertNil(state.current, "the last reading is never current after a failed call")
         XCTAssertEqual(state.lastGood, GoodReading(glance: good, at: Self.noon))
         XCTAssertEqual(StatusIcon(state), .fail, "the icon never shows the last reading's word")
@@ -316,7 +319,7 @@ final class StatusTests: XCTestCase {
         XCTAssertEqual(lines[0], MenuLine(.problem, "Status could not be read: crate status did not answer within 30 seconds"))
         XCTAssertEqual(lines[1], MenuLine(.item, "Failed at 2025-11-25 12:02"))
         XCTAssertEqual(lines[2], MenuLine(.heading, "Last good reading, at 2025-11-25 12:00:"))
-        XCTAssertEqual(Array(lines[3...]), StatusMenu.lines(for: GoodReading(glance: good, at: Self.noon)))
+        XCTAssertEqual(Array(lines[3...]), StatusMenu.readingLines(for: GoodReading(glance: good, at: Self.noon)))
 
         let recovered = state.recording(.reading(try Self.glance()), at: later)
         XCTAssertNil(recovered.failure)
@@ -332,6 +335,53 @@ final class StatusTests: XCTestCase {
             "No good reading yet",
         ])
         XCTAssertEqual(StatusIcon(state), .fail)
+    }
+
+    func testACrashBeforeTheEnvelopeShowsTheEndOfWhatCrateSaid() {
+        let trace = "Traceback (most recent call last):\n" + String(repeating: "  File x, line 1\n", count: 40)
+            + "ModuleNotFoundError: No module named 'cratekit.cli'\n"
+        let read = outcome(Data(), status: 1, stderr: trace)
+        guard case .failure(let failed) = read else { return XCTFail("\(read)") }
+        XCTAssertTrue(failed.message.contains("exiting with status 1"), failed.message)
+        XCTAssertTrue(
+            failed.message.hasSuffix("ModuleNotFoundError: No module named 'cratekit.cli'"), failed.message)
+        XCTAssertFalse(failed.message.contains("Traceback"), "the start is dropped, not the end")
+    }
+
+    func testTheCurrentReadingSaysWhenItWasRead() throws {
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let reading = GoodReading(glance: try Self.glance(), at: Self.noon)
+        let state = StatusState.initial.recording(.reading(reading.glance), at: Self.noon)
+        let lines = StatusMenu.lines(for: state, timeZone: utc)
+        XCTAssertEqual(lines.last, MenuLine(.item, "Read at 2025-11-25 12:00"))
+        XCTAssertEqual(Array(lines.dropLast()), StatusMenu.readingLines(for: reading))
+    }
+
+    func testAKeyThisAppDoesNotKnowIsSaidWhenItCouldNotBeRead() throws {
+        let glance = try Self.glance([
+            "attention": "\"fail\"",
+            "library_volume": "{\"unreadable\": \"the volume did not answer\"}",
+            "playlists": "[]",
+        ])
+        XCTAssertEqual(glance.otherUnreadable, ["library_volume": "the volume did not answer"])
+        let lines = StatusMenu.readingLines(for: GoodReading(glance: glance, at: Self.noon))
+        XCTAssertEqual(lines.last, MenuLine(.problem, "library_volume could not be read: the volume did not answer"))
+        XCTAssertFalse(lines.contains { $0.text.contains("playlists") })
+    }
+
+    func testAStateThisAppDoesNotKnowIsMarkedNotShownAsFact() throws {
+        let glance = try Self.glance([
+            "rekordbox": "\"sleeping\"",
+            "backup": """
+                {"files": {"state": "partial", "age_seconds": 172800, "completed_at": null},
+                 "database": {"state": "known", "age_seconds": 3600, "completed_at": null}}
+                """,
+        ])
+        let lines = StatusMenu.readingLines(for: GoodReading(glance: glance, at: Self.noon))
+        XCTAssertTrue(lines.contains(MenuLine(
+            .problem, "rekordbox: \"sleeping\", a state this app does not know")), "\(lines)")
+        XCTAssertTrue(lines.contains(MenuLine(
+            .problem, "Files backup: \"partial\", a state this app does not know, 2 days old")), "\(lines)")
     }
 
     // MARK: the refresher
@@ -379,7 +429,7 @@ final class StatusTests: XCTestCase {
         XCTAssertEqual(StatusIcon(first), .backupDue)
         let second = await refresher.refresh()
         XCTAssertEqual(StatusIcon(second), .fail)
-        XCTAssertEqual(second.failure, .timedOut(after: 30))
+        XCTAssertEqual(second.failure, .timedOut(after: 30, stderr: ""))
         XCTAssertEqual(second.lastGood?.at, Self.noon)
         XCTAssertEqual(second.failedAt, Self.noon.addingTimeInterval(60))
     }
