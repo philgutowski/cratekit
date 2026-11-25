@@ -2125,3 +2125,49 @@ def test_a_go_whose_tracks_were_recorded_in_another_folder_is_not_named_for_this
     kept = stray(installed)
     envelope, cause = refused_go()
     assert cause["detail"]["waiting"] == [] and cause["detail"]["unnamed"] == [kept.name]
+
+
+# R-2071: guards of the resume and of the later go, each driven alone
+
+
+def test_a_later_go_that_finished_in_the_folder_is_read_as_later_and_never_landed_first(
+    installed, monkeypatch, script, tail
+):
+    """The earlier go lands first, so no step offers the later go's landing before it."""
+    run_id, first = alpha_stopped_beta_one(monkeypatch, script)
+    finished_by_hand(first.job_id)
+    answer_beta()
+    later, code, _envelope = before_r1467(monkeypatch, approved_go)
+    assert code == int(ExitCode.PENDING_HUMAN)
+    second = other_than(first)
+    assert second.state is JOB.SUCCEEDED
+    cause = refused_tail(tail, run_id)["cause"]
+    assert cause["detail"]["beside"] == [second.job_id]
+    assert cause["detail"]["waiting"] == []
+    assert not any(later in step for step in cause["remediation"]["steps"])
+
+
+def test_one_go_resuming_two_earlier_downloads_runs_no_tail_and_names_each_landing(
+    installed, monkeypatch, script, tail
+):
+    """Two manifests never share one landing, so each is left to land by hand in order."""
+    two_labels(monkeypatch, script, tracks=2, beta=1)
+    script.landings["t-a1-2"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    approved_go()
+    answer_beta()
+    script.landings["t-b1-1"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    with monkeypatch.context() as blind:
+        # A second job queued beside an open one, a state no go of this build leaves.
+        blind.setattr(go, "held_by_goes", lambda _store: go.Held(resume=(), tracks=frozenset()))
+        before_r1467(monkeypatch, approved_go)
+    parked = our_jobs()
+    assert [one.state for one in parked] == [JOB.BLOCKED, JOB.BLOCKED]
+    tail.calls.clear()
+    _resuming, envelope = resumed_by_another(ExitCode.OK)
+    assert tail.calls == [], "the tail ran over two manifests as one landing"
+    summary = envelope["data"]["summary"]["go"]
+    assert summary["land"] is None
+    assert sorted(summary["resumed"]) == sorted(one.job_id for one in parked)
+    for one in parked:
+        manifest = one.payload[go.ORIGIN_KEY]["manifest"]
+        assert any(manifest in step for step in summary["next"]), manifest
