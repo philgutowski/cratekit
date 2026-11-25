@@ -209,11 +209,15 @@ def decide(ctx: "Context") -> Envelope:
         )
 
     actor, why = _actor(ctx.args.actor)
-    expect = ctx.args.expect_digest
-    if actor == APP_ACTOR and spec.digest_source is not None and expect is None:
-        # The app never answers a plan blind (U962): refused before the write.
-        raise gates.DigestRequired(state, spec, actor)
-    gates.record(state, spec, ctx.args.option, actor=actor, expect=expect)
+    # The app never answers a plan blind (U962): its answer is bound.
+    gates.record(
+        state,
+        spec,
+        ctx.args.option,
+        actor=actor,
+        expect=ctx.args.expect_digest,
+        bound=actor == APP_ACTOR,
+    )
     gates.save(state)
     said = same_plan_answered(state, spec.name, ctx.args.option)
     if ctx.args.continue_run:

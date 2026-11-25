@@ -70,12 +70,16 @@ def test_an_expected_digest_the_run_does_not_offer_is_refused_naming_both():
         "gate": FIRST.name,
         "run_id": "r",
         "verb": "probe",
+        "actor": APP,
         "expected": NEVER_SHOWN,
         "offered": SHOWN,
         "show": "crate run show r",
     }
-    assert cause.remediation.steps[0] == "show the gate's current screen: crate run show r"
-    assert "--expect-digest" in cause.remediation.steps[1]
+    assert cause.remediation.steps == (
+        "show the gate's current screen: crate run show r",
+        "then answer over the digest it shows: crate run decide r probe.first <option> "
+        "--actor app --expect-digest <digest>",
+    )
 
 
 def test_the_mismatch_is_not_an_open_gate_to_any_reader():
@@ -102,9 +106,66 @@ def test_a_gate_that_binds_no_plan_never_offers_the_digest_expected():
     assert state.to_json() == before
 
 
-def test_an_expected_digest_is_refused_under_any_actor():
+def test_an_expected_digest_is_refused_under_any_actor_and_its_step_keeps_the_actor():
     cause = _mismatched(_open_at_first(), FIRST, NEVER_SHOWN, actor="a-person")
     assert cause.reason == "decision-digest-mismatch"
+    assert "--actor a-person --expect-digest <digest>" in cause.remediation.steps[1]
+
+
+def _unbound_refusal(state: gates.RunState, spec: registry.GateSpec):
+    """The cause ``record`` refuses a bound answer with no digest with, the run as it was."""
+    before = state.to_json()
+    with pytest.raises(gates.DigestRequired) as raised:
+        gates.record(state, spec, "apply", actor=APP, bound=True)
+    assert state.to_json() == before, "the refusal wrote the decision or touched the gate"
+    return raised.value.cause
+
+
+def test_a_bound_answer_with_no_digest_on_a_plan_gate_is_refused_before_it_is_written():
+    cause = _unbound_refusal(_open_at_first(), FIRST)
+    assert cause.reason == "decision-digest-required"
+    assert cause.code == ExitCode.PRECONDITION
+    assert cause.remediation.remedy is None
+    assert not render.is_gate_screen(cause)
+    assert cause.remediation.steps == (
+        "show the gate's current screen and its digest: crate run show r",
+        "then answer over that digest: crate run decide r probe.first <option> "
+        "--actor app --expect-digest <digest>",
+    )
+    assert cause.detail == {
+        "gate": FIRST.name, "run_id": "r", "verb": "probe", "actor": APP, "show": "crate run show r",
+    }
+
+
+def test_a_bound_answer_on_a_gate_reached_with_no_digest_is_refused_too():
+    """Reached and left open with no offer: nothing it could name is the run's, so no answer."""
+    state = _state()
+    _reached(state, SECOND)
+    _unbound_refusal(state, SECOND)
+
+
+def test_a_bound_answer_on_a_gate_that_binds_no_plan_needs_no_digest():
+    state = _open_at_first()
+    gates.record(state, UNBOUND, "proceed", actor=APP, bound=True)
+    assert state.decisions[UNBOUND.name].actor == APP
+    assert state.decisions[UNBOUND.name].digest is None
+
+
+def test_an_unbound_answer_with_no_digest_is_recorded_as_before():
+    state = _open_at_first()
+    gates.record(state, FIRST, "apply", actor=APP)
+    assert state.decisions[FIRST.name].digest == SHOWN
+
+
+def test_a_bound_answer_is_refused_for_its_option_and_its_reach_first():
+    """The refusal that says what is wrong comes before the one asking for a digest."""
+    with pytest.raises(gates.UnknownOption):
+        gates.record(_open_at_first(), FIRST, "maybe", actor=APP, bound=True)
+    state = _open_at_first()
+    before = state.to_json()
+    with pytest.raises(gates.GateNotReached):
+        gates.record(state, SECOND, "apply", actor=APP, bound=True)
+    assert state.to_json() == before
 
 
 def test_a_gate_not_reached_is_still_refused_as_not_reached_with_a_digest_expected():
@@ -256,15 +317,55 @@ def test_the_app_answering_a_plan_gate_with_no_digest_is_refused_before_anything
     assert _profile() != "slim"
 
 
-def test_the_app_on_a_gate_not_reached_is_still_refused(configured):
+@pytest.mark.parametrize("digest", [True, False], ids=["with-a-digest", "with-none"])
+def test_the_app_on_a_gate_not_reached_is_refused_as_not_reached(configured, digest):
     run_id = _first_act()
     shown = _shown(run_id)["digest"]
     before = _unreached(run_id).to_json()
 
-    code, envelope = _decided(run_id, "--actor", APP, "--expect-digest", shown)
+    extra = ["--expect-digest", shown] if digest else []
+    code, envelope = _decided(run_id, "--actor", APP, *extra)
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "gate-not-reached"
     assert gates.load(run_id).to_json() == before
+
+
+def test_the_app_naming_an_option_the_gate_lacks_is_refused_for_the_option(configured):
+    run_id = _first_act()
+    before = gates.load(run_id).to_json()
+
+    code, out, _ = _drive(
+        ["--output", "json", "run", "decide", run_id, GATE, "maybe", "--actor", APP]
+    )
+    cause = json.loads(out)["cause"]
+    assert "'maybe' is not an option for 'profile.set.apply'" in cause["message"], cause
+    assert cause["reason"] != "decision-digest-required"
+    assert gates.load(run_id).to_json() == before
+
+
+def test_after_a_stale_refusal_the_app_answers_only_over_the_moved_plan(configured):
+    """The answer the app gave over the first plan is no screen of the moved one (R-1334's door)."""
+    run_id = _first_act()
+    shown = _shown(run_id)["digest"]
+    assert _decided(run_id, "--actor", APP, "--expect-digest", shown)[0] == int(ExitCode.OK)
+    _switch_off_by_hand("analysis")
+    code, out, _ = _drive(["--output", "json", "--run", run_id, "profile", "set", "slim"])
+    assert code == int(ExitCode.DECISION_STALE), out
+    moved = _shown(run_id)["digest"]
+    assert moved == json.loads(out)["cause"]["detail"]["actual"] != shown
+    before = gates.load(run_id).to_json()
+
+    code, envelope = _decided(run_id, "--actor", APP, "--expect-digest", shown, "--continue")
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "decision-digest-mismatch"
+    assert gates.load(run_id).to_json() == before
+    assert gates.load(run_id).decisions[GATE].digest == shown
+    assert _profile() != "slim"
+
+    code, envelope = _decided(run_id, "--actor", APP, "--expect-digest", moved, "--continue")
+    assert code == int(ExitCode.OK), envelope
+    assert gates.load(run_id).decisions[GATE].digest == moved
+    assert _profile() == "slim"
 
 
 def test_a_stale_plan_at_the_continue_still_refuses_after_a_matching_answer(configured):

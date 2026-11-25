@@ -238,9 +238,10 @@ class DigestRequired(CratekitError):
 
     The app answers a gate that binds a plan only over the digest its screen
     showed, so an app answer with no ``--expect-digest`` is refused before
-    anything is recorded. Its own reason and no ``answer-decision`` remedy, as
-    :class:`GateNotReached`, since an open gate's screen would invite the very
-    answer refused.
+    anything is recorded, once the option and the reach have been judged, so
+    an answer refused for those is told so first. Its own reason and no
+    ``answer-decision`` remedy, as :class:`GateNotReached`, since an open
+    gate's screen would invite the very answer refused.
     """
 
     def __init__(self, state: RunState, spec: GateSpec, actor: str) -> None:
@@ -281,10 +282,11 @@ class DigestMismatch(CratekitError):
     planned again between the show and the answer, or the gate was never
     offered that plan. Nothing is recorded, and ``run show`` shows the current
     screen. Not a stale refusal, which judges an answer already recorded, and
-    no answer remedy, as :class:`GateNotReached`.
+    no answer remedy, as :class:`GateNotReached`. The answer step names the
+    refused answer's actor, so following it records the same actor again.
     """
 
-    def __init__(self, state: RunState, spec: GateSpec, expected: str) -> None:
+    def __init__(self, state: RunState, spec: GateSpec, expected: str, actor: str) -> None:
         offered = state.offers.get(spec.name)
         show = show_command(state)
         now = f"offers {offered!r}" if offered is not None else "offers no digest for it"
@@ -300,7 +302,8 @@ class DigestMismatch(CratekitError):
                     steps=(
                         f"show the gate's current screen: {show}",
                         f"then answer over the digest it shows: crate run decide "
-                        f"{state.run_id} {spec.name} <option> --expect-digest <digest>",
+                        f"{state.run_id} {spec.name} <option> --actor {actor} "
+                        f"--expect-digest <digest>",
                     )
                 ),
                 scope=Scope.RUN,
@@ -310,6 +313,7 @@ class DigestMismatch(CratekitError):
                     "gate": spec.name,
                     "run_id": state.run_id,
                     "verb": state.verb,
+                    "actor": actor,
                     "expected": expected,
                     "offered": offered,
                     "show": show,
@@ -983,6 +987,7 @@ def record(
     *,
     actor: str,
     expect: str | None = None,
+    bound: bool = False,
 ) -> None:
     """Write a decision into a run record, validating it against the gate.
 
@@ -996,6 +1001,11 @@ def record(
     digest for the gate now, so a screen shown before another process planned
     again is never answered over a plan nobody showed. It is compared and never
     recorded: the digest recorded is still the run's offer.
+
+    ``bound`` says the answer must name the digest it was shown, the app's
+    (U962): on a gate that binds a plan, a bound answer with no ``expect`` is
+    refused. Judged after the option and the reach, so their refusals come
+    first.
     """
     if option not in spec.options:
         raise UnknownOption(spec, option)
@@ -1006,8 +1016,10 @@ def record(
         and spec.name not in state.decisions
     ):
         raise GateNotReached(state, spec)
+    if bound and spec.digest_source is not None and expect is None:
+        raise DigestRequired(state, spec, actor)
     if expect is not None and state.offers.get(spec.name) != expect:
-        raise DigestMismatch(state, spec, expect)
+        raise DigestMismatch(state, spec, expect, actor)
     state.decisions[spec.name] = Decision(
         option=option,
         actor=actor,
