@@ -1045,36 +1045,40 @@ def _engine_plan(cfg: config.Config, silence: Path, db) -> native.NativePlan:
         files=[(landed, landed)])
 
 
+@pytest.mark.parametrize("broken", ["create_playlist", "commit"], ids=["mid-write", "at-the-commit"])
 def test_a_landing_failing_past_the_guard_leaves_nothing_for_a_later_commit_on_its_handle(
-        native_library, silence, monkeypatch):
+        native_library, silence, monkeypatch, broken):
     """The landing rolls its own handle back on any failure (R-2075, C11).
 
-    The binding's commit refuses, as a locked database does: outside the block in
-    which ``commit_guarded`` rolls back its own refusals, so the landing's rollback
-    is the only one. The handle is the caller's and outlives the landing, so a
-    later commit on it must land nothing this landing wrote.
+    The binding fails once: making the batch playlist after the row, before the
+    guarded commit runs, as the existing test's binding breaks on a file; or in
+    its own commit, after the guard passed. Either way the failure is outside the
+    block in which ``commit_guarded`` rolls back its own refusals, so the
+    landing's rollback is the only one. The handle is the caller's and outlives
+    the landing, so a later commit on it must land no row and no playlist of
+    this landing's.
     """
     from pyrekordbox.db6.database import Rekordbox6Database
     cfg, _root = native_library
-    real = Rekordbox6Database.commit
-    refused: list[str] = []
+    real = getattr(Rekordbox6Database, broken)
+    failed: list[str] = []
 
-    def locked_once(self, *args, **kwargs):
-        if not refused:
-            refused.append("database is locked")
-            raise sqlite3.OperationalError(refused[0])
+    def fails_once(self, *args, **kwargs):
+        if not failed:
+            failed.append(f"the binding broke in {broken}")
+            raise RuntimeError(failed[0])
         return real(self, *args, **kwargs)
 
     with _opened(cfg) as db:
         plan = _engine_plan(cfg, silence, db)
-        monkeypatch.setattr(Rekordbox6Database, "commit", locked_once)
-        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        monkeypatch.setattr(Rekordbox6Database, broken, fails_once)
+        with pytest.raises(RuntimeError, match="the binding broke"):
             native.apply_rows(cfg, db, plan, analysis_roots=[Path(cfg.library.root)])
+        monkeypatch.setattr(Rekordbox6Database, broken, real)
         db.commit()
-    assert refused, "the landing never reached the binding's commit"
+    assert failed, "the landing never reached the binding call that fails"
     assert _landed_rows(cfg) == [], "a failed landing's row landed on a later commit"
     assert _batch_playlist(cfg) == []
-
 
 # What is stored: the base drive form
 def test_folder_path_is_stored_under_the_base_drive_rekordbox_records(one_staged, tmp_path):
