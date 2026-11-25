@@ -27,6 +27,18 @@ final class CrateRunnerTests: XCTestCase {
         return path
     }
 
+    /// Fail unless the process whose pid the fake wrote to `pidFile` is gone.
+    private func assertEnded(
+        _ pidFile: URL, file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        let text = try String(contentsOf: pidFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let pid = try XCTUnwrap(pid_t(text), "no pid in \(text)", file: file, line: line)
+        errno = 0
+        XCTAssertEqual(kill(pid, 0), -1, "the verb is still running", file: file, line: line)
+        XCTAssertEqual(errno, ESRCH, file: file, line: line)
+    }
+
     private func envelopeText(_ name: String) throws -> String {
         try String(contentsOf: Fixtures.url(name), encoding: .utf8)
     }
@@ -143,7 +155,8 @@ final class CrateRunnerTests: XCTestCase {
     }
 
     func testAVerbPastItsTimeoutIsEndedAndReported() throws {
-        let path = try fake("echo started >&2\nexec sleep 30")
+        let pidFile = folder.appendingPathComponent("pid")
+        let path = try fake("echo $$ > '\(pidFile.path)'\necho started >&2\nexec sleep 30")
         let began = Date()
         let result = CrateRunner(path: path).runBlocking(VerbCall(["sync", "land"], timeout: 0.5))
         let took = Date().timeIntervalSince(began)
@@ -153,14 +166,17 @@ final class CrateRunnerTests: XCTestCase {
         XCTAssertEqual(after, 0.5)
         XCTAssertEqual(stderr, "started\n")
         XCTAssertLessThan(took, 10, "the verb was not ended")
+        try assertEnded(pidFile)
     }
 
     func testAVerbThatIgnoresTerminateIsKilled() throws {
-        let path = try fake("trap '' TERM\nwhile :; do sleep 1; done")
+        let pidFile = folder.appendingPathComponent("pid")
+        let path = try fake("echo $$ > '\(pidFile.path)'\ntrap '' TERM\nwhile :; do sleep 1; done")
         let began = Date()
         let result = CrateRunner(path: path).runBlocking(VerbCall(["doctor"], timeout: 0.3))
         guard case .timedOut = result else { return XCTFail("not reported as timed out: \(result)") }
         XCTAssertLessThan(Date().timeIntervalSince(began), 15, "the verb was not killed")
+        try assertEnded(pidFile)
     }
 
     func testUndecodableOutputIsReportedWithItsFirstBytes() throws {
