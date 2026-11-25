@@ -399,6 +399,16 @@ def cmd_join(args) -> int:
         was["source"] = {"table": row.table, "id": row.id}
         before_rows.append(was)
         measured, how = seen.of(row)
+        first = measured[0][3] if measured else None
+        if first is not None and K.strength(first) == 1 and K.strength(was) == 2:
+            # Its first measurement under U290 already read a collection error with
+            # deaths: noticed, but not as a clean kill, which `check` ranks lower.
+            was["status"] = first.get("status")
+            was["status_from"] = (
+                f"{measured[0][1]}, the first measurement under U290, which read it a "
+                f"{first.get('status')} with {first.get('deaths')} deaths; its own table "
+                f"recorded {recorded_row(row.source).get('status') or 'a kill'}"
+            )
         after = [one for one in measured if one[2] == "after"]
         if after:
             pick = copy.deepcopy(after[-1][3])
