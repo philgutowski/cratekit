@@ -5421,3 +5421,12 @@ def test_a_deadca7_push_off_an_absent_library_volume_is_not_warned_as_unbacked(
     finding = _push_check(configured, support)
     assert "cannot be said, since the backup record could not be read" in finding.detail
     assert "warning" not in finding.detail and "no database backup" not in finding.detail
+
+
+def test_with_no_configuration_every_backup_record_check_is_unchecked_not_broken():
+    """The gate asks the mount of a configuration, so with none it answers first."""
+    inputs = doctor._Inputs(None, None, probes())
+    checks = {check.key: check for check in doctor.CHECKS}
+    for key in NEVER_SAID:
+        finding = checked(doctor.answer(checks[key], inputs), INFO)
+        assert finding.detail.startswith("not checked:"), finding.detail
