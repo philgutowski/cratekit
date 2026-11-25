@@ -134,7 +134,6 @@ public struct StatusState: Equatable, Sendable {
             next.failedAt = nil
         case .failure(let failure):
             // Never the last reading as current: it is kept only as lastGood.
-            next.current = nil
             next.failure = failure
             next.failedAt = at
         }
@@ -159,8 +158,7 @@ public enum StatusIcon: Equatable, Sendable, CaseIterable {
         case .gate: self = .gate
         case .running: self = .running
         case .backupDue: self = .backupDue
-        case .fail: self = .fail
-        case .unknown: self = .ok
+        case .fail, .unknown: self = .fail
         }
     }
 
