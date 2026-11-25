@@ -21,7 +21,7 @@ public enum Outcome: Equatable, Sendable {
         case "ok": self = .ok
         case "no_op": self = .noOp
         case "pending": self = .pending
-        case "blocked": self = .failed
+        case "blocked": self = .blocked
         case "failed": self = .failed
         case "cancelled": self = .cancelled
         default: self = .unknown(rawValue)

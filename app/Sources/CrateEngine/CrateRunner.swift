@@ -92,7 +92,6 @@ public struct CrateRunner: Sendable {
         process.executableURL = crate
         process.arguments = Self.arguments(for: call)
         process.environment = CrateEnvironment.minimal(for: crate, from: environment)
-        process.standardInput = FileHandle.nullDevice
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
