@@ -193,7 +193,7 @@ extension Glance {
         let nightField = try glance.member("night")
         let night: Readable<NightPass>? =
             try nightField.value.isNull ? nil : nightField.readable(nightPass)
-        return try Glance(
+        return Glance(
             version: version,
             attention: Attention(rawValue: try glance.member("attention").string()),
             backup: try glance.member("backup").readable { source in
