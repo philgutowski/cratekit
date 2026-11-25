@@ -1264,6 +1264,13 @@ with their actor, the digest each gate offered (recorded where the gate was
 reached), and the screen each waiting gate refused with, which `crate run show`
 prints (U961). Continued with `--run`; owned by one verb.
 
+### Bound answer
+An answer recorded only over the plan its screen showed: `crate run decide`
+given `--expect-digest`, refused and nothing recorded unless the run offers
+that digest for the gate now (U962). The menu bar app answers as the actor
+`app`, always bound on a gate that shows a plan, and mints the backup
+acknowledgment only by the ages rule a session's answer takes.
+
 ## Findings
 
 ### Residual finding

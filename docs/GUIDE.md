@@ -1886,11 +1886,12 @@ crate run show RUN_ID
 crate run decide RUN_ID GATE OPTION [--actor YOUR_NAME]
 crate --run RUN_ID VERB ...          # continue the same run
 crate run decide RUN_ID GATE OPTION --continue   # answer and continue in one
+crate run decide RUN_ID GATE OPTION --expect-digest DIGEST   # only over the plan you saw
 ```
 
 A fresh invocation without `--run` mints a new run, which meets the gate again.
 Without `--actor` the answer is recorded as `cli` at a terminal and `session`
-without one.
+without one; the menu bar app answers as `app`.
 
 - `crate run show RUN_ID` shows the gate the run waits at as its refusal
   showed it, the question, the options, the plan and its digest, from any
@@ -1905,6 +1906,15 @@ without one.
 - A gate that shows a plan is answered only once its run has shown it. On a
   verb with two gates (organize, sync pair, intake land, export set, label
   playlists), answering the second early is refused as `gate-not-reached`.
+- `--expect-digest DIGEST` binds the answer to the screen it was given over:
+  it is recorded only while the run offers that digest for the gate, the one
+  `run show` printed. If another process planned again in between, it is
+  refused as `decision-digest-mismatch`, naming both digests and `crate run
+  show RUN_ID`, and nothing is recorded. An answer as `app` on a gate that
+  shows a plan needs the flag, and is refused without it as
+  `decision-digest-required`; a gate with no digest, such as
+  `session.ack.backup`, takes the app's answer without one. Without the flag
+  an answer binds whatever plan the run offers when it is recorded.
 - If the plan moves between the answer and the apply, the run refuses as stale
   and writes nothing. When the gate found the move, the refusal shows the new
   plan; an answer recorded after it applies that plan. Otherwise start a fresh
@@ -2019,16 +2029,21 @@ crate run decide RUN_ID session.ack.backup acknowledged --actor YOUR_NAME
 crate --run RUN_ID session ack
 ```
 
-A session working for you, with no terminal, in one command:
+A session working for you, with no terminal, or the menu bar app, in one
+command:
 
 ```bash
 crate session ack --as session
+crate session ack --as app
 ```
 
 It mints only while both backup ages are under five days, and refuses
-otherwise as `backup-acknowledgment-backup-too-old`; an acknowledgment already
-valid is reported, not minted again. The record says which rule minted it,
-`session-ages` or `terminal`.
+otherwise, or when either age is unknown, as
+`backup-acknowledgment-backup-too-old`; an acknowledgment already valid is
+reported, not minted again. The app is held to the ages even at a terminal,
+and so is an answer to the gate given `--actor app`. The record says which
+rule minted it, `session-ages` or `terminal`, and in `decided_by` who
+answered, `session`, `app` or the name given.
 
 ## Safety
 
