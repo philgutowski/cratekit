@@ -537,3 +537,21 @@ def test_a_held_job_lock_raised_under_the_batch_lock_is_not_called_a_landing(cfg
                 with jobs.driver_lock("a-job", root=tmp_path / "jobs"):
                     raise AssertionError("two drivers of one job")
     assert excinfo.value.cause.detail["job_id"] == "a-job"
+
+
+def test_an_intake_file_left_by_a_failing_place_files_is_removed_by_the_landing(
+    cfg, silence, export, monkeypatch
+):
+    """The landing's own removal, alone: place_files writes the file and fails
+    without taking it back, so only the landing's layer can remove it."""
+    _stage(cfg, silence, "A.flac")
+    planned = landing.plan(_staging(cfg), cfg, BATCH)
+
+    def writes_then_fails(*_args, destination, **_kwargs):
+        destination.write_bytes(b"<DJ_PLAYLISTS/>")
+        raise OSError("failed after the intake file was written")
+
+    monkeypatch.setattr(ingest, "place_files", writes_then_fails)
+    cause = _refused(cfg, export, planned)
+    assert "A.flac" in cause.message
+    assert not _destination(cfg).exists()

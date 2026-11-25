@@ -160,3 +160,20 @@ def test_the_answering_run_applies_the_wip_plan_its_gate_showed(world, installed
     assert sorted(world.account.folder_playlists(world.folder_id("WIP")).values()) == sorted(t for t, _r in THREE)
     assert "Phil later" not in world.account.titles.values()
     assert sorted(ledger.mirror_folders(installed)["WIP"].playlists) == sorted(t for t, _r in THREE)
+
+
+def test_a_frozen_unmirrored_node_that_is_not_a_pair_is_named_as_such(installed):
+    """Unpacking it would refuse too, but in words naming no node; the reading names them."""
+    run = "2026-11-24T00:00:03Z-ab12"
+    library = account_mirror.Library(
+        folders=(wip_folder(THREE[0], unmirrored=(("a smart playlist", "no membership"),)),),
+    )
+    mirror_frozen.freeze(installed, run, library, {})
+    path = config.state_path("mirror_plans", installed) / f"{run}.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    for node in (["a smart playlist", "no membership", "a third part"], ["a smart playlist"]):
+        document["library"]["folders"][0]["unmirrored"] = [node]
+        path.write_text(json.dumps(document), encoding="utf-8")
+        frozen, said = mirror_frozen.load(installed, run)
+        assert frozen is None, node
+        assert "unmirrored nodes" in said and "not pairs of text" in said, said

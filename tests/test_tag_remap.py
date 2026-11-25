@@ -1118,3 +1118,16 @@ def test_the_plan_payload_is_json_and_round_trips(machine, silence):
     tagged(machine, silence, "a pop record", OLD_POP, "Pop")
     _code, refused = drive(VERB)
     assert json.loads(json.dumps(refused)) == refused
+
+
+def test_one_file_under_two_names_is_one_file_by_its_inode(machine, silence):
+    """A second name for one file, a hard link, is keyed by the file, so the shop's
+    record of it holds the catalogue's rewrite, as a volume that folds case does."""
+    path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
+    linked = music(machine) / "the same record.flac"
+    linked.hardlink_to(path)
+    record(machine, linked, OLD_POP, source=SHOP, word="Pop", job="job-b")
+    plan = planned(machine)
+    counts(plan, ambiguous_record=1)
+    assert [(item.action, item.reason) for item in plan.items] == [("leave", "ambiguous-record")]
+    assert genre_of(path) == OLD_POP

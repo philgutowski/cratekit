@@ -917,11 +917,20 @@ def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world, cratekit_
 
 
 def test_a_marks_year_is_local_and_an_unreadable_one_is_empty():
-    assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
-    # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
-    assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
+    """The zone is pinned west of UTC (R-2071), so a UTC host asks the local year too."""
+    with deadca7_fixtures.west_of_utc():
+        assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
+        # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
+        assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
     assert filing.year_of_mark("") == ""
     assert filing.year_of_mark("soon") == ""
+
+
+def test_a_late_new_years_eve_mark_west_of_utc_files_into_the_local_year():
+    """u116 M13 (R-2071): the stamp's own digits name the UTC year, and the folder is the local one."""
+    with deadca7_fixtures.west_of_utc():
+        assert filing.year_of_mark("2026-01-01T04:59:59Z") == "2025"
+        assert filing.year_of_mark("2026-01-01T05:00:00Z") == "2026"
 
 
 def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(seams):
@@ -1795,3 +1804,19 @@ def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_t
     # The continue reaches no rekordbox gate, and says why.
     assert code == OK, done
     assert _areas(done)[rekordbox.AREA]["refused"]["reason"] == "backup-acknowledgment-missing"
+
+
+def test_an_exported_playlist_the_filing_leaves_at_the_root_is_still_not_listed_as_yours(world):
+    """Two root folders named Exports leave the exported playlist where it is, so the filing
+    does not move it, and only the ledger's product made read keeps it off the author's list."""
+    cfg, fake, held, _inbox, _ids = world
+    ledger.reserve_playlist(cfg, "crate-export", lambda: "exported-1")
+    fake.account.append(AccountPlaylist("exported-1", "Exported 2025", 3))
+    held.create_folder("Exports")
+    held.create_folder("Exports")
+    envelope = _report()
+    row = _file_rows(envelope)["exported-1"]
+    assert row["action"] == filing.LEFT and "2 root folders" in row["why"]
+    mine = _yours(envelope, account_area.AREA)
+    assert "Exported 2025" not in mine
+    assert mine == {MINE_ON_ACCOUNT}

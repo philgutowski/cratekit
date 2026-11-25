@@ -285,3 +285,20 @@ def test_a_present_coloured_owned_heart_beside_a_landed_file_is_held_and_named(c
     assert hearts._colour_of(cfg, "Chosen") == RED_ID and hearts._colour_of(cfg, "Fresh") == PINK_ID
     (held,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_COLOUR_HELD]
     assert held["message"].endswith("keep it: Chosen (Red)")
+
+
+def test_a_coloured_owned_heart_placed_by_hand_between_the_two_acts_makes_the_answer_stale(
+    cfg, silence
+):
+    """A person coloured it, so no Pink row names it: only the owned key of the digest can."""
+    folder_id, source_id = hearts._home(cfg)
+    row = _owned(cfg, silence, "Chosen")
+    _colour_red(cfg, row)
+    hearts.hearts_swept(cfg, {"Chosen": NOV, "Fresh": NOV})
+    _stage(cfg, silence, "Fresh")
+    run_id = _answered(LAND, land_cli.NATIVE_GATE)[1]
+    _hold(cfg, source_id, row)
+    code, acted = drive(["--run", run_id, *LAND])
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "decision-stale", acted["cause"]
+    assert hearts._favorites(cfg, folder_id) == {SOURCE: ["Chosen"]}, "nothing was written"

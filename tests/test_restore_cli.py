@@ -1698,3 +1698,64 @@ def test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left(
     assert "remove master.db and any companion" in cause.remediation.steps[-1]
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not list(target.rglob("master.db*"))
+
+
+# R-2071: the three place guards, measured where a filesystem that never folds case
+# still holds two names for one place.
+
+
+def test_a_second_name_for_the_live_database_file_is_still_the_live_database(
+    installed, tmp_path, remote_log
+):
+    """A hard link is one file under two names, which a spelling test cannot see."""
+    home = tmp_path / "home" / "rekordbox"
+    _database_outside(installed, home)
+    (home / "master.db").write_bytes(b"database, generation one")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "master.db").hardlink_to(home / "master.db")
+    assert elsewhere.name != home.name, "the name plus parent half would answer this"
+    argv = ["restore", "run", "--from-backup", "--target", str(elsewhere)]
+    envelope = _refused_as(*_drive(argv), "restore-target-is-live-root")
+    assert envelope["cause"]["detail"]["check"] == "destination", envelope
+    assert not remote_log.exists(), "the remote was reached by a run that is refused"
+    assert (home / "master.db").read_bytes() == b"database, generation one"
+
+
+def test_an_ancestor_that_is_the_root_by_another_name_holds_the_place(tmp_path):
+    """The ancestor walk, driven alone: the candidate is not the root, its parent is."""
+    root = tmp_path / "library"
+    (root / "beneath").mkdir(parents=True)
+    alias = tmp_path / "alias"
+    alias.symlink_to(root, target_is_directory=True)
+    place = alias / "beneath"
+    assert not place.is_relative_to(root), "the string test alone would answer this"
+    assert not place.samefile(root), "the candidate alone would answer this"
+    assert restore_cli._holds_or_is(root, place)
+    assert not restore_cli._holds_or_is(root, tmp_path / "elsewhere" / "beneath")
+
+
+def test_a_database_not_on_disk_in_a_folded_directory_is_still_the_live_database(
+    installed, tmp_path, monkeypatch, remote_log
+):
+    """The name plus parent half, with the folding filesystem's answer planted.
+
+    Linux never folds case, so the place test is answered as a folding one would
+    answer it: the two spellings of the database's directory are one directory,
+    and nothing else changes. The database itself is not on disk yet, so the
+    landing alone matches nothing and only the second half can refuse.
+    """
+    home = tmp_path.resolve() / "home" / "rekordbox"
+    _database_outside(installed, home)
+    shouted = home.with_name(home.name.upper())
+    assert not (home / "master.db").exists(), "the half under measurement is not reached"
+    real = restore_cli._same_place
+
+    def folding(one: Path, other: Path) -> bool:
+        return {one, other} == {home, shouted} or real(one, other)
+
+    monkeypatch.setattr(restore_cli, "_same_place", folding)
+    argv = ["restore", "run", "--from-backup", "--target", str(shouted)]
+    envelope = _refused_as(*_drive(argv), "restore-target-is-live-root")
+    assert envelope["cause"]["detail"]["check"] == "destination", envelope
+    assert not remote_log.exists(), "the remote was reached by a run that is refused"

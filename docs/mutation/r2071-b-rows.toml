@@ -1,0 +1,15 @@
+name = "r2071-b"
+pass_kind = "replay"
+
+[[rows]]
+id = "u116.M13_utc_year"
+source = { table = "u116.json", id = "M13_utc_year" }
+description = "year_of_mark: the year is taken from the UTC stamp digits rather than local time"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if when.tzinfo is not None:
+        when = when.astimezone()
+    return f"{when.year:04d}"'''
+new = '    return str(marked or "")[:4]'
+
