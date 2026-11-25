@@ -253,15 +253,16 @@ public enum StatusMenu {
     /// The lines of one reading, its ages measured at the reading's time.
     public static func readingLines(for reading: GoodReading) -> [MenuLine] {
         let glance = reading.glance
-        return [attentionLine(glance.attention)]
-            + backupLines(glance.backup)
-            + [rekordboxLine(glance.rekordbox)]
-            + jobLines(glance.jobsRunning)
-            + gateLines(glance.gates, at: reading.at)
-            + [nightLine(glance.night)]
-            + glance.otherUnreadable.keys.sorted().map { key in
-                MenuLine(.problem, "\(key) could not be read: \(glance.otherUnreadable[key] ?? "")")
-            }
+        var made: [MenuLine] = [attentionLine(glance.attention)]
+        made.append(contentsOf: backupLines(glance.backup))
+        made.append(rekordboxLine(glance.rekordbox))
+        made.append(contentsOf: jobLines(glance.jobsRunning))
+        made.append(contentsOf: gateLines(glance.gates, at: reading.at))
+        made.append(nightLine(glance.night))
+        for (key, message) in glance.otherUnreadable.sorted(by: { $0.key < $1.key }) {
+            made.append(MenuLine(.problem, "\(key) could not be read: \(message)"))
+        }
+        return made
     }
 
     static func attentionLine(_ attention: Attention) -> MenuLine {
