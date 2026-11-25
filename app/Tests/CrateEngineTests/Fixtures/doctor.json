@@ -1,0 +1,321 @@
+{
+  "cause": null,
+  "data": {
+    "checks": [
+      {
+        "detail": "Python 3.12.4 is inside the supported range >=3.12,<3.14",
+        "key": "interpreter.version",
+        "remedy": null,
+        "status": "ok",
+        "title": "supported Python"
+      },
+      {
+        "detail": "loaded from /fixture/config/config.toml",
+        "key": "config.present",
+        "remedy": null,
+        "status": "ok",
+        "title": "configuration"
+      },
+      {
+        "detail": "the recorded volume is mounted at the configured root (configured root /fixture/library)",
+        "key": "library.mounted",
+        "remedy": null,
+        "status": "ok",
+        "title": "library volume"
+      },
+      {
+        "detail": "the observed identity matches the recorded F1E2-D3C4",
+        "key": "library.identity",
+        "remedy": null,
+        "status": "ok",
+        "title": "library volume identity"
+      },
+      {
+        "detail": "library.db_path sits under library.root, so a snapshot commits atomically with a rename",
+        "key": "library.db_containment",
+        "remedy": null,
+        "status": "ok",
+        "title": "database and library on one filesystem"
+      },
+      {
+        "detail": "/fixture/library/.Trashes/501 exists on the same filesystem as /fixture/library and accepts a move",
+        "key": "library.trash",
+        "remedy": null,
+        "status": "ok",
+        "title": "system Trash on the library volume"
+      },
+      {
+        "detail": "an active template at /fixture/library/.cratekit/coupled/taxonomy.toml, on the recorded library volume, parses and declares 22 buckets; taxonomy.template names the shipped 'default'; nothing records which shipped text the copy was made from, and it matches the shipped 'default' as it ships now",
+        "key": "taxonomy.active",
+        "remedy": null,
+        "status": "ok",
+        "title": "active taxonomy template"
+      },
+      {
+        "detail": "the active copy states schema_version 5 and the shipped 'default' template states 5, and the copy declares every class, bucket and vocabulary table it ships",
+        "key": "taxonomy.schema",
+        "remedy": null,
+        "status": "ok",
+        "title": "active taxonomy against the shipped schema"
+      },
+      {
+        "detail": "neither the application nor its background agent is running",
+        "key": "rekordbox.closed",
+        "remedy": null,
+        "status": "ok",
+        "title": "rekordbox not running"
+      },
+      {
+        "detail": "pinned at 7.0.1, matching, confirmed against a write on 2026-08-01",
+        "key": "rekordbox.pins",
+        "remedy": null,
+        "status": "ok",
+        "title": "rekordbox version pins"
+      },
+      {
+        "detail": "every one of 10 active rows records a path under the library root or a recorded rule (0 rules), read off a disposable copy of the database; 0 resolve to no file here",
+        "key": "library.paths_resolved",
+        "remedy": null,
+        "status": "ok",
+        "title": "recorded paths resolve on this machine"
+      },
+      {
+        "detail": "all 12 playlists under this product's nodes that could be read number their live rows 1 to N, read off a disposable copy of the database",
+        "key": "library.playlist_numbers",
+        "remedy": null,
+        "status": "ok",
+        "title": "the product's playlists are numbered 1 to N"
+      },
+      {
+        "detail": "a keychain backend that can store a credential is available",
+        "key": "keychain.reachable",
+        "remedy": null,
+        "status": "ok",
+        "title": "OS keychain"
+      },
+      {
+        "detail": "recorded: bandcamp-session",
+        "key": "credential.bandcamp",
+        "remedy": null,
+        "status": "ok",
+        "title": "credentials for bandcamp"
+      },
+      {
+        "detail": "recorded in this installation: catalogue-app-id, catalogue-app-key. ISRC lookups and track reads go under Cratekit's app credentials whenever the keychain gives both values, and a run that finds one missing says so and asks the account; the label crawl and every read or write of the account's own things stay on the account session; the provider gate has counted 0 calls on the account and 0 under Cratekit's app credentials",
+        "key": "credential.catalogue",
+        "remedy": null,
+        "status": "ok",
+        "title": "credentials for the catalogue app"
+      },
+      {
+        "detail": "recorded: cyanite-key",
+        "key": "credential.cyanite",
+        "remedy": null,
+        "status": "ok",
+        "title": "credentials for cyanite"
+      },
+      {
+        "detail": "recorded: discogs-token",
+        "key": "credential.discogs",
+        "remedy": null,
+        "status": "ok",
+        "title": "credentials for discogs"
+      },
+      {
+        "detail": "recorded: provider-session",
+        "key": "credential.provider",
+        "remedy": null,
+        "status": "ok",
+        "title": "credentials for provider"
+      },
+      {
+        "detail": "recorded: identify-key, identify-signing-key",
+        "key": "credential.recognition",
+        "remedy": null,
+        "status": "ok",
+        "title": "credentials for recognition"
+      },
+      {
+        "detail": "/opt/probe/bin/yt-dlp",
+        "key": "binary.yt-dlp",
+        "remedy": null,
+        "status": "ok",
+        "title": "external binary yt-dlp"
+      },
+      {
+        "detail": "/opt/probe/bin/ffmpeg",
+        "key": "binary.ffmpeg",
+        "remedy": null,
+        "status": "ok",
+        "title": "external binary ffmpeg"
+      },
+      {
+        "detail": "/opt/probe/bin/ffprobe",
+        "key": "binary.ffprobe",
+        "remedy": null,
+        "status": "ok",
+        "title": "external binary ffprobe"
+      },
+      {
+        "detail": "/opt/probe/bin/rclone",
+        "key": "binary.rclone",
+        "remedy": null,
+        "status": "ok",
+        "title": "external binary rclone"
+      },
+      {
+        "detail": "/opt/probe/bin/keyfinder-cli",
+        "key": "binary.keyfinder-cli",
+        "remedy": null,
+        "status": "ok",
+        "title": "external binary keyfinder-cli"
+      },
+      {
+        "detail": "/opt/probe/bin/caffeinate",
+        "key": "binary.caffeinate",
+        "remedy": null,
+        "status": "ok",
+        "title": "external binary caffeinate"
+      },
+      {
+        "detail": "'vendored' resolves to VendoredAdapter and satisfies the contract (acquire, name)",
+        "key": "adapter.contract",
+        "remedy": null,
+        "status": "ok",
+        "title": "acquisition adapter"
+      },
+      {
+        "detail": "no completion has been recorded for this portion here, which is the state of every library before a backup has run once",
+        "key": "backup.age.files",
+        "remedy": null,
+        "status": "info",
+        "title": "backup age, files portion"
+      },
+      {
+        "detail": "no completion has been recorded for this portion here, which is the state of every library before a backup has run once",
+        "key": "backup.age.database",
+        "remedy": null,
+        "status": "info",
+        "title": "backup age, database portion"
+      },
+      {
+        "detail": "none on record; a destructive verb asks for one, minted with crate session ack",
+        "key": "backup.acknowledgment",
+        "remedy": null,
+        "status": "info",
+        "title": "backup acknowledgment"
+      },
+      {
+        "detail": "no backup here has compared the library with the remote folder by folder. Every backup compares every file, through one recursive listing of the remote. Run one with: crate backup run --full",
+        "key": "backup.full_comparison",
+        "remedy": null,
+        "status": "info",
+        "title": "backup, last full comparison"
+      },
+      {
+        "detail": "no full check of the remote is on record, so the next backup runs one. To run one now: crate backup run --check",
+        "key": "backup.full_check",
+        "remedy": null,
+        "status": "info",
+        "title": "backup, last full check"
+      },
+      {
+        "detail": "the backup module is on and no backup destination is recorded, so the backup verb has nowhere to write. Run setup and take the offer, or pass --backup-dest, --backup-archive-root and --backup-db-dest-root, each an rclone remote:path",
+        "key": "backup.remote",
+        "remedy": null,
+        "status": "info",
+        "title": "backup remote"
+      },
+      {
+        "detail": "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox",
+        "key": "deadca7.push",
+        "remedy": null,
+        "status": "info",
+        "title": "DEADCA7 pushes into the library"
+      },
+      {
+        "detail": "the session log on the recorded library volume was read: 0 recorded session(s), none of them open",
+        "key": "session.unresolved",
+        "remedy": null,
+        "status": "ok",
+        "title": "destructive sessions"
+      },
+      {
+        "detail": "no run has sat at a gate for more than a day",
+        "key": "runs.open-gates",
+        "remedy": null,
+        "status": "info",
+        "title": "runs at a gate"
+      },
+      {
+        "detail": "0 ISRC answers kept for up to 30 days in /fixture-state/state/cratekit/isrc_cache.json",
+        "key": "provider.isrc-cache",
+        "remedy": null,
+        "status": "info",
+        "title": "ISRC answers kept"
+      },
+      {
+        "detail": "in the last hour 0 of 1500 calls on the account and 0 of 1500 under Cratekit's app credentials; reads stop at 1125 and 375 kept for writes and downloads; no cooldown; read from /fixture-state/state/cratekit/provider_gate.json, where CRATEKIT_PROVIDER_GATE_DIR points",
+        "key": "provider.budget",
+        "remedy": null,
+        "status": "info",
+        "title": "the hour's provider budget"
+      },
+      {
+        "detail": "no night pass has run on this installation; crate sync night runs one",
+        "key": "sync.night",
+        "remedy": null,
+        "status": "info",
+        "title": "the last night pass"
+      },
+      {
+        "detail": "/fixture/library/.cratekit/coupled/tree_registry.json: genre_energy is on the XML bridge, no cutover recorded; inbox is on the XML bridge, no cutover recorded; record_labels is on the XML bridge, no cutover recorded",
+        "key": "tree.registry",
+        "remedy": null,
+        "status": "ok",
+        "title": "tree registry"
+      },
+      {
+        "detail": "this is an installed package rather than a checkout; nothing to hook",
+        "key": "repo.commit_hook",
+        "remedy": null,
+        "status": "info",
+        "title": "repository commit hook"
+      },
+      {
+        "detail": "the vocal model can score here, so analysed tracks carry a voxlevel",
+        "key": "install.extras",
+        "remedy": null,
+        "status": "ok",
+        "title": "installed extras"
+      },
+      {
+        "detail": "this copy is 0.1.0, and the latest release is v0.1.0",
+        "key": "install.release",
+        "remedy": null,
+        "status": "ok",
+        "title": "installed release"
+      }
+    ],
+    "summary": {
+      "checked": 42,
+      "counts": {
+        "fail": 0,
+        "info": 12,
+        "ok": 30
+      },
+      "failing": 0
+    }
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 0,
+  "outcome": "ok",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "run-fixture",
+  "schema": "diagnostic/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "doctor",
+  "warnings": []
+}

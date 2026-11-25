@@ -1,0 +1,41 @@
+{
+  "cause": {
+    "code": 27,
+    "detail": {
+      "declared": "BY GENRE + ENERGY",
+      "tree": "genre_energy"
+    },
+    "inner": null,
+    "message": "no folder named 'BY GENRE + ENERGY' appears anywhere in the exported tree, so this report never found the routing tree it governs; reporting every track as uncovered would tell somebody to re-file a library that is already filed",
+    "origin": [
+      "reports",
+      "cli"
+    ],
+    "reason": "governed-tree-absent",
+    "remediation": {
+      "doc": null,
+      "remedy": null,
+      "steps": [
+        "check that the export really holds the routing tree the taxonomy declares, and that it is the current export",
+        "if the tree is called something else in this library, change the declared display in the taxonomy template rather than renaming folders to match the software"
+      ]
+    },
+    "retryable": false,
+    "scope": "run"
+  },
+  "data": {
+    "checks": [],
+    "summary": {}
+  },
+  "ended": "2026-01-01T00:00:00+00:00",
+  "envelope": 1,
+  "exit_code": 27,
+  "outcome": "failed",
+  "pending_human_action": null,
+  "resumable": false,
+  "run_id": "run-fixture",
+  "schema": "diagnostic/1",
+  "started": "2026-01-01T00:00:00+00:00",
+  "verb": "audit.coverage",
+  "warnings": []
+}
