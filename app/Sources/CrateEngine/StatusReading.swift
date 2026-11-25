@@ -357,8 +357,8 @@ public enum StatusMenu {
         case .unreadable(let runId, let message):
             return MenuLine(.problem, "Run \(runId) could not be read: \(message)")
         case .gate(let gate):
-            let writes = gate.writesDatabase ? "writes the database" : "writes no database"
-            let old = ""
+            let writes = "writes no database"
+            let old = gate.old ? ", old" : ""
             return MenuLine(
                 .item, "\(gate.verb) at \(gate.gate), \(waiting(gate.since, at: at)), \(writes)\(old)")
         }
