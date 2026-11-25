@@ -84,6 +84,82 @@ _PAYLOAD_MAJORS: Mapping[str, int] = MappingProxyType(
     {"plan": 1, "match": 1, "review_set": 1, "job_state": 1, "diagnostic": 1}
 )
 
+#: The progress stream's events (U963), declared beside the payload surfaces
+#: and never one of them: no envelope carries an event, so ``schema_names``
+#: stays the five R32 names. Every event carries the common fields and its
+#: kind's own, nothing else; ``tests/schemas/progress.v1.json`` pins the
+#: document, so a change to a field is a change to that file.
+PROGRESS_SCHEMA = "progress/1"
+
+_PROGRESS_COMMON: Mapping[str, str] = MappingProxyType(
+    {"schema": "string", "verb": "string", "run_id": "string", "at": "string", "kind": "string"}
+)
+
+_PROGRESS_KINDS: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {
+        # A chain's step by its place in the verb's order; ``command`` is the
+        # verb a step runs, ``detail`` what a step says that is not a command.
+        "step": MappingProxyType(
+            {
+                "index": "integer",
+                "of": "integer",
+                "name": "string",
+                "command": "string|null",
+                "detail": "string|null",
+            }
+        ),
+        # A job a chain drives, its counts as ``job_state``'s progress carries them.
+        "job": MappingProxyType(
+            {"step": "string", "job_id": "string", "state": "string", "progress": "object"}
+        ),
+        # A progress call with no structure yet, its text as human output says it.
+        "line": MappingProxyType({"text": "string"}),
+        # The last event, written just before the envelope.
+        "end": MappingProxyType({"exit_code": "integer"}),
+    }
+)
+
+
+def progress_document() -> dict[str, Any]:
+    """The machine description of a ``progress/1`` event, kind by kind."""
+    return {
+        "schema": PROGRESS_SCHEMA,
+        "type": "object",
+        "common": {key: {"type": value} for key, value in sorted(_PROGRESS_COMMON.items())},
+        "kinds": {
+            kind: {
+                "properties": {key: {"type": value} for key, value in sorted(fields.items())},
+                "required": sorted(fields),
+            }
+            for kind, fields in sorted(_PROGRESS_KINDS.items())
+        },
+        "additionalProperties": False,
+    }
+
+
+def progress_event(kind: str, *, verb: str, run_id: str, **fields: Any) -> dict[str, Any]:
+    """One event, its common fields first, stamped now."""
+    return {
+        "schema": PROGRESS_SCHEMA,
+        "verb": verb,
+        "run_id": run_id,
+        "at": timestamp(),
+        "kind": kind,
+        **fields,
+    }
+
+
+def progress_problems(event: Mapping[str, Any]) -> list[str]:
+    """Validate one event against its kind's declaration. Empty means valid."""
+    kind = event.get("kind")
+    own = _PROGRESS_KINDS.get(kind) if isinstance(kind, str) else None
+    if own is None:
+        return [f"{kind!r} is not a declared progress kind"]
+    problems = _field_problems({**_PROGRESS_COMMON, **own}, event)
+    if event.get("schema") != PROGRESS_SCHEMA:
+        problems.append(f"schema is {event.get('schema')!r}, not {PROGRESS_SCHEMA!r}")
+    return problems
+
 #: The envelope's required keys, in serialization order. The conformance suite
 #: derives its requirements from this.
 ENVELOPE_KEYS: tuple[str, ...] = (
@@ -165,6 +241,11 @@ def payload_problems(name: str, data: Mapping[str, Any]) -> list[str]:
     fields = _PAYLOAD_FIELDS.get(name)
     if fields is None:
         return [f"{name!r} is not a declared payload surface"]
+    return _field_problems(fields, data)
+
+
+def _field_problems(fields: Mapping[str, str], data: Mapping[str, Any]) -> list[str]:
+    """Every field missing, undeclared or of the wrong type, against ``fields``."""
     problems = [f"missing required field {key!r}" for key in sorted(fields) if key not in data]
     problems += [f"undeclared field {key!r}" for key in sorted(set(data) - set(fields))]
     for key, declared in sorted(fields.items()):
@@ -589,6 +670,7 @@ __all__ = [
     "ENVELOPE_KEYS",
     "ENVELOPE_VERSION",
     "PENDING_KINDS",
+    "PROGRESS_SCHEMA",
     "Envelope",
     "PendingHumanAction",
     "SchemaError",
@@ -607,6 +689,9 @@ __all__ = [
     "new_run_id",
     "no_job",
     "payload_problems",
+    "progress_document",
+    "progress_event",
+    "progress_problems",
     "schema_document",
     "schema_fingerprint",
     "schema_names",

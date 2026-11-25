@@ -289,7 +289,9 @@ def _continued(
         )
     from cratekit import cli
 
-    envelope = cli.dispatch(["--run", state.run_id, *state.argv], stderr=sys.stderr)
+    envelope = cli.dispatch(
+        ["--run", state.run_id, *state.argv], stderr=sys.stderr, progress=ctx.progress
+    )
     note = {
         "code": DECISION_RECORDED,
         "message": (

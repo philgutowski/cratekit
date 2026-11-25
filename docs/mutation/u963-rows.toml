@@ -1,0 +1,182 @@
+name = "u963"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_flag_ignored"
+description = "writer_for: never take the event form, so --progress json is accepted and ignored"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_sync_land.py", "tests/test_run_decide_continue.py"]
+old = '''    if choice == JSON:
+        return Writer(stream, verb=verb, events=True)'''
+new = '''    if choice == "JSON":
+        return Writer(stream, verb=verb, events=True)'''
+
+[[rows]]
+id = "P2_json_without_flag_speaks"
+description = "writer_for: hand JSON output an English writer without the flag, so its standard error carries progress lines"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_sync_land.py", "tests/test_run_decide_continue.py"]
+old = '''    if not as_json:
+        return Writer(stream, verb=verb, events=False)'''
+new = '''    if True:
+        return Writer(stream, verb=verb, events=False)'''
+
+[[rows]]
+id = "P3_line_not_wrapped"
+description = "Writer.__call__: write a plain progress line raw under the flag, not as a line event"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py"]
+old = '''        if self.events:
+            self._event("line", text=line)'''
+new = '''        if False:
+            self._event("line", text=line)'''
+
+[[rows]]
+id = "P4_human_job_lines"
+description = "Writer.job: write the job event in human output too, so the human stream gains JSON lines"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py"]
+old = '''        if self.events:
+            self._event("job", step=step, job_id=job_id, state=state, progress=dict(progress))'''
+new = '''        if True:
+            self._event("job", step=step, job_id=job_id, state=state, progress=dict(progress))'''
+
+[[rows]]
+id = "P5_writer_drops_only_oserror"
+description = "Writer._write: drop only OSError, so a closed stream's ValueError ends the run"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py"]
+old = '''            try:
+                print(text, file=self._stream, flush=True)
+            except (OSError, ValueError):
+                pass'''
+new = '''            try:
+                print(text, file=self._stream, flush=True)
+            except OSError:
+                pass'''
+
+[[rows]]
+id = "P6_no_flush"
+description = "Writer._write: stop flushing each line; standard error is line buffered on Python 3.9 and later, so the pipe test reads each line either way"
+file = "src/cratekit/cli/progress.py"
+surface = "maintainer"
+tests = ["tests/test_progress_json.py"]
+old = '''                print(text, file=self._stream, flush=True)'''
+new = '''                print(text, file=self._stream)'''
+
+[[rows]]
+id = "P7_no_final_poll"
+description = "_Watch.__exit__: skip the read after the drive, so a job's settled state can go unsaid"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py"]
+old = '''        self._thread.join(timeout=self._every + 5.0)
+        self.poll(always=True)'''
+new = '''        self._thread.join(timeout=self._every + 5.0)'''
+
+[[rows]]
+id = "P8_no_dedup"
+description = "_Watch.poll: write every reading, unchanged or not"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py"]
+old = '''            if seen == self._last and not always:
+                return'''
+new = '''            if False:
+                return'''
+
+[[rows]]
+id = "P9_watch_without_events"
+description = "watching: watch a job for an English writer too, polling the queue for output nobody writes"
+file = "src/cratekit/cli/progress.py"
+surface = "maintainer"
+tests = ["tests/test_progress_json.py"]
+old = '''    if job_id is None or not isinstance(progress, Writer) or not progress.events:'''
+new = '''    if job_id is None or not isinstance(progress, Writer):'''
+
+[[rows]]
+id = "P10_settle_unwatched"
+description = "tail.settle: drive a job without naming it, so no job event is written"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_sync_land.py", "tests/test_sync_bandcamp.py"]
+old = '''    code, envelope = chain.call(step, argv, job_id=job.job_id)'''
+new = '''    code, envelope = chain.call(step, argv)'''
+
+[[rows]]
+id = "P11_step_command_lost"
+description = "Chain.call: say a step's command as detail, so a step event carries no command"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_sync_land.py", "tests/test_sync_bandcamp.py"]
+old = '''        self.say(step, command, command=command)'''
+new = '''        self.say(step, command)'''
+
+[[rows]]
+id = "P12_no_end"
+description = "run: write no end event before the envelope"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_cli_contract.py"]
+old = '''    if progress is not None:
+        progress.end(run_id=envelope.run_id, exit_code=int(envelope.exit_code))'''
+new = '''    if False:
+        progress.end(run_id=envelope.run_id, exit_code=int(envelope.exit_code))'''
+
+[[rows]]
+id = "P13_run_id_unbound"
+description = "_dispatched_in_scope: never bind the run's id, so every event but end carries an empty run"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_cli_contract.py"]
+old = '''        if progress is not None:
+            progress.run_id = state.run_id'''
+new = '''        if False:
+            progress.run_id = state.run_id'''
+
+[[rows]]
+id = "P14_emit_unguarded"
+description = "_to_stderr: let a closed standard error raise, so the run's exit becomes a traceback"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_cli_contract.py"]
+old = '''    try:
+        print(text, end="", file=stderr, flush=True)
+    except (OSError, ValueError):
+        pass'''
+new = '''    print(text, end="", file=stderr, flush=True)'''
+
+[[rows]]
+id = "P15_continue_loses_events"
+description = "dispatch: build the continued verb's writer from its recorded line even under events, the round one defect"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_progress_json.py", "tests/test_run_decide_continue.py"]
+old = '''    if progress is not None and progress.events:
+        writer = progress.beside(entry.name)'''
+new = '''    if False:
+        writer = progress.beside(entry.name)'''
+
+[[rows]]
+id = "P16_end_run_id"
+description = "Writer.end: keep the bound run id rather than the envelope's"
+file = "src/cratekit/cli/progress.py"
+surface = "user"
+tests = ["tests/test_progress_json.py"]
+old = '''            self.run_id = run_id
+            self._event("end", exit_code=exit_code)'''
+new = '''            self._event("end", exit_code=exit_code)'''
+
+[[rows]]
+id = "P17_validator_schema"
+description = "output.progress_problems: stop checking the schema identifier"
+file = "src/cratekit/cli/output.py"
+surface = "maintainer"
+tests = ["tests/test_progress_json.py", "tests/test_cli_contract.py"]
+old = '''    if event.get("schema") != PROGRESS_SCHEMA:'''
+new = '''    if False:'''

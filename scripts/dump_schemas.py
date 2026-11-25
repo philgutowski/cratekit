@@ -2,7 +2,10 @@
 """Regenerate the committed schema lock and the representative envelopes.
 
 Every payload surface's structure is hashed and the hash committed, so a change
-of structure without a major bump fails ``tests/test_cli_contract.py``. Run this
+of structure without a major bump fails ``tests/test_cli_contract.py``. The
+progress events' document is written whole beside them, as
+``tests/schemas/progress.v1.json``, which ``tests/test_progress_json.py``
+holds the declaration to. Run this
 ONLY when you meant to change a schema, then read the diff::
 
     python scripts/dump_schemas.py
@@ -105,6 +108,13 @@ def main() -> int:
         (GOLDEN_DIR / f"{name}.v{major}.json").write_text(
             json.dumps(golden_envelope(name), indent=2, sort_keys=True) + "\n"
         )
+
+    # The progress stream's events (U963): no envelope carries one, so the
+    # document is pinned whole rather than hashed into the lock.
+    name, _, major = output.PROGRESS_SCHEMA.partition("/")
+    (SCHEMA_DIR / f"{name}.v{major}.json").write_text(
+        json.dumps(output.progress_document(), indent=2, sort_keys=True) + "\n"
+    )
 
     existing = {}
     lock_path = SCHEMA_DIR / "lock.json"

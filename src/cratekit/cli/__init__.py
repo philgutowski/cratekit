@@ -18,7 +18,7 @@ import importlib
 import shlex
 import sys
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 from cratekit import __version__
 from cratekit.cli import gates, output, registry, render
@@ -38,15 +38,23 @@ from cratekit.core.cause import (
 )
 from cratekit.core.exit_codes import ExitCode, Remedy
 
+if TYPE_CHECKING:
+    from cratekit.cli.progress import Writer
+
+#: ``--progress``'s one value, :data:`cratekit.cli.progress.JSON` spelled here,
+#: so the parser loads no writer and ``crate doctor --help`` stays lean (U248).
+PROGRESS_JSON = "json"
+
 
 @dataclass
 class Context:
     """Everything a verb is handed, and the only way it produces a result.
 
     A verb never prints, exits or reads input; it returns an envelope, so the
-    conformance suite drives every verb alike. ``progress`` is a standard error
-    writer in human output and None in JSON output, for a long verb's phase
-    lines (R-924); it is never the result.
+    conformance suite drives every verb alike. ``progress`` is the standard
+    error writer for a long verb's phase lines (R-924): English in human
+    output, ``progress/1`` events under ``--progress json`` in either mode
+    (U963), and None in JSON output without the flag; it is never the result.
     """
 
     entry: Entry
@@ -54,7 +62,7 @@ class Context:
     run: gates.RunState
     gate: gates.Gates
     started: str
-    progress: Callable[[str], None] | None = None
+    progress: Writer | None = None
 
     def envelope(
         self,
@@ -307,6 +315,17 @@ def build_parser(
         help="human rendering (default) or one JSON envelope on standard output",
     )
     parser.add_argument(
+        "--progress",
+        dest="progress_format",
+        choices=(PROGRESS_JSON,),
+        default=None,
+        help=(
+            "write a long verb's progress as one JSON event per line on standard "
+            "error, its steps, its jobs and its end, while the result stays where "
+            "--output puts it"
+        ),
+    )
+    parser.add_argument(
         "-d",
         "--decision",
         action="append",
@@ -410,28 +429,32 @@ def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
     if as_json:
         print(envelope.to_text(), file=stdout)
         if envelope.exit_code is not ExitCode.OK:
-            print(render.render(envelope), end="", file=stderr)
+            # A person's copy of the result, which the envelope already carries.
+            _to_stderr(render.render(envelope), stderr)
         return
-    stream = stdout if envelope.exit_code is ExitCode.OK else stderr
-    print(render.render(envelope, drive=_drive_argv(envelope)), end="", file=stream)
+    text = render.render(envelope, drive=_drive_argv(envelope))
+    if envelope.exit_code is ExitCode.OK:
+        print(text, end="", file=stdout)
+    else:
+        _to_stderr(text, stderr)
     if envelope.cause is not None and render.is_gate_screen(envelope.cause):
-        print(render.render_gate(envelope.cause), end="", file=stderr)
+        _to_stderr(render.render_gate(envelope.cause), stderr)
 
 
-def _progress_to(stderr) -> Callable[[str], None]:
-    """A verb's progress lines, one per call, on standard error.
+def _to_stderr(text: str, stderr) -> None:
+    """Write to standard error, dropping what a closed reader cannot take (U963).
 
-    Flushed, since standard error is not line buffered everywhere. A line that
-    cannot be written is dropped, so a closed reader never ends paid work.
+    So a reader that closed the pipe never turns the run's own exit code into
+    a traceback, the rule the progress writer keeps. A process started with
+    standard error closed has None there, which print would take for standard
+    output, so nothing is written.
     """
-
-    def say(line: str) -> None:
-        try:
-            print(line, file=stderr, flush=True)
-        except (OSError, ValueError):
-            pass
-
-    return say
+    if stderr is None:
+        return
+    try:
+        print(text, end="", file=stderr, flush=True)
+    except (OSError, ValueError):
+        pass
 
 
 def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
@@ -635,11 +658,14 @@ def _verb_argv(argv: Sequence[str], entry: Entry) -> tuple[str, ...] | None:
     return None
 
 
-def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
+def dispatch(argv: Sequence[str], *, stderr, progress: Writer | None = None) -> Envelope:
     """Parse and run one command line and answer its envelope, without writing it (U168).
 
     ``run decide --continue`` calls it to continue a run in this process. A
-    command line argparse refuses is a defect, since it was recorded.
+    command line argparse refuses is a defect, since it was recorded. The
+    recorded line keeps no root options, so a caller writing ``progress/1``
+    events hands its ``progress`` over and the continued verb writes events
+    beside it, under its own name (U963); otherwise the line's own form holds.
     """
     parser = build_parser()
     try:
@@ -666,7 +692,15 @@ def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
                 origin=("cli",),
             )
         )
-    return _dispatched(args, list(argv), entry, as_json=args.output == "json", stderr=stderr)
+    from cratekit.cli import progress as progress_writer  # noqa: PLC0415 - see PROGRESS_JSON
+
+    if progress is not None and progress.events:
+        writer = progress.beside(entry.name)
+    else:
+        writer = progress_writer.writer_for(
+            args.progress_format, stderr, verb=entry.name, as_json=args.output == "json"
+        )
+    return _dispatched(args, list(argv), entry, progress=writer)
 
 
 #: The warning a run carries when the call ceiling stopped it but the verb
@@ -789,7 +823,11 @@ def _with_run_continue(cause: Cause, state: gates.RunState) -> Cause:
 
 
 def _dispatched(
-    args: argparse.Namespace, argv: Sequence[str], entry: Entry, *, as_json: bool, stderr
+    args: argparse.Namespace,
+    argv: Sequence[str],
+    entry: Entry,
+    *,
+    progress: Writer | None,
 ) -> Envelope:
     """Run one parsed verb inside one command's call ceiling scope (U193).
 
@@ -802,7 +840,7 @@ def _dispatched(
         calls_per_hour=getattr(args, "calls_per_hour", None),
         reserve=spends_reserve(entry, args),
     ) as scope:
-        envelope = _dispatched_in_scope(args, argv, entry, as_json=as_json, stderr=stderr)
+        envelope = _dispatched_in_scope(args, argv, entry, progress=progress)
     stopped = scope.stopped
     reported = envelope.cause is not None and envelope.cause.reason == (
         stopped.reason if stopped is not None else None
@@ -828,7 +866,11 @@ def _dispatched(
 
 
 def _dispatched_in_scope(
-    args: argparse.Namespace, argv: Sequence[str], entry: Entry, *, as_json: bool, stderr
+    args: argparse.Namespace,
+    argv: Sequence[str],
+    entry: Entry,
+    *,
+    progress: Writer | None,
 ) -> Envelope:
     """Run one parsed verb and answer its envelope; every refusal is converted here."""
     started = output.timestamp()
@@ -865,9 +907,10 @@ def _dispatched_in_scope(
             run=state,
             gate=gates.Gates(state=state, supplied=supplied),
             started=started,
+            progress=progress,
         )
-        if not as_json:
-            context.progress = _progress_to(stderr)
+        if progress is not None:
+            progress.run_id = state.run_id
         envelope = args._handler(context)
         gates.save(state)
     except CratekitError as exc:
@@ -985,7 +1028,14 @@ def run(argv: list[str], *, stdout, stderr) -> int:
         return int(ExitCode.OK)
 
     as_json = args.output == "json"
-    envelope = _dispatched(args, argv, entry, as_json=as_json, stderr=stderr)
+    from cratekit.cli import progress as progress_writer  # noqa: PLC0415 - see PROGRESS_JSON
+
+    progress = progress_writer.writer_for(
+        args.progress_format, stderr, verb=entry.name, as_json=as_json
+    )
+    envelope = _dispatched(args, argv, entry, progress=progress)
+    if progress is not None:
+        progress.end(run_id=envelope.run_id, exit_code=int(envelope.exit_code))
     _emit(envelope, as_json=as_json, stdout=stdout, stderr=stderr)
     return int(envelope.exit_code)
 
