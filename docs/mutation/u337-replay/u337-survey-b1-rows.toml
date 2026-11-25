@@ -1,0 +1,165 @@
+name = "u337-survey-b1"
+pass_kind = "replay"
+
+[[rows]]
+id = "u272.S13_parents_before_children"
+source = { table = "u272.json", id = "S13_parents_before_children" }
+description = "_flush: walk top down, so a directory is flushed before the files in it"
+file = "src/cratekit/core/snapshot.py"
+surface = "maintainer"
+tests = ["tests/test_repair_rows.py"]
+old = 'capture_root, topdown=False, onerror=_raise_walk_error'
+new = 'capture_root, topdown=True, onerror=_raise_walk_error'
+
+[[rows]]
+id = "u51-item-derivation.H1_export_item_not_payload"
+source = { table = "u51-item-derivation.json", id = "H1_export_item_not_payload" }
+description = "The export handler reads the playlist key as its track, not the claimed item"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '    report = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))'
+new = '    report = run_export_item(payload, str(payload[PLAYLIST]), cfg, account.resolve(cfg))'
+
+[[rows]]
+id = "r424.B4_warning_copied"
+source = { table = "r424.json", id = "B4_warning_copied" }
+description = "Hand callers the module level dict instead of a copy per call"
+file = "src/cratekit/favorites/cli.py"
+surface = "maintainer"
+tests = ["tests/test_rebuild.py"]
+old = '    return (dict(LOCAL_WRITE_WARNING),)'
+new = '    return (LOCAL_WRITE_WARNING,)'
+
+[[rows]]
+id = "u113-a.A2_queue_order"
+source = { table = "u113-a.json", id = "A2_queue_order" }
+description = "The account playlists are taken newest job first, the order the store lists them"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''
+        queued = sorted(
+            batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
+        )'''
+new = '        queued = batch_name.pass_jobs(cfg, pass_name)'
+
+[[rows]]
+id = "u165.F5_report_failed"
+source = { table = "u165.json", id = "F5_report_failed" }
+description = "file_landed: report a filing whose entries failed as filed"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''
+    if report.failed:
+        return Filed(
+            state=NOT_FILED,'''
+new = '''
+    if False:
+        return Filed(
+            state=NOT_FILED,'''
+
+[[rows]]
+id = "u188.M5_repeat_kept"
+source = { table = "u188.json", id = "M5_repeat_kept" }
+description = "_mapped_back: keep a repeated pair instead of dropping it, so the refusal names the folder pair twice on a drive that never moved"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    return tuple(
+        dict.fromkeys(
+            (
+                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),
+                stored,
+            )
+        )
+    )'''
+new = '''
+    return (
+        (str(area.staging), str(planned.folder)),
+        (str(scratch_target), str(target)),
+        stored,
+    )'''
+
+[[rows]]
+id = "u71-b.B13_unlink_destination"
+source = { table = "u71-b.json", id = "B13_unlink_destination" }
+description = "Leave the intake file behind when place_files fails after writing it"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing.py"]
+old = '''
+        destination.unlink(missing_ok=True)
+'''
+new = ''
+
+[[rows]]
+id = "u69-b.M16_next_command"
+source = { table = "u69-b.json", id = "M16_next_command" }
+description = "Drop the literal next command from the written check a person reads"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = 'written to {written.list_path}; next: {command}"'
+new = 'written to {written.list_path}"'
+
+[[rows]]
+id = "u146-e.N3_owned_out_of_digest"
+source = { table = "u146-e.json", id = "N3_owned_out_of_digest" }
+description = "FavoritesPlan.identity: the owned hearts are not digested, so an answer given for one set of them stands for another"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''
+        if self.owned:
+            identity["owned"] = ['''
+new = '''
+        if self.owned and False:
+            identity["owned"] = ['''
+
+[[rows]]
+id = "r504-a.A11_boundary_refuses"
+source = { table = "r504-a.json", id = "A11_boundary_refuses" }
+description = "The verb boundary no longer catches the shortfall, so it is refused as an unreadable listing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_sync_all.py"]
+old = '''
+    except catalogue.HeartsShortfall as short:
+        return list(short.rows), short
+'''
+new = ''
+
+[[rows]]
+id = "u190.G5_resume_one_job_only"
+source = { table = "u190.json", id = "G5_resume_one_job_only" }
+description = "_resume: take the first earlier job's tail whatever the count, so two manifests share one landing"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '    land = lands[0] if len(lands) == 1 else None'
+new = '    land = lands[0] if lands else None'
+
+[[rows]]
+id = "u239.M07_beside_done"
+source = { table = "u239.json", id = "M07_beside_done" }
+description = "_beside: count only an open later go job, so one that downloaded and settled is ignored"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '        if other.is_open() or any('
+new = '        if other.is_open() or False and any('
+
+[[rows]]
+id = "u193.M25_crawl_spent_ignored"
+source = { table = "u193.json", id = "M25_crawl_spent_ignored" }
+description = "Estimate.over_ceiling: ignore the calls the listing already spent"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '        return self.spent + self.calls > self.ceiling'
+new = '        return self.calls > self.ceiling'
+
