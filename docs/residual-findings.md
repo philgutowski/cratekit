@@ -1139,3 +1139,133 @@ misread.
 it, with a timing test holding a scan of records with cut screens to the
 ratio of one without, or the count of kept screens in a real state directory
 is read at an attended sitting and found small. Ledger only.
+
+---
+
+## R-2082. Doctor's backup age checks read an ejected library volume as never recorded
+
+**Found:** at review round two of #1079, U960, 2026-11-25.
+
+**The mechanism.** The backup facts file is library scoped (`state_files`
+`_library("backup_facts")`), and `backup_facts._read` takes a missing file
+for no fact. `doctor_backup._check_backup_portion` calls `backup_facts.ages`
+with no mount gate, while `_check_backup_acknowledgment` beside it asks
+`_library_state_unreadable` first. So with the library root absent, as
+`/Volumes/<name>` is after an eject, `backup.age.files` and
+`backup.age.database` read INFO "no completion has been recorded for this
+portion here, which is the state of every library before a backup has run
+once". U960's glance asks `core.preflight`'s rule first and reads the same
+state unreadable, so doctor and the glance now disagree on that input.
+
+**Measured cost.** Driven on the branch at `f10a9afb`: the root renamed
+away, `crate --output json doctor` read both portions as never recorded. A
+person is told no backup exists when the record is on the unplugged drive;
+doctor reports the volume in its own rows, but these two rows say something
+false (board bar b). On main before U960, unchanged by it.
+
+**Closes when:** `_check_backup_portion` asks `_library_state_unreadable`
+before reading and answers its note, as the acknowledgment check does, with
+a test that renames the root and reads both rows. It earns an issue under
+the board bar's (b), a clean report over state it could not read.
+
+---
+
+## R-2083. The status glance reads a running job whose driver died as running until something reconciles it
+
+**Found:** at review round one of #1079, U960, 2026-11-25.
+
+**The mechanism.** The glance lists jobs in state `running` off the queue,
+as `crate job list --state running` does. A job whose driver was killed
+keeps `running` in the queue until `crate job show` or a resume reconciles
+it against its driver lock (`jobs.reconcile`), which a read only glance does
+not do.
+
+**Measured cost.** Driven with a job moved to `running` and no driver lock
+held: the glance and `job list` both read `running`, and `attention` reads
+`running`; after `crate job show` reconciled it to `queued`, the glance read
+`ok`. A killed driver, the real producer, was not driven. The menu bar icon
+would say running for work nothing is doing.
+
+**Closes when:** the menu bar app's card (#1085) decides whether the glance
+asks the driver lock read only (`jobs.assert_free` without the reconcile) so
+a job with no live driver reads apart from one that runs. Ledger only.
+
+---
+
+## R-2084. crate status reads every run record twice, and each call of it adds one
+
+**Found:** at review round one of #1079, U960, 2026-11-25.
+
+**The mechanism.** `crate status` lists and loads every run record for its
+own run lines (`doctor._run_report`) and again for the glance
+(`status_glance.gate_runs`), and the dispatcher saves a run record for every
+verb, `status` included, so an app that polls the verb grows the directory
+it reads by one record a call.
+
+**Measured cost.** At 20,000 records, three repeats on the cloud container:
+the glance's scan 0.65 to 0.88 seconds, `_run_report` 0.66 to 0.73, the
+whole verb 1.39 to 1.54. At 200 records the verb answered in 0.40 to 0.69.
+An app polling once a minute adds 1,440 records a day; the count on
+Phillip's machine is unmeasured.
+
+**Closes when:** the status verb loads the records once and hands them to
+both readers, and the menu bar app's card decides whether its polling verb
+records a run at all. Ledger only.
+
+---
+
+## R-2085. A night pass waiting at the acknowledgment leaves the status glance's attention at ok
+
+**Found:** at review round one of #1079, U960, 2026-11-25.
+
+**The mechanism.** `attention` reads `gate` from the run records with an
+open gate. A night pass that stopped at `waiting-at-acknowledgment`, or at
+plain `waiting`, holds no open gate, so `attention` can read `ok` while
+`night.outcome` says the pass waits on a person. The brief's precedence
+names no night word, and the glance carries the outcome for the app.
+
+**Measured cost.** Read, not driven: the producer, a night pass stopping at
+the acknowledgment, was not driven. The icon would read `ok` while a pass
+waits; the glance's `night` key says so to anything that reads it.
+
+**Closes when:** the menu bar app's card (#1085) decides whether a waiting
+night outcome raises the icon, and if so the glance's `attention` takes it.
+Ledger only.
+
+---
+
+## R-2086. Runs waiting on a pending action with no open gate are not in the status glance
+
+**Found:** at the plan of #1079, U960, 2026-11-25.
+
+**The mechanism.** The glance's `gates` lists runs with an open gate, each
+with the gate's options, as the brief's shape asks. A run that waits on a
+pending human action and no gate has nothing to answer through
+`crate run decide`, so it is left out; `crate status`'s own check lines still
+list it as awaiting that action.
+
+**Measured cost.** Driven only as a run saved with no gate, which reads
+`gates` empty; a run carrying a pending action was read, not driven. An app
+reading the glance alone does not see such a run.
+
+**Closes when:** the menu bar app's card decides whether a pending action is
+shown, and the glance gains a key for it with a schema version bump. Ledger
+only.
+
+---
+
+## R-2087. An unplugged library drive reads the status glance's attention as fail for as long as it is unplugged
+
+**Found:** at review round two of #1079, U960, 2026-11-25.
+
+**The mechanism.** The backup record is on the library volume, so with the
+drive unplugged the glance reads `backup` unreadable and `attention` `fail`,
+as the brief's rule for an unreadable source asks; the human line reads
+`attention: fail (backup unreadable)`.
+
+**Measured cost.** Driven with the root renamed away. On a laptop that is
+often away from its library drive, the icon would read `fail` for the
+ordinary state of being unplugged.
+
+**Closes when:** the menu bar app's card (#1085) decides whether an absent
+volume earns a word of its own ahead of `fail`. Ledger only.
