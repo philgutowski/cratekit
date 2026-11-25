@@ -159,7 +159,8 @@ public enum StatusIcon: Equatable, Sendable, CaseIterable {
         case .gate: self = .gate
         case .running: self = .running
         case .backupDue: self = .backupDue
-        case .fail, .unknown: self = .fail
+        case .fail: self = .fail
+        case .unknown: self = .ok
         }
     }
 
