@@ -917,22 +917,20 @@ def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world, cratekit_
 
 
 def test_a_marks_year_is_local_and_an_unreadable_one_is_empty():
-    """The zone is pinned here (R-2071), so the local year is asked whatever zone the host runs in."""
-    import time
+    """The zone is pinned west of UTC (R-2071), so a UTC host asks the local year too."""
+    with deadca7_fixtures.west_of_utc():
+        assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
+        # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
+        assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
+    assert filing.year_of_mark("") == ""
+    assert filing.year_of_mark("soon") == ""
 
-    with pytest.MonkeyPatch.context() as zone:
-        zone.setenv("TZ", "America/New_York")
-        time.tzset()
-        try:
-            assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
-            # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
-            assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
-            assert filing.year_of_mark("2026-01-01T06:00:00Z") == "2026"
-            assert filing.year_of_mark("") == ""
-            assert filing.year_of_mark("soon") == ""
-        finally:
-            zone.undo()
-            time.tzset()
+
+def test_a_late_new_years_eve_mark_west_of_utc_files_into_the_local_year():
+    """u116 M13 (R-2071): the stamp's own digits name the UTC year, and the folder is the local one."""
+    with deadca7_fixtures.west_of_utc():
+        assert filing.year_of_mark("2026-01-01T04:59:59Z") == "2025"
+        assert filing.year_of_mark("2026-01-01T05:00:00Z") == "2026"
 
 
 def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(seams):
