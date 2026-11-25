@@ -189,7 +189,7 @@ extension Envelope: Decodable {
         // The version first, so a frame from another version is named as one
         // instead of failing on whichever key it moved.
         envelope = try keyed.decode(Int.self, forKey: .envelope)
-        guard envelope == envelope else {
+        guard envelope == supportedEnvelopeVersion else {
             throw EnvelopeError.unsupportedVersion(envelope)
         }
         schema = try keyed.decode(String.self, forKey: .schema)
@@ -201,7 +201,7 @@ extension Envelope: Decodable {
         ended = try keyed.decode(String.self, forKey: .ended)
         // Required keys with nullable values: absent is malformed, null is none.
         pendingHumanAction = try keyed.decode(PendingHumanAction?.self, forKey: .pendingHumanAction)
-        cause = try keyed.decode(Cause?.self, forKey: .cause)
+        cause = try keyed.decodeIfPresent(Cause.self, forKey: .cause)
         warnings = try keyed.decode([JSONValue].self, forKey: .warnings)
         resumable = try keyed.decode(Bool.self, forKey: .resumable)
         data = try keyed.decode(JSONValue.self, forKey: .data)
