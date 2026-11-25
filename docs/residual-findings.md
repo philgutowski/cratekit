@@ -956,3 +956,51 @@ more, options 2 and 3 are a card each. Ledger only.
 **Measured cost.** Driven by the review on the organize harness: no calibration, a track tagged `vox` and held in `Deep House / with vox`, moved from Low to High on the account; the change leaves `Deep House / with vox`, and `converge` reports the tree converged before and after, the vocal sub not compared. Reachability unmeasured: no producer of a held `with vox` on an uncalibrated library was driven, since adoption and the resort file it only on a calibrated one; a library calibrated once and then uncalibrated would hold one.
 
 **Closes when:** the mirror leaves a held vocal sub of the track's own folder alone wherever the vocal dimension is not compared, as the resort does, with a test on the uncalibrated harness. Ledger only: reachability is unmeasured and the behaviour is older than R-2062.
+
+---
+
+## R-2070. The CLI's portion narrowing in crate backup run is a second layer since U317, and kills no test
+
+**Found:** at the replay of U290's survey kill set, U337, 2026-11-25.
+
+**The mechanism.** u50-author W1 makes `if portion is not None:` in `src/cratekit/backup/cli.py` read `if False:`, so the CLI no longer narrows the plan to the named portion. Since U317 (`a94c7644`, a feature card outside U290) `plan_backup` plans only the named portion itself, so a backup asked for one portion still runs that portion alone, and the CLI's narrowing is a second layer covered by the first. Measured by the review on `tests/test_backup_cli.py`: at `a619edb0`, U317's parent, the mutant fails 14 tests against the unmutated control's 8, the six kills `docs/mutation/u337-replay/u337-survey-a.json` reads at the survey's commit; at `a94c7644`, 8 against 8. `u337-1.json` reads it zero on main.
+
+**Measured cost.** None to a person: what a backup does is unchanged, and the refactor lost no kill here (`survey-before.json` names the row as changed by a feature card). A guard layer that kills nothing is maintainer facing (METHOD: remove each guard layer alone).
+
+**Closes when:** the CLI's narrowing is removed as redundant with `plan_backup`'s, or a test drives the CLI with a plan that is not already narrowed and W1 is measured killed.
+
+---
+
+## R-2071. 38 guards the survey counted killed are killed by no Linux run, at the survey's commit or on main
+
+**Found:** at the replay of U290's survey kill set, U337, 2026-11-25.
+
+**The mechanism.** Each of these rows is recorded killed in its own unit's table, and so was counted in the 7,093 live killed rows of U290's survey, yet no test kills it on Linux: replayed on main (`docs/mutation/u337-replay/u337-1.json` to `u337-3.json`) and again at the survey's own commit `ff8e5ec` (`u337-survey-a`, `-b1`, `-b2a`, `-b2b`, `-r926.json`), every one read zero on the full suite, or died only of one of #702's inode tests, and at least one of its recorded killers runs on Linux (none is a known failure there). So the survey's own Linux tree did not kill them either: the kill its table recorded was taken on another machine, or on an earlier tree, or was a death of an unrelated test (several recorded killers are `tests/test_portability.py::test_the_repository_itself_is_clean` or the inode pair). The rows: `r1308.M10_count_unchecked` (modules/outbound/tidal_account.py), `r259.O1_no_tracks_guard` (label/sweep.py), `r259.O5_memo` (label/sweep.py), `r368-round-2.G6_ancestors_not_walked` (session/restore_cli.py), `r368-round-2.G14_the_destination_check_is_equality_only` (session/restore_cli.py), `r368.G5_paths_compared_as_strings` (session/restore_cli.py), `r424.B4_warning_copied` (favorites/cli.py), `r668-a.M11_no_frozen_list_skip` (acquire/cli.py), `r799-b.P6_one_file_is_one_group` (tagging/remap.py), `r923.N12_digest_drops_values` (write/row_defaults.py), `r926.G9_temporary_unresolved` (core/config.py), `u100-a.R1_slug_only_presence` (label/registry.py), `u112-b.A6_exported_not_product_made` (organize/account.py), `u113-a.A2_queue_order` (intake/account_playlists.py), `u116.M13_utc_year` (organize/filing.py), `u119.G16_read_back_blind_to_leftovers` (write/genre_favorites.py), `u125.D1_derive_test_tautology` (tests/test_reserved_causes.py), `u130-a.A1_removal_beats_addition` (sync/pair_merge.py), `u146-e.N3_owned_out_of_digest` (intake/native.py), `u165.F5_report_failed` (intake/filing.py), `u188.M5_repeat_kept` (intake/land_cli.py), `u190.G5_resume_one_job_only` (label/go.py), `u212.S2_download_refused_all` (cli/sync_land.py), `u212.S3_no_list_download` (cli/sync_land.py), `u214.M12_frozen_pairs` (organize/mirror_frozen.py), `u226.M18_waited_unformatted` (modules/outbound/tidal_account.py), `u227.R12_tree_filter` (organize/mirror_downloads.py), `u239.M07_beside_done` (label/go.py), `u28-skills-independent.S10_stamp_skill_name` (skills/cli.py), `u28-skills-independent.S13_expanduser` (skills/cli.py), `u28-skills-independent.S17_outcome_always_ok` (skills/cli.py), `u28-skills-independent.S20_packaged_root_via_file` (skills/cli.py), `u28-skills-independent.L9_command_comment_split` (tests/test_skills_lint.py), `u51-item-derivation.H1_export_item_not_payload` (export/cli.py), `u62.S7_naive_expiry_as_local` (acquire/provider_session.py), `u69-b.M16_next_command` (intake/missing_cli.py), `u71-b.B13_unlink_destination` (intake/landing.py), `u99-a.A13_by_name_unnormalized` (label/registry.py). Two more of the same kind, the gridless read back layer, have a residual of their own.
+
+**Measured cost.** None of these is a kill U290 lost: each is named in `survey-before.json` as not killed at the survey on Linux. But each is a guard no test is shown to kill, and several sit on paths that write or delete (`session/restore_cli.py`, `write/row_defaults.py`, `write/genre_favorites.py`, `sync/pair_merge.py`, `intake/landing.py`, `intake/filing.py`, `organize/filing.py`), so the board bar (d) is met for those. Whether the macOS battery kills any of them is unmeasured.
+
+**Closes when:** each row is measured on the macOS battery, and a row killed by no test anywhere gets a test that kills it, or is removed with the reason.
+
+---
+
+## R-2072. The read back layer of assert_created_rows_are_gridless kills no test, at the survey's commit or on main
+
+**Found:** at the replay of U290's survey kill set, U337, 2026-11-25.
+
+**The mechanism.** `assert_created_rows_are_gridless` in `src/cratekit/core/rb_writer.py` reads each row this session created back from SQL and refuses one carrying an analysis value. Two recorded guards of that read back are killed by no test: r746-a G7 (`if value not in EMPTY_ON_CREATE:` made `if False:`, so a value read from SQL is never a violation) and r746-d G5 (a content row held to the playlist tables' five columns, so a key or a rate rides in). Their recorded killers, `tests/test_intake_land_native.py::test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commit` and `::test_a_key_reaching_the_row_is_refused_from_sql_before_the_commit`, run and pass on Linux, and pass under either mutant: the taint they plant is refused by another layer first, so this layer, removed alone, is covered by nothing (METHOD: remove each guard layer alone).
+
+**Measured cost.** Measured, not driven to a user: each mutant read zero on the full suite at `bd7fe681` (`docs/mutation/u337-replay/u337-1.json`) and at the survey's commit `ff8e5ec` (`u337-survey-a.json`); the one kill under U290, in U298's partial table, was all `tests/test_config_test_root.py`, the r926 folder. A guard on the guarded writer's path, the absolute rule against writing a beat grid, kills nothing (board bar d). Which layer refuses the taint first, and whether a planted value can reach SQL past it, is unmeasured.
+
+**Closes when:** a test plants an analysis value that only the SQL read back can see (past the in memory judge and any later check) and both rows are measured killed, or the layer is shown redundant and removed with a composite naming what covers it.
+
+---
+
+## R-2073. The two inode tests of tests/test_repair_rows.py fail a full run at random on a cloud container, and read as kills
+
+**Found:** at the replay of U290's survey kill set, U337, 2026-11-25.
+
+**The mechanism.** `test_an_id_above_the_bound_that_is_the_files_inode_is_not_random` and `test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind` fail when run alone on these containers (both of them in three runs of three with the suite's options cleared here, one of them under the suite's own options) and fail inside a full parallel run some of the time, whatever the tree; #702 (U273) is where the battery learned they need a real disk. `cloud_battery.py baseline` records them as passing when its own full run passes them, so the driver does not subtract them, and a full run that fails one reads as a death of whatever row it measured.
+
+**Measured cost.** On this card alone: three null controls killed by one of them (u337-librosa-1-0-0-b's first run, u337-survey-b2 and u337-survey-b2b's first run), each batch invalid and run again; seven rows read killed only by one of them in a promoted full run (u264 M7 under librosa 1.0.1; at ff8e5ec u130-a A1, r923 N12 and u28 L9 in survey a, u165 F5 in survey b1, r259 O1 and u112-b A6 in survey b2a), which `survey.py` now refuses or reads as no kill; and one subset baseline refused red (u115 F17 and F8, u272 S13, u193 M25, whose only killers they are, so those four rows are unmeasured on Linux). Helpers that added the two ids to a scratch copy of their known failures, as U334 recorded, avoided the first two costs; a hand added id is what the cloud unit skill forbids. Maintainer facing.
+
+**Closes when:** the two tests are made deterministic on a container (or skipped where the filesystem cannot give the inode they need, named by the battery), so a full run reads them the same every time.
