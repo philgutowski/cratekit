@@ -19,10 +19,12 @@ public enum VerbResult: Equatable, Sendable {
     case envelope(Envelope, status: Int32, stderr: String)
     /// The crate path is not usable, so nothing was run.
     case setup(CrateSetup)
-    /// The verb ran past its timeout and was ended.
+    /// The verb ran past its timeout and was asked to stop, then killed; one
+    /// a kill had not ended within the grace is reported here too.
     case timedOut(after: TimeInterval, stderr: String)
-    /// The verb was ended by a signal it did not send itself, numbered here,
-    /// so a signal's number is never read as one of crate's exit codes.
+    /// The verb was ended by a signal the runner did not send at a timeout,
+    /// numbered here, so a signal's number is never read as one of crate's
+    /// exit codes.
     case signalled(Int32, stderr: String)
     /// Standard output was not an envelope. `firstBytes` is the start of what
     /// it held, empty only when it held nothing.
