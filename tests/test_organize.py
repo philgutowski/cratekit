@@ -917,11 +917,22 @@ def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world, cratekit_
 
 
 def test_a_marks_year_is_local_and_an_unreadable_one_is_empty():
-    assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
-    # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
-    assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
-    assert filing.year_of_mark("") == ""
-    assert filing.year_of_mark("soon") == ""
+    """The zone is pinned here (R-2071), so the local year is asked whatever zone the host runs in."""
+    import time
+
+    with pytest.MonkeyPatch.context() as zone:
+        zone.setenv("TZ", "America/New_York")
+        time.tzset()
+        try:
+            assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
+            # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
+            assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
+            assert filing.year_of_mark("2026-01-01T06:00:00Z") == "2026"
+            assert filing.year_of_mark("") == ""
+            assert filing.year_of_mark("soon") == ""
+        finally:
+            zone.undo()
+            time.tzset()
 
 
 def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(seams):
@@ -1796,17 +1807,3 @@ def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_t
     assert code == OK, done
     assert _areas(done)[rekordbox.AREA]["refused"]["reason"] == "backup-acknowledgment-missing"
 
-
-def test_a_late_new_years_eve_mark_west_of_utc_files_into_the_local_year():
-    """The zone is pinned here, so the local year is asked whatever zone the host runs in."""
-    import time
-
-    with pytest.MonkeyPatch.context() as zone:
-        zone.setenv("TZ", "America/New_York")
-        time.tzset()
-        try:
-            assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
-            assert filing.year_of_mark("2026-01-01T06:00:00Z") == "2026"
-        finally:
-            zone.undo()
-            time.tzset()
