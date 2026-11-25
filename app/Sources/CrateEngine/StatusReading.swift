@@ -134,6 +134,7 @@ public struct StatusState: Equatable, Sendable {
             next.failedAt = nil
         case .failure(let failure):
             // Never the last reading as current: it is kept only as lastGood.
+            next.current = nil
             next.failure = failure
             next.failedAt = at
         }
@@ -165,7 +166,7 @@ public enum StatusIcon: Equatable, Sendable, CaseIterable {
     /// The icon for what the app knows: a failed call reads `fail`, never
     /// the last reading's word.
     public init(_ state: StatusState) {
-        if let current = state.current {
+        if let current = state.current ?? state.lastGood {
             self = StatusIcon(current.glance.attention)
         } else if state.failure != nil {
             self = .fail
