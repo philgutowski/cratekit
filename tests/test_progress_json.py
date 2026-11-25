@@ -400,11 +400,22 @@ def test_a_watched_job_is_reported_on_each_change_and_once_after_the_drive(machi
 
     cfg, _script = machine
     job = _enqueue(cfg, "tag.folder", {"folder": "/staged"}, "a.flac", "b.flac")
-    stream = io.StringIO()
+    read = threading.Event()
+
+    class Stream(io.StringIO):
+        def write(self, text: str) -> int:
+            written = super().write(text)
+            read.set()
+            return written
+
+    stream = Stream()
     writer = progress.Writer(stream, verb="sync.land", events=True)
     monkeypatch.setattr(progress, "WATCH_SECONDS", 3600.0)
 
     with progress.watching(writer, "tag", job.job_id):
+        # The drive waits for the watch's first reading, or a loaded machine
+        # can finish it before the thread reads the queue at all.
+        assert read.wait(timeout=30)
         with jobs.open_store() as store:
             jobs.drive(store, job.job_id, lambda _job, _item: None)
 
