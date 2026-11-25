@@ -1,0 +1,221 @@
+name = "u337-survey-a"
+pass_kind = "replay"
+
+[[rows]]
+id = "r668-a.M11_no_frozen_list_skip"
+source = { table = "r668-a.json", id = "M11_no_frozen_list_skip" }
+description = "a job whose payload names no list is compared against an empty path and refuses any list named beside it"
+file = "src/cratekit/acquire/cli.py"
+surface = "maintainer"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+    if not frozen:
+        return
+    try:'''
+new = '    try:'
+
+[[rows]]
+id = "u62.S7_naive_expiry_as_local"
+source = { table = "u62.json", id = "S7_naive_expiry_as_local" }
+description = "Read the client's naive expiry as local time"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py"]
+old = '        if value.tzinfo is None:'
+new = '        if value.tzinfo is None and False:'
+
+[[rows]]
+id = "u50-author.W1_no_narrowing"
+source = { table = "u50-author.json", id = "W1_no_narrowing" }
+description = "Ignore the portion and run the whole plan for every item, so each item does the whole backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if portion is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u212.S2_download_refused_all"
+source = { table = "u212.json", id = "S2_download_refused_all" }
+description = "sync_land._download: a download that landed nothing ends the pass whatever is staged, round one's F1"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_crate_sync_skill.py", "tests/test_inbox_analyzed.py", "tests/test_rekordbox_visit_skill.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py"]
+old = '''
+        if not listed.staged:
+            raise _Done(DOWNLOAD)
+        return 0
+    report.check('''
+new = '''
+        raise _Done(DOWNLOAD)
+    report.check('''
+
+[[rows]]
+id = "u212.S3_no_list_download"
+source = { table = "u212.json", id = "S3_no_list_download" }
+description = "sync_land._download: no early return for a pass with no list, so it asks the download verb for a list that is not there"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_crate_sync_skill.py", "tests/test_inbox_analyzed.py", "tests/test_rekordbox_visit_skill.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py"]
+old = '''
+    if listed.path is None:
+        report.check(DOWNLOAD, "info", "nothing downloaded: every missing track is staged already")
+        return 0'''
+new = ''
+
+[[rows]]
+id = "r746-a.G7_sql_value_check_disarmed"
+source = { table = "r746-a.json", id = "G7_sql_value_check_disarmed" }
+description = "assert_created_rows_are_gridless: a value read from SQL is never a violation"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''
+            if value not in EMPTY_ON_CREATE:
+                violations.append(f"{table}.{name} = {value!r}")'''
+new = '''
+            if False:
+                violations.append(f"{table}.{name} = {value!r}")'''
+
+[[rows]]
+id = "r746-d.G5_content_row_read_back_against_five_not_ten"
+source = { table = "r746-d.json", id = "G5_content_row_read_back_against_five_not_ten" }
+description = "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key or a rate rides in. Measured again after the key taint test its zero bought"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS'
+new = '        policy = GRIDLESS_ON_CREATE_COLUMNS'
+
+[[rows]]
+id = "u28-skills-independent.S10_stamp_skill_name"
+source = { table = "u28-skills-independent.json", id = "S10_stamp_skill_name" }
+description = "the stamp stops recording which skill it belongs to, so a copied stamp cannot be told from its own"
+file = "src/cratekit/skills/cli.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py"]
+old = '\nskill = "{name}"'
+new = ''
+
+[[rows]]
+id = "u28-skills-independent.S13_expanduser"
+source = { table = "u28-skills-independent.json", id = "S13_expanduser" }
+description = "--into stops expanding a tilde, so a target given as ~/skills is created as a literal directory named ~"
+file = "src/cratekit/skills/cli.py"
+surface = "user"
+tests = ["tests/test_portability.py"]
+old = '    into = Path(ctx.args.into).expanduser() if ctx.args.into else default_target()'
+new = '    into = Path(ctx.args.into) if ctx.args.into else default_target()'
+
+[[rows]]
+id = "u28-skills-independent.S17_outcome_always_ok"
+source = { table = "u28-skills-independent.json", id = "S17_outcome_always_ok" }
+description = "the envelope reports OK even when nothing was installed, so an empty package reads as a successful install"
+file = "src/cratekit/skills/cli.py"
+surface = "user"
+tests = ["tests/test_portability.py"]
+old = '        outcome=Outcome.OK if checks else Outcome.NO_OP,'
+new = '        outcome=Outcome.OK,'
+
+[[rows]]
+id = "u28-skills-independent.S20_packaged_root_via_file"
+source = { table = "u28-skills-independent.json", id = "S20_packaged_root_via_file" }
+description = "packaged_root resolves by path arithmetic from __file__ rather than through importlib.resources"
+file = "src/cratekit/skills/cli.py"
+surface = "user"
+tests = ["tests/test_portability.py"]
+old = '    return resources.files("cratekit.skills") / "assets"'
+new = '    return Path(__file__).resolve().parent / "assets"'
+
+[[rows]]
+id = "u130-a.A1_removal_beats_addition"
+source = { table = "u130-a.json", id = "A1_removal_beats_addition" }
+description = "A removal wins over an addition, so a track removed on one side and re-added on the other is dropped"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '        if added or not removed:'
+new = '        if not removed:'
+
+[[rows]]
+id = "r799-b.P6_one_file_is_one_group"
+source = { table = "r799-b.json", id = "P6_one_file_is_one_group" }
+description = "plan: key a file under the library by its resolved name and not by the file itself"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''
+    try:
+        stat = resolved.stat()
+    except OSError:
+        return ("name", str(resolved))
+    return ("file", stat.st_dev, stat.st_ino)'''
+new = '    return ("name", str(resolved))'
+
+[[rows]]
+id = "u119.G16_read_back_blind_to_leftovers"
+source = { table = "u119.json", id = "G16_read_back_blind_to_leftovers" }
+description = "_read_back: a track still in Favorites after the removals is not a disagreement"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py"]
+old = '        if removed_too and live - wanted:'
+new = '        if False:'
+
+[[rows]]
+id = "r923.N12_digest_drops_values"
+source = { table = "r923.json", id = "N12_digest_drops_values" }
+description = "The digest no longer covers the values written"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py"]
+old = '''
+                "defaults": {column: str(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()},
+'''
+new = ''
+
+[[rows]]
+id = "u125.D1_derive_test_tautology"
+source = { table = "u125.json", id = "D1_derive_test_tautology" }
+description = "Restore the derive test's cause-total assert to x == x so a broken reserved count stays green there"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''
+    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (len(causes), len(non_reserved), len(CAUSES)), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+'''
+new = '''
+    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+'''
+
+[[rows]]
+id = "u28-skills-independent.L9_command_comment_split"
+source = { table = "u28-skills-independent.json", id = "L9_command_comment_split" }
+description = "the fenced text stops being split into command and comment, so a retired name in a history note is checked as a command"
+file = "tests/test_skills_lint.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py"]
+old = '''
+            elif " #" in line:
+                command, _, tail = line.partition(" #")
+                command_parts.append(command)
+                comment_parts.append(tail)'''
+new = '''
+            elif " #" in line:
+                command_parts.append(line)'''

@@ -498,6 +498,56 @@ def cmd_combine(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# at-survey: the rows this card read zero on main, measured again at the survey
+# ---------------------------------------------------------------------------
+
+
+def known_failures(path: Path) -> frozenset[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return frozenset(one.strip() for one in lines if one.strip() and not one.startswith("#"))
+
+
+def cmd_at_survey(args) -> int:
+    """Write the rows of the named batches that no test killed on main, at the text
+    and with the tests the survey recorded, for a replay at the survey's commit.
+
+    A row whose every recorded killer fails on Linux for the machine (the
+    known failures file of main's baseline) is left out: it cannot be killed
+    by them on either commit, and is read as unmeasured here. A row measured
+    again in a later batch is left out, and the rows of `r926.json`, whose
+    mutant can leave a folder outside the test roots, are written only with
+    `--r926`, so they run in a batch of their own.
+    """
+    known = known_failures(args.known_failures)
+    survey = {row.source: row for row in survey_rows(args.survey_root)}
+    body: list[str] = []
+    left = 0
+    for name in args.batches:
+        table = K.read_measured(HERE / f"{name}.json")
+        for row in table["rows"]:
+            if row.get("status") == "killed" or (
+                row.get("status") == "collect-error" and K.killed(row)
+            ):
+                continue
+            source = K.source_of(row)
+            if source in SUPERSEDED or K.row_id(source) in args.skip:
+                continue
+            if (source[0] == "r926.json") != args.r926:
+                continue
+            recorded = survey[source]
+            killers = recorded_row(source).get("killed") or []
+            if killers and all(one in known for one in killers):
+                left += 1
+                continue
+            body += K.render_row(source, recorded.description, recorded.surface, recorded.anchor)
+    K.write_rows(args.out, args.out.stem.removesuffix("-rows"), body)
+    print(
+        f"{body.count('[[rows]]')} rows written to {args.out.name}; {left} left out, every killer a known failure"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--survey-root", type=Path, required=True)
@@ -508,6 +558,13 @@ def build_parser() -> argparse.ArgumentParser:
     rows.add_argument("--batches", type=int, default=3)
     rows.set_defaults(run=cmd_rows)
     verbs.add_parser("combine").set_defaults(run=cmd_combine)
+    at = verbs.add_parser("at-survey")
+    at.add_argument("batches", nargs="+")
+    at.add_argument("--known-failures", type=Path, required=True)
+    at.add_argument("--out", type=Path, required=True)
+    at.add_argument("--skip", nargs="*", default=[], help="row ids to leave out")
+    at.add_argument("--r926", action="store_true", help="write only the rows of r926.json")
+    at.set_defaults(run=cmd_at_survey)
     joined = verbs.add_parser("join")
     joined.add_argument("--out-dir", type=Path, default=HERE)
     joined.add_argument(
