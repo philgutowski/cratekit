@@ -282,7 +282,9 @@ def merge(
                 kept.add(key)
                 over_removal.append(key)
             continue
-        if added or not removed:
+        # R-2071: an added track that was also removed took the branch above,
+        # so here an added track is never removed, and not removed is the test.
+        if not removed:
             kept.add(key)
 
     leader = ACCOUNT
