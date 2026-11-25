@@ -1,0 +1,245 @@
+name = "r2075"
+pass_kind = "light"
+
+# The four layers beside the gridless read back that R-2072's table read zero on
+# the full suite (R-2075, card 1077): the read back's pending source and its flush
+# (S2, S3), its place inside commit_guarded's rollback (S11), the landing's own
+# rollback (C11) and the landing's read back after the commit (L1), kept under
+# R-2072's ids; then variants of each layer, and a fixed sample of the read back's
+# rows R-2072 killed.
+
+[[rows]]
+id = "S2_pending_creations_not_read_back"
+description = "assert_created_rows_are_gridless: only the binding's buffer is read back, so a row added with the binding's tracking off is never read (R-2072 S2)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''    instances = {**_registry_created_instances(db), **pending}'''
+new = '''    instances = {**_registry_created_instances(db)}'''
+
+[[rows]]
+id = "S2b_pending_set_read_from_the_dirty_set"
+description = "assert_created_rows_are_gridless: the pending source reads the session's changed objects instead of its new ones, a nearby spelling"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''    pending = {id(obj): obj for obj in session.new}'''
+new = '''    pending = {id(obj): obj for obj in session.dirty}'''
+
+[[rows]]
+id = "S3_deliberate_flush_dropped"
+description = "assert_created_rows_are_gridless: the flush before the read back is skipped, so a row still pending has no identity and is passed over (R-2072 S3)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''    try:
+        session.flush()
+    except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
+        return'''
+new = '''    try:
+        pass
+    except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
+        return'''
+
+[[rows]]
+id = "S3b_flush_before_the_pending_set_is_read"
+description = "assert_created_rows_are_gridless: the flush runs before the pending set is gathered, which it empties, so the ordering the docstring calls load bearing is reversed"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''    pending = {id(obj): obj for obj in session.new}
+    instances = {**_registry_created_instances(db), **pending}
+    if not instances:
+        return
+
+    # The flush populates the primary keys.
+    try:
+        session.flush()
+    except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
+        return'''
+new = '''    try:
+        session.flush()
+    except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
+        return
+    pending = {id(obj): obj for obj in session.new}
+    instances = {**_registry_created_instances(db), **pending}
+    if not instances:
+        return'''
+
+[[rows]]
+id = "S11_read_back_after_the_rollback_point"
+description = "commit_guarded: the read back runs outside the block that rolls back, so a refusal leaves the tainted session pending (R-2072 S11)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''            assert_created_rows_are_gridless(db)
+            assert_foreign_untouched(db)
+        except RekordboxUnavailable:
+            db.rollback()
+            raise'''
+new = '''            assert_foreign_untouched(db)
+        except RekordboxUnavailable:
+            db.rollback()
+            raise
+        assert_created_rows_are_gridless(db)'''
+
+[[rows]]
+id = "S11b_refusal_not_rolled_back"
+description = "commit_guarded: a guard's refusal is raised without the rollback, so every refused write is left pending on the handle"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''            assert_foreign_untouched(db)
+        except RekordboxUnavailable:
+            db.rollback()
+            raise'''
+new = '''            assert_foreign_untouched(db)
+        except RekordboxUnavailable:
+            raise'''
+
+[[rows]]
+id = "C11_landing_does_not_roll_back_a_refusal"
+description = "native.apply_rows: a failed landing is not rolled back by the landing itself, so a failure past commit_guarded's own rollback leaves its rows pending (R-2072 C11)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+pairs_with = "S11_read_back_after_the_rollback_point"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''            trees.rollback_quietly(db)
+            if not witness.landed:'''
+new = '''            if not witness.landed:'''
+
+[[rows]]
+id = "C12_quiet_rollback_rolls_nothing_back"
+description = "trees.rollback_quietly: the quiet rollback every writer calls on a failure does nothing"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_words.py"]
+old = '''    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause'''
+new = '''    try:
+        pass
+    except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause'''
+
+[[rows]]
+id = "L1_after_commit_read_back_disarmed"
+description = "native.assert_rows_gridless: a landed row's analysis value read after the commit is never refused (R-2072 L1)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_rehearse.py", "tests/test_intake_writers_native.py"]
+old = '''        if value not in rb_writer.EMPTY_ON_CREATE
+    ]'''
+new = '''        if False
+    ]'''
+
+[[rows]]
+id = "L2_land_does_not_read_its_rows_back"
+description = "intake land: the read back after the commit is not called on the landed collection"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''    if landed is None:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+    native.assert_rows_gridless(landed.collection)
+    native.assert_rows_identified(landed.collection)'''
+new = '''    if landed is None:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+    native.assert_rows_identified(landed.collection)'''
+
+[[rows]]
+id = "L3_rehearsal_does_not_read_its_rows_back"
+description = "intake land --rehearse: the read back after the commit is not called on the area's landed collection"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''                )
+            native.assert_rows_gridless(landed.collection)
+            native.assert_rows_identified(landed.collection)
+            rows_after = _active_rows(db)'''
+new = '''                )
+            native.assert_rows_identified(landed.collection)
+            rows_after = _active_rows(db)'''
+
+[[rows]]
+id = "L4_intake_file_does_not_read_its_row_back"
+description = "intake file: the read back after the commit is not called on the landed row"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py"]
+old = '''    native.assert_rows_gridless(landed)
+    native.assert_rows_identified(landed)'''
+new = '''    native.assert_rows_identified(landed)'''
+
+[[rows]]
+id = "L5_after_commit_read_back_reads_the_five_not_the_ten"
+description = "native.LEFT_EMPTY: the landing's read back after the commit selects the playlist tables' five columns, so a key or a rate is never read"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_rehearse.py", "tests/test_intake_writers_native.py"]
+old = '''LEFT_EMPTY: tuple[str, ...] = tuple(sorted(rb_writer.CONTENT_ROW_EMPTY_COLUMNS))'''
+new = '''LEFT_EMPTY: tuple[str, ...] = tuple(sorted(rb_writer.GRIDLESS_ON_CREATE_COLUMNS))'''
+
+[[rows]]
+id = "G7_sql_value_check_disarmed"
+description = "assert_created_rows_are_gridless: a value read from SQL is never a violation (sample, R-2072 G7)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''            if value not in EMPTY_ON_CREATE:
+                violations.append(f"{table}.{name} = {value!r}")'''
+new = '''            if False:
+                violations.append(f"{table}.{name} = {value!r}")'''
+
+[[rows]]
+id = "G5_content_row_read_back_against_five_not_ten"
+description = "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key rides in (sample, R-2072 G5)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS'''
+new = '''        policy = GRIDLESS_ON_CREATE_COLUMNS'''
+
+[[rows]]
+id = "S1_registry_creations_not_read_back"
+description = "assert_created_rows_are_gridless: only the session's pending objects are read back, so a row the binding already flushed is never read (sample, R-2072 S1)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''    instances = {**_registry_created_instances(db), **pending}'''
+new = '''    instances = {**pending}'''
+
+[[rows]]
+id = "S5_identity_skip_inverted"
+description = "assert_created_rows_are_gridless: a row with an identity is passed over, so no flushed row is read back (sample, R-2072 S5)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''        if not identity:
+            continue'''
+new = '''        if identity:
+            continue'''
+
+[[rows]]
+id = "S9_violations_never_raised"
+description = "assert_created_rows_are_gridless: violations are gathered and never raised (sample, R-2072 S9)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''    if violations:
+        raise _unavailable(
+            "whitelist-violation",
+            "a row this session creates carries analysis data, which this product "'''
+new = '''    if False:
+        raise _unavailable(
+            "whitelist-violation",
+            "a row this session creates carries analysis data, which this product "'''
+
+[[rows]]
+id = "S10_read_back_not_called_at_commit"
+description = "commit_guarded: the SQL read back is not called before the commit (sample, R-2072 S10)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''            assert_created_rows_are_gridless(db)
+            assert_foreign_untouched(db)'''
+new = '''            assert_foreign_untouched(db)'''
