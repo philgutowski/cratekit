@@ -247,7 +247,7 @@ public enum StatusMenu {
     /// The menu for the current reading: the reading, then when it was read,
     /// so a reading an open menu or a sleeping Mac kept is seen as old.
     public static func lines(for reading: GoodReading, timeZone: TimeZone = .current) -> [MenuLine] {
-        readingLines(for: reading) + [MenuLine(.item, "Read at \(stamp(reading.at, timeZone))")]
+        readingLines(for: reading)
     }
 
     /// The lines of one reading, its ages measured at the reading's time.
@@ -357,7 +357,7 @@ public enum StatusMenu {
         case .unreadable(let runId, let message):
             return MenuLine(.problem, "Run \(runId) could not be read: \(message)")
         case .gate(let gate):
-            let writes = "writes no database"
+            let writes = gate.writesDatabase ? "writes the database" : "writes no database"
             let old = gate.old ? ", old" : ""
             return MenuLine(
                 .item, "\(gate.verb) at \(gate.gate), \(waiting(gate.since, at: at)), \(writes)\(old)")
