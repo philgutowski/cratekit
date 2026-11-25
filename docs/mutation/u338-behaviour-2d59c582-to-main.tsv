@@ -45,7 +45,7 @@ analysis_check/waiting_on_the_visit	analysis_check/waiting_on_the_visit: command
 analysis_check/waiting_on_the_visit	analysis_check/waiting_on_the_visit: command 2, `crate --output json analyze check`: stderr differs	U327	bf177ec8	no
 cli/every_toggle_off_and_a_missing_extra	cli/every_toggle_off_and_a_missing_extra: command 1, `crate (toggles and the stub)`: stdout differs	U327+U339+U340+U958	bf177ec8+08cfce6d+f59571db+a1fe7c99	no
 cli/help_of_every_verb	cli/help_of_every_verb: command 9, `crate adopt --help`: stdout differs	U339	b1d8560e	no
-cli/help_of_every_verb	cli/help_of_every_verb: command 13, `crate analyze --help`: stdout differs	U343+U327	b1e44ba9+bf177ec8	no
+cli/help_of_every_verb	cli/help_of_every_verb: command 13, `crate analyze --help`: stdout differs	U343+U327+U342	b1e44ba9+bf177ec8+43ff858e	no
 cli/help_of_every_verb	cli/help_of_every_verb: command 14, `crate analyze adopt --help`: only in the second capture	U327	bf177ec8	no
 cli/help_of_every_verb	cli/help_of_every_verb: command 16, `crate analyze restamp --help`: stdout differs	U344	83d1b250	no
 cli/help_of_every_verb	cli/help_of_every_verb: command 19, `crate analyze vocals --help`: stdout differs	U343	b1e44ba9	no
@@ -57,7 +57,7 @@ cli/help_of_every_verb	cli/help_of_every_verb: command 135, `crate sync removed 
 cli/help_of_every_verb	cli/help_of_every_verb: command 140, `crate tag --help`: stdout differs	U339+U340	08cfce6d+f59571db	no
 cli/help_of_every_verb	cli/help_of_every_verb: command 150, `crate tag second --help`: only in the second capture	U340	f59571db	no
 cli/help_of_every_verb	cli/help_of_every_verb: command 151, `crate tag set --help`: only in the second capture	U339	08cfce6d	no
-cli/the_registry_value_for_value	cli/the_registry_value_for_value: command 1, `crate (the registry)`: stdout differs	U958+U339+U340+U327+U343+U331(epic)	a1fe7c99+08cfce6d+f59571db+bf177ec8+b1e44ba9+c222c10e	yes (U331 part)
+cli/the_registry_value_for_value	cli/the_registry_value_for_value: command 1, `crate (the registry)`: stdout differs	U958+U339+U340+U327+U343+U342+U331(epic)	a1fe7c99+08cfce6d+f59571db+bf177ec8+b1e44ba9+c222c10e+43ff858e	yes (U331 part)
 config/each_config_the_loader_turns_away	config/each_config_the_loader_turns_away: command 9, `crate --output json profile show`: stdout differs	U339+U340+U958	08cfce6d+f59571db+a1fe7c99	no
 config/the_config_written_shown_and_changed	config/the_config_written_shown_and_changed: command 2, `crate --output json profile show`: stdout differs	U339+U340+U958	08cfce6d+f59571db+a1fe7c99	no
 config/the_taxonomies_and_the_tables_dump_equal	config/the_taxonomies_and_the_tables_dump_equal: file causes.json: bytes differ, first at offset 7329 (61816 bytes and 63040)	U327+R-1924+U340+U339+R-1716	c8e604f9+138de275+f59571db+08cfce6d+65b02c2a	no
