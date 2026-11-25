@@ -58,7 +58,7 @@ def test_a_refusal_keeps_its_screen_beside_the_offer_it_binds():
     plan = _plan(SHOWN, "One", "Two")
     cause = _reached(state, _spec(), plan=plan, context={"area": "a"}, pinned={"database": "db-1"})
     screen = state.screens[GATE]
-    assert screen.kind == gates.SCREEN_REQUIRED
+    assert screen.kind == gates.SCREEN_OPEN
     assert (screen.prompt, screen.options, screen.explicit) == (
         "Apply this plan?", ("apply", "abort"), True,
     )
@@ -98,14 +98,34 @@ def test_a_stale_refusal_replaces_the_screen_and_its_offer_together():
     assert gates.waiting(_reloaded(state)) == gates.Waiting(GATE, screen=screen)
 
 
-def test_an_answer_recorded_leaves_nothing_waiting_and_the_pass_keeps_no_screen():
+def test_an_answer_recorded_drops_the_screen_and_leaves_nothing_waiting():
+    """Run records are never pruned, so an answer leaves the record as small as it was."""
     state = _state()
     _reached(state, _spec(), plan=_plan(SHOWN, "One"))
     gates.record(state, _spec(), "apply", actor="a-person")
-    assert gates.waiting(state) is None, "an answered gate read as waiting"
-    assert gates.Gates(state=state).require(_spec(), plan=_plan(SHOWN, "One")) == "apply"
     assert state.screens == {}
-    assert "screens" not in state.to_json(), "a run with nothing waiting grew a key"
+    assert "screens" not in state.to_json(), "a run with nothing waiting kept a screen"
+    assert gates.waiting(state) is None, "an answered gate read as waiting"
+
+
+def test_a_screen_kept_beside_an_answer_over_its_plan_is_not_waiting():
+    """The record the dispatcher leaves when a verb fails after its gate passed."""
+    state = _state()
+    _reached(state, _spec(), plan=_plan(SHOWN, "One"))
+    kept = state.screens[GATE]
+    gates.record(state, _spec(), "apply", actor="a-person")
+    state.screens[GATE] = kept
+    assert gates.waiting(state) is None, "an answered gate read as waiting"
+
+
+def test_a_gate_that_passes_keeps_no_screen():
+    spec = _spec(explicit=False)
+    state = _state()
+    _reached(state, spec, plan=_plan(SHOWN, "One"))
+    assert GATE in state.screens
+    assert gates.Gates(state=state, supplied={GATE: "apply"}).require(
+        spec, plan=_plan(SHOWN, "One")) == "apply"
+    assert state.screens == {}
 
 
 def test_an_unknown_inline_option_keeps_its_screen_and_the_run_waits_on_it():
@@ -202,7 +222,7 @@ def test_a_stale_answer_from_before_this_card_waits_with_its_screen_missing():
 
 
 def test_an_unreadable_kept_screen_is_left_out_and_the_gate_named_missing():
-    for broken in ("not a screen", {"kind": "decision-required"}, {"shown": "{not json"}):
+    for broken in ("not a screen", {"kind": "open"}, {"shown": "{not json"}):
         state = gates.RunState.from_json(_old_record(screens={GATE: broken}))
         assert state.screens == {}
         assert gates.waiting(state).missing is not None
@@ -282,7 +302,7 @@ def test_run_show_in_another_process_shows_the_screen_the_refusal_carried(config
     gate = json.loads(shown.stdout)["data"]["summary"]["gate"]
     assert gate == {
         "name": PROFILE_GATE,
-        "kind": "decision-required",
+        "kind": "open",
         "prompt": detail["prompt"],
         "options": detail["options"],
         "explicit": detail["explicit"],
@@ -339,7 +359,7 @@ def test_a_stale_refusal_shows_in_run_show_as_the_moved_plan(configured):
     detail = stale["cause"]["detail"]
     gate = _gate_of(run_id)
     assert (gate["kind"], gate["digest"], gate["shown"]) == (
-        "decision-stale", detail["actual"], detail["shown"])
+        "stale", detail["actual"], detail["shown"])
     _, _, err = _drive(["--run", run_id, *TO_SLIM])
     printed = _printed(err, render.STALE_SCREEN)
     _, out, _ = _drive(["run", "show", run_id])

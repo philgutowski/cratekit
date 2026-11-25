@@ -909,6 +909,9 @@ def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
         recorded=output.timestamp(),
         digest=state.offers.get(spec.name),
     )
+    # Answered, the screen is history (U961): run records are never pruned,
+    # so an answer or a retirement leaves the record as small as it was.
+    state.screens.pop(spec.name, None)
     if state.open_gate == spec.name:
         state.open_gate = None
 
@@ -1280,7 +1283,7 @@ __all__ = [
     "RUN_SCHEMA_VERSION",
     "SCREEN_KINDS",
     "SCREEN_LIMIT",
-    "SCREEN_REQUIRED",
+    "SCREEN_OPEN",
     "SCREEN_STALE",
     "SCREEN_UNKNOWN_OPTION",
     "SIBLING_RUN",
