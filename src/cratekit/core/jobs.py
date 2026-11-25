@@ -376,15 +376,50 @@ def get(store: JobStore, job_id: str) -> Job:
 
 def list_jobs(store: JobStore, *, states: Sequence[JobState] | None = None) -> tuple[Job, ...]:
     """Every job, newest first, optionally filtered to a set of states."""
+    return _select_jobs(store.conn, states)
+
+
+def _select_jobs(
+    conn: sqlite3.Connection, states: Sequence[JobState] | None
+) -> tuple[Job, ...]:
     if states:
         placeholders = ", ".join("?" for _ in states)
-        rows = store.conn.execute(
+        rows = conn.execute(
             f"SELECT * FROM jobs WHERE state IN ({placeholders}) ORDER BY created DESC",
             tuple(str(state) for state in states),
         ).fetchall()
     else:
-        rows = store.conn.execute("SELECT * FROM jobs ORDER BY created DESC").fetchall()
+        rows = conn.execute("SELECT * FROM jobs ORDER BY created DESC").fetchall()
     return tuple(_job_from_row(row) for row in rows)
+
+
+#: How long a read only look at the queue waits on a lock; a reader of a
+#: write-ahead-log store waits only through a recovery, so this is a backstop.
+READ_ONLY_TIMEOUT = 2.0
+
+
+def read_jobs(path: Path, *, states: Sequence[JobState] | None = None) -> tuple[Job, ...]:
+    """Every job, as :func:`list_jobs`, off a connection that cannot write (U960).
+
+    For a reader that must change nothing: unlike :func:`open_store` it makes
+    no directory, sets no mode and creates no schema. A queue that does not
+    exist is no job; any other failure to open or read it raises, so it never
+    reads as an empty queue. SQLite may still make the log's two sidecar files
+    beside the queue, as every reader of the store does; the queue's own bytes
+    are not changed.
+    """
+    try:
+        path.stat()
+    except FileNotFoundError:
+        return ()
+    conn = sqlite3.connect(
+        f"{path.absolute().as_uri()}?mode=ro", uri=True, timeout=READ_ONLY_TIMEOUT
+    )
+    try:
+        conn.row_factory = sqlite3.Row
+        return _select_jobs(conn, states)
+    finally:
+        conn.close()
 
 
 #: Identifiers per ``IN`` clause, under SQLite's parameter limit; an unswept
@@ -1290,6 +1325,7 @@ __all__ = [
     "claim_batch", "commit_artifact", "complete_item", "decline_item", "drift", "drive",
     "driver_lock", "enqueue", "evidence_or_raise", "fail_item", "frozen_config", "get",
     "interruptible", "items", "join_run", "list_jobs", "lock_path", "log_path", "open_store",
+    "READ_ONLY_TIMEOUT", "read_jobs",
     "progress", "queue_path", "raise_for_state", "read_reports", "reconcile", "release_claims",
     "reopen", "reported", "resumed", "retry", "spawn", "states_of", "store_dir", "transition",
 ]

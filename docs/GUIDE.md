@@ -152,11 +152,28 @@ where each identity stands in the hour and any cooldown.
    rekordbox database refuses while either runs.
 2. Mount the library volume.
 3. `crate doctor`; read the `FAIL` lines first.
-4. `crate status`: open runs, each source's sync state, and any tree whose
-   membership no longer matches the database. Gates idle over a week are
-   summarised in one line with the command that retires them.
+4. `crate status`: one `attention` line first, then open runs, each source's
+   sync state, and any tree whose membership no longer matches the database.
+   Gates idle over a week are summarised in one line with the command that
+   retires them.
 
 ## Where it stands
+
+`crate status` opens with one word, `attention`, for what needs a person
+first: `fail` when something it reads could not be read (the line names what)
+or a backup completion is recorded ahead of now, `gate` when a run
+waits at a gate, `running` when a job is running, `backup-due` when either
+backup portion is five days old or more or has no age on record, and
+otherwise `ok`. For an app or a script, `crate --output json status` carries
+the same facts as one object, `data.summary.glance`: both backup ages, whether
+rekordbox is `closed`, `open` or `unknown`, the running jobs, every run at a
+gate (with whether it writes the database and whether `crate run retire`
+would retire it), and the last night pass as `crate sync night --last` reads
+it. A source it could not read is `{"unreadable": "..."}` in its own key,
+never an empty list, `never-recorded` or `closed`; the backup ages read
+unreadable while the library root is absent, or is not on the volume recorded
+for it, since their record is on that volume. It only reads, and
+`tests/schemas/status_glance.v1.json` is its shape.
 
 Which workflows have run on a real library, and with what result, is recorded
 per workflow in [`cutover.md`](cutover.md). For a workflow not recorded there,
@@ -1892,6 +1909,16 @@ A fresh invocation without `--run` mints a new run, which meets the gate again.
 Without `--actor` the answer is recorded as `cli` at a terminal and `session`
 without one.
 
+- `crate run show RUN_ID` shows the gate the run waits at as its refusal
+  showed it, the question, the options, the plan and its digest, from any
+  terminal and without running the verb again: the screen is kept with the run
+  when the gate refuses, and dropped when it is answered (`run decide`, `run
+  retire`) or passes. `--output json` carries it
+  as `data.summary.gate`, null when nothing waits. A plan past 64 KiB is kept
+  short, the first items of each list and a count of the rest, and says so
+  with the command that shows it whole. A gate that opened before screens were
+  kept says it has none to show and names that command, `crate --run RUN_ID
+  VERB ...`.
 - A gate that shows a plan is answered only once its run has shown it. On a
   verb with two gates (organize, sync pair, intake land, export set, label
   playlists), answering the second early is refused as `gate-not-reached`.

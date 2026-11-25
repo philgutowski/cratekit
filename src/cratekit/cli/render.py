@@ -15,7 +15,7 @@ from pathlib import PurePath
 from types import MappingProxyType
 from typing import Any
 
-from cratekit.cli import registry
+from cratekit.cli import gates, registry
 from cratekit.cli.output import Envelope
 from cratekit.core import cause as cause_module
 from cratekit.core.cause import Cause
@@ -274,6 +274,34 @@ def render_checks(envelope: Envelope) -> list[str]:
         if words:
             lines.append(f"         fix: {words}")
     return lines
+
+
+def render_attention(envelope: Envelope) -> list[str]:
+    """``crate status``'s one line naming its glance's ``attention`` word (U960), or nothing.
+
+    Gated on the payload, never the verb's name, as the check table is. Each
+    key that could not be read is named after the word.
+    """
+    if not envelope.schema.startswith("diagnostic/"):
+        return []
+    summary = envelope.data.get("summary")
+    glance = summary.get("glance") if isinstance(summary, Mapping) else None
+    word = glance.get("attention") if isinstance(glance, Mapping) else None
+    if not isinstance(word, str) or not word:
+        return []
+    unread = [
+        str(key)
+        for key, value in glance.items()
+        if _unread(value)
+        or (isinstance(value, (list, tuple)) and any(_unread(item) for item in value))
+    ]
+    # A person reading ``fail`` is told what could not be read, not sent to JSON.
+    return [f"attention: {word}" + (f" ({', '.join(unread)} unreadable)" if unread else "")]
+
+
+def _unread(value: Any) -> bool:
+    """Whether a glance value is a source, or one of its items, that could not be read."""
+    return isinstance(value, Mapping) and "unreadable" in value
 
 
 def render_review_set(envelope: Envelope) -> list[str]:
@@ -748,6 +776,7 @@ def render(envelope: Envelope, *, drive: Sequence[str] | None = None) -> str:
         lines.append(f"{envelope.verb}: {envelope.outcome}")
     else:
         lines.append(f"{envelope.verb}: {envelope.outcome} ({envelope.exit_code.name})")
+    lines += render_attention(envelope)
 
     pending = envelope.pending_human_action
     if pending is not None:
@@ -772,6 +801,7 @@ def render(envelope: Envelope, *, drive: Sequence[str] | None = None) -> str:
     lines += render_job_list(envelope)
     lines += render_stale_cancel(envelope)
     lines += render_import_proof(envelope)
+    lines += render_waiting_gate(envelope)
 
     for warning in envelope.warnings:
         lines.append(f"warning [{warning.get('code', '?')}]: {warning.get('message', '')}")
@@ -897,6 +927,76 @@ def render_gate(cause: Cause) -> str:
     return "\n".join(lines) + "\n"
 
 
+#: The verb whose summary carries a waiting gate's kept screen (U961).
+_RUN_SHOW = "run.show"
+
+
+def render_waiting_gate(envelope: Envelope) -> list[str]:
+    """The gate ``crate run show`` names as waiting, on the screen its refusal printed (U961).
+
+    A kept screen is rendered by :func:`render_gate` from the fields the
+    refusal carried, so a person reads in another process what the refusal
+    printed; a cut screen, and a gate whose screen cannot be shown, each name
+    the command that shows the whole plan. Nothing for any other verb.
+    """
+    if envelope.verb != _RUN_SHOW:
+        return []
+    summary = envelope.data.get("summary")
+    gate = summary.get("gate") if isinstance(summary, Mapping) else None
+    if not isinstance(gate, Mapping):
+        return []
+    name = gate.get("name", "?")
+    missing = gate.get("screen_missing")
+    if isinstance(missing, Mapping):
+        return [
+            "",
+            f"The run waits at {name}, with no screen to show: {missing.get('reason')}.",
+            f"  show it: {missing.get('command')}",
+            f"  answer:  {gate.get('answer')}",
+        ]
+    stale = gate.get("kind") == gates.SCREEN_STALE
+    detail: dict[str, Any] = {
+        "gate": name,
+        "options": list(gate.get("options") or ()),
+        "prompt": gate.get("prompt"),
+        "explicit": gate.get("explicit"),
+        "run_id": summary.get("run_id"),
+    }
+    if gate.get("shown") is not None:
+        detail["shown"] = gate["shown"]
+    screen = Cause(
+        reason="decision-stale" if stale else "decision-required",
+        message=f"run {summary.get('run_id')} waits at the gate {name!r}",
+        remediation=cause_module.Remediation(
+            remedy=Remedy.REPLAN_THEN_DECIDE if stale else Remedy.ANSWER_DECISION
+        ),
+        detail=detail,
+    )
+    # A cut is said before the screen, so it is read before the items are.
+    cut = gate.get("cut")
+    lines = [""] + (_cut_lines(cut, gate.get("continue")) if isinstance(cut, Mapping) else [])
+    return lines + render_gate(screen).splitlines()
+
+
+def _cut_lines(cut: Mapping[str, Any], command: Any) -> list[str]:
+    """What a kept screen left out to stay small, and how to see it whole (U961)."""
+    lists = cut.get("lists")
+    if isinstance(lists, Mapping) and lists:
+        said = "; ".join(
+            f"{name}: the first {one.get('kept')}, and {one.get('left_out')} more not kept"
+            for name, one in lists.items()
+            if isinstance(one, Mapping)
+        )
+    else:
+        dropped = ", ".join(str(one) for one in cut.get("dropped") or ())
+        said = f"only the digest and the count, not {dropped or 'the facts'}"
+    return [
+        f"The run kept this screen short, {cut.get('limit')} characters at most: {said}.",
+        f"  whole:   {command}",
+        "",
+    ]
+
+
 __all__ = [
     "access_note",
     "install_command",
@@ -905,10 +1005,12 @@ __all__ = [
     "remedy_text",
     "render",
     "render_cause",
+    "render_attention",
     "render_checks",
     "render_gate",
     "render_import_proof",
     "render_job_state",
     "render_stale_cancel",
     "render_review_set",
+    "render_waiting_gate",
 ]

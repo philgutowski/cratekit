@@ -270,6 +270,149 @@ class Decision:
         )
 
 
+#: What a kept screen was raised as (U961): an open gate's refusal, the gate's
+#: own stale over a moved plan, or an option the gate does not offer. Words of
+#: their own, never a cause's reason, since a screen is not a refusal.
+SCREEN_OPEN = "open"
+SCREEN_STALE = "stale"
+SCREEN_UNKNOWN_OPTION = "unknown-option"
+SCREEN_KINDS: tuple[str, ...] = (SCREEN_OPEN, SCREEN_STALE, SCREEN_UNKNOWN_OPTION)
+
+#: The most a kept screen's ``shown`` takes, in characters of its compact JSON
+#: (U961). Every reader that scans the run records reads each one whole, the
+#: sibling warning on each gated database verb, ``run retire`` and ``crate
+#: status`` among them, so a plan of thousands of items kept whole would slow
+#: every gated verb. 64 KiB keeps a few hundred plan items, more than a person
+#: reads on one screen, and the verb run again with ``--run`` shows the rest.
+SCREEN_LIMIT = 64 * 1024
+
+#: The plan's facts a cut keeps when nothing else fits (U961).
+CUT_KEEPS: tuple[str, ...] = ("digest", "count")
+
+
+@dataclass(frozen=True, slots=True)
+class Screen:
+    """What a gate put in front of the person when it refused, kept with its run (U961).
+
+    :meth:`Gates.require` keeps it in the same record as the offer it binds,
+    so ``crate run show`` in another process shows what the refusal showed.
+    ``digest`` is the offer it was raised over, None for a gate offered no
+    digest; ``shown`` is the refusal's context as given, None when it carried
+    none, held to :data:`SCREEN_LIMIT` by :func:`cut_shown`, with ``cut``
+    saying what was left out; ``pins`` are the facts the run binds the gate's
+    answer to (U161) as the run held them then.
+    """
+
+    kind: str
+    prompt: str
+    options: tuple[str, ...]
+    explicit: bool
+    digest: str | None
+    shown: dict[str, Any] | None
+    pins: dict[str, str]
+    saved: str
+    cut: dict[str, Any] | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "prompt": self.prompt,
+            "options": list(self.options),
+            "explicit": self.explicit,
+            "digest": self.digest,
+            # JSON text, so the order its facts were shown in survives the
+            # record's sorted keys and the screen renders as the refusal did.
+            "shown": None if self.shown is None else _compact(self.shown),
+            "pins": dict(sorted(self.pins.items())),
+            "saved": self.saved,
+            "cut": self.cut,
+        }
+
+    @classmethod
+    def from_json(cls, data: Any) -> Screen | None:
+        """A kept screen, or None for an entry that is not one, which no reader shows."""
+        if not isinstance(data, Mapping):
+            return None
+        shown = data.get("shown")
+        if isinstance(shown, str):
+            try:
+                shown = json.loads(shown)
+            except json.JSONDecodeError:
+                return None
+        options, pins, cut = data.get("options"), data.get("pins"), data.get("cut")
+        if (
+            data.get("kind") not in SCREEN_KINDS
+            or not isinstance(data.get("prompt"), str)
+            or not isinstance(options, list)
+            or not all(isinstance(one, str) for one in options)
+            or not isinstance(data.get("explicit"), bool)
+            or not isinstance(data.get("digest"), (str, type(None)))
+            or not isinstance(shown, (dict, type(None)))
+            or not isinstance(pins, dict)
+            or not isinstance(data.get("saved"), str)
+            or not isinstance(cut, (dict, type(None)))
+        ):
+            return None
+        return cls(
+            kind=data["kind"],
+            prompt=data["prompt"],
+            options=tuple(options),
+            explicit=data["explicit"],
+            digest=data["digest"],
+            shown=shown,
+            pins={str(key): str(value) for key, value in pins.items()},
+            saved=data["saved"],
+            cut=cut,
+        )
+
+
+def _compact(document: Any) -> str:
+    """One JSON text with no whitespace, the form :data:`SCREEN_LIMIT` is measured in."""
+    return json.dumps(document, separators=(",", ":"))
+
+
+def cut_shown(
+    shown: Mapping[str, Any], limit: int = SCREEN_LIMIT
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """``shown`` held to ``limit``, and what was left out, None when nothing was (U961).
+
+    Whole when its compact JSON fits. Otherwise every list among its facts
+    keeps its first items, the same number for each and as many as fit, and
+    every other fact stays, the plan's digest and count among them; the cut
+    names each list it shortened, with how many it kept and left out. When the
+    other facts alone pass the limit, only the digest and the count stay, and
+    the cut names every fact dropped. A shortened list never reads as whole.
+    """
+    whole = dict(shown)
+    if len(_compact(whole)) <= limit:
+        return whole, None
+    lists = {name: value for name, value in whole.items() if isinstance(value, list)}
+
+    def keeping(count: int) -> dict[str, Any]:
+        return {name: value[:count] if name in lists else value for name, value in whole.items()}
+
+    # The most items each list keeps; keeping the longest list whole is the
+    # whole, which does not fit.
+    low, high, kept = 0, max((len(value) for value in lists.values()), default=0) - 1, None
+    while low <= high:
+        middle = (low + high) // 2
+        if len(_compact(keeping(middle))) <= limit:
+            kept, low = middle, middle + 1
+        else:
+            high = middle - 1
+    if kept is not None:
+        shortened = {
+            name: {"kept": kept, "left_out": len(value) - kept}
+            for name, value in lists.items()
+            if len(value) > kept
+        }
+        return keeping(kept), {"limit": limit, "lists": shortened}
+    bare = {name: whole[name] for name in CUT_KEEPS if name in whole}
+    if len(_compact(bare)) > limit:
+        bare = {}
+    return bare, {"limit": limit, "dropped": [name for name in whole if name not in bare]}
+
+
 @dataclass
 class RunState:
     """What survives the process that hit a gate.
@@ -298,6 +441,10 @@ class RunState:
     #: Other runs this run is bound to, by role (U183), such as the ``sync
     #: all`` pass a ``sync land`` run continues under ``pass_run``.
     related_runs: dict[str, str] = field(default_factory=dict)
+    #: gate name -> the screen its last refusal showed (U961), kept beside the
+    #: offer it binds and dropped when the gate is answered or passes, so
+    #: ``run show`` can show a waiting gate without running the verb again.
+    screens: dict[str, Screen] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         record = {
@@ -317,6 +464,8 @@ class RunState:
             record["argv"] = list(self.argv)
         if self.related_runs:
             record["related_runs"] = dict(sorted(self.related_runs.items()))
+        if self.screens:
+            record["screens"] = {name: one.to_json() for name, one in sorted(self.screens.items())}
         return record
 
     @classmethod
@@ -360,7 +509,20 @@ class RunState:
                 if isinstance(data.get("related_runs"), dict)
                 else {}
             ),
+            screens=_screens_from(data.get("screens")),
         )
+
+
+def _screens_from(raw: Any) -> dict[str, Screen]:
+    """The kept screens a record holds (U961); an entry that is not one is left out.
+
+    A record from before U961 has none. :func:`waiting` says a gate's screen
+    cannot be shown rather than reading its absence as no gate.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    kept = {str(name): Screen.from_json(one) for name, one in raw.items()}
+    return {name: one for name, one in kept.items() if one is not None}
 
 
 def run_dir() -> Path:
@@ -541,13 +703,16 @@ class Gates:
             # resumable without reading as both answered and waiting.
             if recorded is None:
                 self.state.open_gate = spec.name
+            self._keep(spec, SCREEN_OPEN, digest, context)
             raise DecisionRequired(spec, self.state.run_id, context)
 
         chosen = inline if inline is not None else (recorded.option if recorded else None)
         if chosen is None:
             self.state.open_gate = spec.name
+            self._keep(spec, SCREEN_OPEN, digest, context)
             raise DecisionRequired(spec, self.state.run_id, context)
         if chosen not in spec.options:
+            self._keep(spec, SCREEN_UNKNOWN_OPTION, digest, context)
             raise UnknownOption(spec, chosen, context)
 
         if spec.digest_source is not None and digest is not None:
@@ -555,6 +720,7 @@ class Gates:
             if against is not None and against != digest:
                 # The moved plan is on the refusal (R-1334), since the next
                 # answer binds the offer just recorded.
+                self._keep(spec, SCREEN_STALE, digest, context)
                 raise DecisionStale(
                     spec, self.state.run_id, against, digest, offered=True, context=context
                 )
@@ -578,8 +744,42 @@ class Gates:
                 recorded=output.timestamp(),
                 digest=digest,
             )
+        # Passed: the screen it waited on is history, and the record keeps none.
+        self.state.screens.pop(spec.name, None)
         self.state.open_gate = None
         return chosen
+
+    def _keep(
+        self,
+        spec: GateSpec,
+        kind: str,
+        digest: str | None,
+        context: Mapping[str, Any] | None,
+    ) -> None:
+        """Keep the screen this refusal shows on the run, beside the offer it binds (U961).
+
+        The one path every gate's refusal takes, so a screen is never kept
+        apart from its offer: the dispatcher's save writes both in one record,
+        and a later refusal at the gate replaces the screen with its offer.
+        The digest is the offer :meth:`require` recorded, None when it
+        recorded none.
+        """
+        shown, cut = (None, None)
+        if context is not None:
+            # Through JSON, as the refusal's envelope is, so the record holds
+            # what a reader of it gets back; order kept.
+            shown, cut = cut_shown(json.loads(json.dumps(dict(context), default=str)))
+        self.state.screens[spec.name] = Screen(
+            kind=kind,
+            prompt=spec.prompt,
+            options=tuple(spec.options),
+            explicit=spec.explicit,
+            digest=digest if spec.digest_source is not None else None,
+            shown=shown,
+            pins=dict(self.state.pins.get(spec.name, {})),
+            saved=output.timestamp(),
+            cut=cut,
+        )
 
     def hand_off(
         self,
@@ -709,8 +909,82 @@ def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
         recorded=output.timestamp(),
         digest=state.offers.get(spec.name),
     )
+    # Answered, the screen is history (U961): run records are never pruned,
+    # so an answer or a retirement leaves the record as small as it was.
+    state.screens.pop(spec.name, None)
     if state.open_gate == spec.name:
         state.open_gate = None
+
+
+@dataclass(frozen=True, slots=True)
+class Waiting:
+    """The gate a run waits at (U961), with its kept screen or why none is shown."""
+
+    gate: str
+    screen: Screen | None = None
+    missing: str | None = None
+
+
+#: Before any kept screen, so a screen with an unreadable time sorts first.
+_EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def waiting(state: RunState) -> Waiting | None:
+    """The gate ``state`` waits at for an answer, and the screen it was offered (U961).
+
+    A gate waits when it is the run's open gate, when the run offered it a
+    plan and holds no answer, or when its answer binds another plan than the
+    one offered now, or an option the screen does not offer, since the next
+    resume refuses it. A kept screen is shown only while it is current, its
+    digest the run's offer for its gate and its pins the run's, so a screen
+    left behind a moved offer never reads as the gate's. Of the waiting gates
+    with a current screen, the latest kept is named, the refusal the run last
+    ended on; otherwise the open gate, or else the first waiting gate by name,
+    with ``missing`` saying why no screen is shown. None when nothing waits.
+    """
+    shown = [
+        (_instant(screen.saved) or _EARLIEST, name, screen)
+        for name, screen in state.screens.items()
+        if _current(state, name, screen) and _waits(state, name, screen)
+    ]
+    if shown:
+        _, name, screen = max(shown, key=lambda one: (one[0], one[1]))
+        return Waiting(name, screen=screen)
+    named = [state.open_gate] if state.open_gate is not None else []
+    named += [
+        name
+        for name in sorted(set(state.offers) | set(state.screens))
+        if name != state.open_gate and _waits(state, name, state.screens.get(name))
+    ]
+    if not named:
+        return None
+    gate = named[0]
+    if gate in state.screens:
+        why = f"the screen kept for {gate} no longer matches the plan and facts the run offers it now"
+    else:
+        why = (
+            f"no screen of {gate} that can be shown is kept on this run: the gate opened "
+            f"before a run kept its gate's screen, or the kept one could not be read"
+        )
+    return Waiting(gate, missing=why)
+
+
+def _current(state: RunState, gate: str, screen: Screen) -> bool:
+    """Whether ``screen`` is still what an answer on ``gate`` binds (U961)."""
+    return screen.digest == state.offers.get(gate) and screen.pins == state.pins.get(gate, {})
+
+
+def _waits(state: RunState, gate: str, screen: Screen | None) -> bool:
+    """Whether ``gate`` waits for an answer on this run (U961); see :func:`waiting`."""
+    if gate == state.open_gate:
+        return True
+    answer = state.decisions.get(gate)
+    offer = state.offers.get(gate)
+    if answer is None:
+        return screen is not None or offer is not None
+    if screen is not None and answer.option not in screen.options:
+        return True
+    return answer.digest is not None and offer is not None and answer.digest != offer
 
 
 def blocked_by(state: RunState, verb: str) -> Cause | None:
@@ -1007,6 +1281,11 @@ __all__ = [
     "KEPT_RUN_REASONS",
     "RETIRE_OPTION",
     "RUN_SCHEMA_VERSION",
+    "SCREEN_KINDS",
+    "SCREEN_LIMIT",
+    "SCREEN_OPEN",
+    "SCREEN_STALE",
+    "SCREEN_UNKNOWN_OPTION",
     "SIBLING_RUN",
     "SIBLING_WINDOW",
     "Decision",
@@ -1015,9 +1294,11 @@ __all__ = [
     "Gates",
     "OldGate",
     "RunState",
+    "Screen",
     "Sibling",
     "UnknownOption",
     "blocked_by",
+    "cut_shown",
     "idle_since",
     "load",
     "new_run",
@@ -1031,5 +1312,7 @@ __all__ = [
     "SHOWN_PLAN_KEYS",
     "sibling_warnings",
     "siblings",
+    "waiting",
+    "Waiting",
     "writes_the_database",
 ]

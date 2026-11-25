@@ -1,0 +1,165 @@
+name = "u960"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_rekordbox_raise_reads_closed"
+description = "rekordbox_state: a process scan that raises reads closed instead of unreadable"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''    except Exception as exc:  # noqa: BLE001 - see the docstring
+        return _unreadable(exc)
+    return OPEN if running else CLOSED'''
+new = '''    except Exception as exc:  # noqa: BLE001 - see the docstring
+        return CLOSED
+    return OPEN if running else CLOSED'''
+
+[[rows]]
+id = "M2_unconfirmed_reads_closed"
+description = "rekordbox_state: a scan that could not confirm absence reads closed instead of unknown"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''    except processes.AbsenceUnconfirmed:
+        return UNKNOWN'''
+new = '''    except processes.AbsenceUnconfirmed:
+        return CLOSED'''
+
+[[rows]]
+id = "M3_unreadable_record_dropped"
+description = "gate_runs: a run record that cannot be read is skipped, so it reads as no gate"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''            found.append({"run_id": path.stem, **_unreadable(exc)})'''
+new = '''            continue'''
+
+[[rows]]
+id = "M4_unlistable_run_dir_empty"
+description = "_run_records: any refusal to list the run directory reads as no run, not only its absence"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        names = os.listdir(folder)
+    except FileNotFoundError:
+        return []'''
+new = '''        names = os.listdir(folder)
+    except OSError:
+        return []'''
+
+[[rows]]
+id = "M5_unreadable_night_null"
+description = "night: a night record that cannot be read reads null, as if no night had run"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        record = sync_night.settle(sync_night.read_status(), cfg)
+    except Exception as exc:  # noqa: BLE001 - every failure to read is said, never folded
+        return _unreadable(exc)'''
+new = '''        record = sync_night.settle(sync_night.read_status(), cfg)
+    except Exception as exc:  # noqa: BLE001 - every failure to read is said, never folded
+        return None'''
+
+[[rows]]
+id = "M6_unreadable_queue_empty"
+description = "jobs_running: a queue that cannot be read reads as no job running"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        found = jobs.read_jobs(jobs.queue_path(cfg), states=(jobs.JobState.RUNNING,))
+    except Exception as exc:  # noqa: BLE001 - every failure to read is said, never folded
+        return _unreadable(exc)'''
+new = '''        found = jobs.read_jobs(jobs.queue_path(cfg), states=(jobs.JobState.RUNNING,))
+    except Exception as exc:  # noqa: BLE001 - every failure to read is said, never folded
+        return []'''
+
+[[rows]]
+id = "M7_absent_volume_read_anyway"
+description = "backup: the volume check removed, so an ejected volume reads both portions never recorded"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        if not preflight.library_state_is_readable(mount):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M8_queue_stat_any_error_empty"
+description = "read_jobs: any error looking at the queue reads as no job, not only its absence"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        path.stat()
+    except FileNotFoundError:
+        return ()'''
+new = '''        path.stat()
+    except OSError:
+        return ()'''
+
+[[rows]]
+id = "M9_queue_opened_writable"
+description = "read_jobs: the queue opened read write instead of read only"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        f"{path.absolute().as_uri()}?mode=ro", uri=True, timeout=READ_ONLY_TIMEOUT'''
+new = '''        f"{path.absolute().as_uri()}?mode=rw", uri=True, timeout=READ_ONLY_TIMEOUT'''
+
+[[rows]]
+id = "M10_unreadable_item_not_fail"
+description = "_anything_unreadable: an unreadable item inside a list no longer makes attention fail"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''            if any(is_unreadable(item) for item in value):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M11_five_days_not_due"
+description = "attention: a backup exactly five days old is not yet due (the boundary moved by one)"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''or age is None or age >= limit:'''
+new = '''or age is None or age > limit:'''
+
+[[rows]]
+id = "M12_old_ignores_retirable"
+description = "_gate_item: old is any gate idle past the threshold, retirable or kept by run retire"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''        "old": aged is not None and aged.retirable,'''
+new = '''        "old": aged is not None,'''
+
+[[rows]]
+id = "M13_future_backup_not_fail"
+description = "attention: a backup completion recorded ahead of now no longer reads fail"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''    if _anything_unreadable(found) or any(one.get("state") == future for one in portions):'''
+new = '''    if _anything_unreadable(found):'''
+
+[[rows]]
+id = "M14_running_outranks_gate"
+description = "attention: running is tested before gate, so a gate waits behind a running job"
+file = "src/cratekit/cli/status_glance.py"
+surface = "user"
+tests = ["tests/test_status_glance.py"]
+old = '''    if found.get("gates"):
+        return GATE
+    if found.get("jobs_running"):
+        return RUNNING'''
+new = '''    if found.get("jobs_running"):
+        return RUNNING
+    if found.get("gates"):
+        return GATE'''
+
+[[rows]]
+id = "M15_human_line_names_nothing"
+description = "render_attention: the keys that could not be read are no longer named on the line"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_status_glance.py", "tests/test_doctor.py"]
+old = '''    return [f"attention: {word}" + (f" ({', '.join(unread)} unreadable)" if unread else "")]'''
+new = '''    return [f"attention: {word}"]'''

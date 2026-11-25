@@ -977,6 +977,109 @@ def test_an_analysis_value_only_the_stored_row_holds_is_refused_by_the_read_back
     assert _batch_playlist(cfg) == []
 
 
+#: What the landing's own read back after the commit says when it refuses (R-2075).
+_AFTER_COMMIT_REFUSES = "a landed row carries an analysis value after the commit"
+
+#: The key planted after the commit, the literal R-2072's test plants before it.
+_PLANTED_KEY = "283157525"
+
+
+def taint_after_the_guarded_commit(monkeypatch) -> None:
+    """Plant a key on each row a landing makes, by SQL on its own handle, after the commit.
+
+    Every check before the commit has passed, as it would past a defect in the
+    guard; the value sits in the handle's open transaction, where the landing's
+    read back after the commit reads it, and is never committed (R-2075). Used by
+    the three callers' tests, ``intake land``, its rehearsal and ``intake file``.
+    """
+    from sqlalchemy import text
+    made: list[str] = []
+    real_restamp = native._restamp
+    real_commit = rb_writer.commit_guarded
+
+    def restamp_and_note(content, row, plan):
+        real_restamp(content, row, plan)
+        made.append(str(content.ID))
+
+    def commit_then_taint(db, **kwargs):
+        real_commit(db, **kwargs)
+        while made:
+            db.session.execute(
+                text("UPDATE djmdContent SET KeyID = :key WHERE ID = :id"),
+                {"key": _PLANTED_KEY, "id": made.pop()},
+            )
+
+    monkeypatch.setattr(native, "_restamp", restamp_and_note)
+    monkeypatch.setattr(rb_writer, "commit_guarded", commit_then_taint)
+
+
+def assert_refused_after_the_commit(acted: dict) -> None:
+    """The refusal is the read back after the commit's own, naming the planted key."""
+    message = acted["cause"]["message"]
+    assert acted["cause"]["reason"] == "whitelist-violation"
+    assert _AFTER_COMMIT_REFUSES in message and _READ_BACK_REFUSES not in message, message
+    assert f"KeyID = '{_PLANTED_KEY}'" in message, message
+
+
+def test_an_analysis_value_on_a_row_after_the_commit_is_refused_by_the_landing(
+        one_staged, monkeypatch):
+    """``intake land`` reads its rows again after the commit and refuses (R-2075, L1).
+
+    The commit landed, so the row is there; the planted key never was committed.
+    """
+    cfg = one_staged
+    taint_after_the_guarded_commit(monkeypatch)
+    assert_refused_after_the_commit(_land_fails())
+    ((content_id, _title, _path),) = _landed_rows(cfg)
+    assert _query(cfg, "SELECT KeyID FROM djmdContent WHERE ID = ?", content_id) == [(None,)]
+
+
+def _engine_plan(cfg: config.Config, silence: Path, db) -> native.NativePlan:
+    """One file filed into the batch's folder and planned by the engine, as the verb plans it."""
+    folder = _music(cfg)
+    folder.mkdir(parents=True)
+    landed = folder / "One.flac"
+    _stage(cfg, silence, "One.flac").rename(landed)
+    return native.plan_rows(
+        cfg, db, tree_id=INTAKE, registry=tree_registry.read(cfg), batch=BATCH,
+        files=[(landed, landed)])
+
+
+@pytest.mark.parametrize("broken", ["create_playlist", "commit"], ids=["mid-write", "at-the-commit"])
+def test_a_landing_failing_past_the_guard_leaves_nothing_for_a_later_commit_on_its_handle(
+        native_library, silence, monkeypatch, broken):
+    """The landing rolls its own handle back on any failure (R-2075, C11).
+
+    The binding fails once: making the batch playlist after the row, before the
+    guarded commit runs, as the existing test's binding breaks on a file; or in
+    its own commit, after the guard passed. Either way the failure is outside the
+    block in which ``commit_guarded`` rolls back its own refusals, so the
+    landing's rollback is the only one. The handle is the caller's and outlives
+    the landing, so a later commit on it must land no row and no playlist of
+    this landing's.
+    """
+    from pyrekordbox.db6.database import Rekordbox6Database
+    cfg, _root = native_library
+    real = getattr(Rekordbox6Database, broken)
+    failed: list[str] = []
+
+    def fails_once(self, *args, **kwargs):
+        if not failed:
+            failed.append(f"the binding broke in {broken}")
+            raise RuntimeError(failed[0])
+        return real(self, *args, **kwargs)
+
+    with _opened(cfg) as db:
+        plan = _engine_plan(cfg, silence, db)
+        monkeypatch.setattr(Rekordbox6Database, broken, fails_once)
+        with pytest.raises(RuntimeError, match="the binding broke"):
+            native.apply_rows(cfg, db, plan, analysis_roots=[Path(cfg.library.root)])
+        monkeypatch.setattr(Rekordbox6Database, broken, real)
+        db.commit()
+    assert failed, "the landing never reached the binding call that fails"
+    assert _landed_rows(cfg) == [], "a failed landing's row landed on a later commit"
+    assert _batch_playlist(cfg) == []
+
 # What is stored: the base drive form
 def test_folder_path_is_stored_under_the_base_drive_rekordbox_records(one_staged, tmp_path):
     """Sitting 17: rows store the base drive, on a renamed volume not the mounted path."""

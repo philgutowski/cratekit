@@ -532,3 +532,15 @@ def test_a_stale_refusal_on_a_drive_that_never_moved_names_each_pair_once(cfg, m
     assert len(set(pairs)) == len(pairs), pairs
     for scratch, live in pairs:
         assert cause["message"].count(f"{scratch} to {live}") == 1, cause["message"]
+
+
+def test_a_rehearsal_refuses_an_analysis_value_its_rows_carry_after_the_commit(cfg, monkeypatch):
+    """The area's rows are read again after its commit, as the live landing's are (R-2075).
+
+    The key is planted on the area's own handle after the guarded commit, so
+    only the read back after the commit can refuse it, in its own wording.
+    """
+    land.taint_after_the_guarded_commit(monkeypatch)
+    code, rehearsed = _rehearse()
+    assert code != int(ExitCode.OK), rehearsed
+    land.assert_refused_after_the_commit(rehearsed)
