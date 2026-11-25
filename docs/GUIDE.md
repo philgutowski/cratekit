@@ -204,6 +204,29 @@ unreadable while the library root is absent, or is not on the volume recorded
 for it, since their record is on that volume. It only reads, and
 `tests/schemas/status_glance.v1.json` is its shape.
 
+### The menu bar app
+
+The menu bar app under `app/` shows that glance, and nothing it does not say
+(U966). It is not yet ready to install; until it is, `crate status` is the
+same reading. Its icon is one shape per `attention` word: a check for `ok`, a
+raised hand for `gate`, circling arrows for `running`, a drive with an
+exclamation mark for `backup-due` and a crossed octagon for `fail`, so it
+reads without colour; a word the app does not know, from a newer `crate`, is
+shown as `fail` with the word named. Its menu lists both backup ages in whole
+days (or never recorded, or recorded ahead of now), whether rekordbox is
+closed, open or unknown, each running job, each run waiting at a gate with its
+verb, gate, how long it has waited, whether it writes the database and `old`
+when `crate run retire` would retire it, and the night pass's line; a source
+the glance could not read shows its message in its place.
+
+It runs `crate --output json status` and no other verb, by the path in its
+settings, every minute and when the menu opens, never two calls at once. A
+call that fails (no `crate` at the path, a refusal, a non zero exit, output
+that is not an envelope, or no answer within 30 seconds) turns the icon to
+`fail` and leads the menu with what went wrong, the time it failed, and the
+last good reading under the time it was read, never as the current one. Each
+call keeps a run record, as every verb does.
+
 Which workflows have run on a real library, and with what result, is recorded
 per workflow in [`cutover.md`](cutover.md). For a workflow not recorded there,
 run a small batch first, with a current backup, and check `crate restore list`

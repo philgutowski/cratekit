@@ -378,12 +378,15 @@ LLM connection.
 | Target | What it is |
 |---|---|
 | `CrateEngine` | runs a verb as `crate --output json <verb>` by the absolute path in the app's settings (the `cratePath` default), never a shell or a search of `PATH`; a minimal environment (`HOME`, the locale keys, `TMPDIR`, and `PATH` of crate's own directory then the system directories); a timeout per call that terminates, then kills; and the version 1 envelope decoded, a refusal included, as a value. A missing, relative, folder or non executable path is a setup state the UI shows |
-| `CratekitBar` | the `MenuBarExtra` app, no Dock icon |
+| `CrateEngine`, status (U966) | `Glance.swift` decodes `crate status`'s `data.summary.glance` against `tests/schemas/status_glance.v1.json` (a key absent is malformed, a glance of another version refused by name, an `attention` word it does not know kept as unknown); `StatusReading.swift` turns a status call into a reading or a failure with its message, picks the icon per `attention`, and projects the menu as lines; `StatusRefresher.swift` runs at most one `crate status` at a time and keeps the last good reading with its time |
+| `CratekitBar` | the `MenuBarExtra` app, no Dock icon: the status icon and menu, refreshed every minute and when the menu opens |
 | `CrateEngineTests` | XCTest over the envelope fixtures and fake `crate` scripts |
 
 The fixtures in `app/Tests/CrateEngineTests/Fixtures` are written from the real
 verbs by `tests/test_app_fixtures.py`, which fails the battery when a verb no
-longer emits its fixture; regenerate with `REGEN=1 .venv/bin/python -m pytest
+longer emits its fixture; the `status_*` fixtures are `crate status` once per
+`attention` word, built as `tests/test_status_glance.py` builds each state and
+read at a held clock. Regenerate with `REGEN=1 .venv/bin/python -m pytest
 tests/test_app_fixtures.py` and read the diff. On a Mac with a Swift toolchain,
 from `app/`: `swift build`, `swift test`, and `scripts/bundle.sh`, which
 bundles the release build into `build/CratekitBar.app` with `LSUIElement` set,
