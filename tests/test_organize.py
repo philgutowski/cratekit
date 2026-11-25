@@ -1795,3 +1795,18 @@ def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_t
     # The continue reaches no rekordbox gate, and says why.
     assert code == OK, done
     assert _areas(done)[rekordbox.AREA]["refused"]["reason"] == "backup-acknowledgment-missing"
+
+
+def test_a_late_new_years_eve_mark_west_of_utc_files_into_the_local_year():
+    """The zone is pinned here, so the local year is asked whatever zone the host runs in."""
+    import time
+
+    with pytest.MonkeyPatch.context() as zone:
+        zone.setenv("TZ", "America/New_York")
+        time.tzset()
+        try:
+            assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
+            assert filing.year_of_mark("2026-01-01T06:00:00Z") == "2026"
+        finally:
+            zone.undo()
+            time.tzset()
