@@ -1,0 +1,246 @@
+name = "r2072"
+pass_kind = "light"
+
+# The SQL read back of the guarded writer, assert_created_rows_are_gridless, and
+# what feeds it, after the test that plants a value only the stored row holds
+# (R-2072, card 1074). G7 and G5 are the two rows R-2072 names, kept under their ids.
+
+[[rows]]
+id = "G7_sql_value_check_disarmed"
+description = "assert_created_rows_are_gridless: a value read from SQL is never a violation (r746-a G7, R-2072)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''            if value not in EMPTY_ON_CREATE:
+                violations.append(f"{table}.{name} = {value!r}")'''
+new = '''            if False:
+                violations.append(f"{table}.{name} = {value!r}")'''
+
+[[rows]]
+id = "G5_content_row_read_back_against_five_not_ten"
+description = "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key or a rate rides in (r746-d G5, R-2072)"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS'''
+new = '''        policy = GRIDLESS_ON_CREATE_COLUMNS'''
+
+[[rows]]
+id = "S1_registry_creations_not_read_back"
+description = "assert_created_rows_are_gridless: only the session's pending objects are read back, so a row the binding already flushed is never read"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''    instances = {**_registry_created_instances(db), **pending}'''
+new = '''    instances = {**pending}'''
+
+[[rows]]
+id = "S2_pending_creations_not_read_back"
+description = "assert_created_rows_are_gridless: only the binding's buffer is read back, so a raw session add is never read"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''    instances = {**_registry_created_instances(db), **pending}'''
+new = '''    instances = {**_registry_created_instances(db)}'''
+
+[[rows]]
+id = "S3_deliberate_flush_dropped"
+description = "assert_created_rows_are_gridless: the flush before the read back is skipped, so a row not yet flushed has no identity and is passed over"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''    try:
+        session.flush()
+    except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
+        return'''
+new = '''    try:
+        pass
+    except Exception:  # noqa: BLE001 - a flush failure is the caller's to report
+        return'''
+
+[[rows]]
+id = "S4_no_policy_column_skips_every_row"
+description = "assert_created_rows_are_gridless: every row reads as having no policy column, so neither its values nor its analysis rows are read"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''        if not columns:
+            continue
+        try:
+            identity = sa_inspect(obj).identity'''
+new = '''        if True:
+            continue
+        try:
+            identity = sa_inspect(obj).identity'''
+
+[[rows]]
+id = "S5_identity_skip_inverted"
+description = "assert_created_rows_are_gridless: a row with an identity is passed over, so no flushed row is read back"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''        if not identity:
+            continue'''
+new = '''        if identity:
+            continue'''
+
+[[rows]]
+id = "S6_found_row_skipped"
+description = "assert_created_rows_are_gridless: a row SQL returns is passed over as if it were missing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''        if row is None:
+            continue
+        for name, value in zip(sorted(columns), row):'''
+new = '''        if row is not None:
+            continue
+        for name, value in zip(sorted(columns), row):'''
+
+[[rows]]
+id = "S7_analysis_tables_not_counted"
+description = "assert_created_rows_are_gridless: an analysis table row naming the new content row is never counted"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''        if table == CONTENT_TABLE and len(keys) == 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "S8_analysis_row_count_ignored"
+description = "assert_created_rows_are_gridless: an analysis table count above zero is not a violation"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''                if count:
+                    violations.append('''
+new = '''                if count > 1:
+                    violations.append('''
+
+[[rows]]
+id = "S9_violations_never_raised"
+description = "assert_created_rows_are_gridless: violations are gathered and never raised"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''    if violations:
+        raise _unavailable(
+            "whitelist-violation",
+            "a row this session creates carries analysis data, which this product "'''
+new = '''    if False:
+        raise _unavailable(
+            "whitelist-violation",
+            "a row this session creates carries analysis data, which this product "'''
+
+[[rows]]
+id = "S10_read_back_not_called_at_commit"
+description = "commit_guarded: the SQL read back is not called before the commit"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py"]
+old = '''            assert_created_rows_are_gridless(db)
+            assert_foreign_untouched(db)'''
+new = '''            assert_foreign_untouched(db)'''
+
+[[rows]]
+id = "S11_read_back_after_the_rollback_point"
+description = "commit_guarded: the read back runs outside the block that rolls back, so a refusal leaves the tainted session pending"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py"]
+old = '''            assert_created_rows_are_gridless(db)
+            assert_foreign_untouched(db)
+        except RekordboxUnavailable:
+            db.rollback()
+            raise'''
+new = '''            assert_foreign_untouched(db)
+        except RekordboxUnavailable:
+            db.rollback()
+            raise
+        assert_created_rows_are_gridless(db)'''
+
+[[rows]]
+id = "S12_registry_reads_updates_as_creations"
+description = "_registry_created_instances: the buffer's updates are read back instead of its creations"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''        for _entry, op, _key, instances in _buffer_entries(db)
+        if op == "create"
+        for obj in instances
+    }'''
+new = '''        for _entry, op, _key, instances in _buffer_entries(db)
+        if op == "update"
+        for obj in instances
+    }'''
+
+[[rows]]
+id = "P1_tempo_dropped_from_the_gridless_policy"
+description = "GRIDLESS_ON_CREATE_COLUMNS: BPM is no longer a column a new row must leave empty"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''        "BPM",
+        "Analysed",'''
+new = '''        "Analysed",'''
+
+[[rows]]
+id = "P2_key_dropped_from_the_content_policy"
+description = "CONTENT_ROW_EMPTY_COLUMNS: KeyID is no longer a column a new content row must leave empty"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''        "KeyID",
+        "SampleRate",'''
+new = '''        "SampleRate",'''
+
+[[rows]]
+id = "P3_a_tempo_counts_as_empty"
+description = "EMPTY_ON_CREATE: a nonzero tempo spelling is read as nobody wrote it"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''EMPTY_ON_CREATE: tuple[Any, ...] = (None, 0, 0.0, "", "0")'''
+new = '''EMPTY_ON_CREATE: tuple[Any, ...] = (None, 0, 0.0, "", "0", 12400)'''
+
+[[rows]]
+id = "J1_whitelist_judge_declares_nothing"
+description = "guard_violations: a created row never declares an analysis column, the in memory judge the restamp test meets first; the composite of S2, since a pending object's stored row is written by the guard's own flush from the values this judge read"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+pairs_with = "S2_pending_creations_not_read_back"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''        declared = {column for column in columns if column in empties}'''
+new = '''        declared = set()'''
+
+[[rows]]
+id = "L1_after_commit_read_back_disarmed"
+description = "native.assert_rows_gridless: a landed row's analysis value read after the commit is never refused (sample of the later check)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''        if value not in rb_writer.EMPTY_ON_CREATE
+    ]'''
+new = '''        if False
+    ]'''
+
+[[rows]]
+id = "J2_whitelist_declared_columns_not_refused"
+description = "guard_violations: a created row's declared analysis columns are found and not refused; the composite of S3, since the deliberate flush only gives a still pending object its identity"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+pairs_with = "S3_deliberate_flush_dropped"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '''        if declared:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C11_landing_does_not_roll_back_a_refusal"
+description = "native.apply_rows: a refused commit is not rolled back by the landing; the composite of S11, which moves the read back past commit_guarded's own rollback"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+pairs_with = "S11_read_back_after_the_rollback_point"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '''            trees.rollback_quietly(db)
+            if not witness.landed:'''
+new = '''            if not witness.landed:'''
