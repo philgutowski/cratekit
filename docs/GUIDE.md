@@ -1892,6 +1892,15 @@ A fresh invocation without `--run` mints a new run, which meets the gate again.
 Without `--actor` the answer is recorded as `cli` at a terminal and `session`
 without one.
 
+- `crate run show RUN_ID` shows the gate the run waits at as its refusal
+  showed it, the question, the options, the plan and its digest, from any
+  terminal and without running the verb again: the screen is kept with the run
+  when the gate refuses and dropped when it passes. `--output json` carries it
+  as `data.summary.gate`, null when nothing waits. A plan past 64 KiB is kept
+  short, the first items of each list and a count of the rest, and says so
+  with the command that shows it whole. A gate that opened before screens were
+  kept says it has none to show and names that command, `crate --run RUN_ID
+  VERB ...`.
 - A gate that shows a plan is answered only once its run has shown it. On a
   verb with two gates (organize, sync pair, intake land, export set, label
   playlists), answering the second early is refused as `gate-not-reached`.
