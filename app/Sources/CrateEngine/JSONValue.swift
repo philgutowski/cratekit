@@ -58,10 +58,11 @@ extension JSONValue: Decodable {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
+        } else if let flag = try? container.decode(Bool.self) {
+            // Before numbers, so true and false never read as 1 and 0.
+            self = .bool(flag)
         } else if let number = try? container.decode(Double.self) {
             self = .number(number)
-        } else if let flag = try? container.decode(Bool.self) {
-            self = .bool(flag)
         } else if let text = try? container.decode(String.self) {
             self = .string(text)
         } else if let elements = try? container.decode([JSONValue].self) {
