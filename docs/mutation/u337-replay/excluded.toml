@@ -588,3 +588,23 @@ table = "u58-workers-and-wav.json"
 id = "R8_title_without_head"
 reason = "its newest killed reading, in u312-replay-after-2.json at 55e2f3b6, is at a text of src/cratekit/analysis/cli.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
 
+[[excluded]]
+table = "r664.json"
+id = "G6_tag_head_outranks_stem_head"
+reason = "its guard is gone at main: bf177ec8 feat(u327): analyze adopt gives a landed title rekordbox's key and tempo, a feature card outside U290, made the tag's head outrank the stem's on purpose, so the recorded mutation is now main's behaviour and its test was renamed to assert it; the refactor owes it nothing"
+
+[[excluded]]
+table = "u41-naming-independent.json"
+id = "B1_head_precedence_swapped"
+reason = "its guard is gone at main: bf177ec8 feat(u327): analyze adopt gives a landed title rekordbox's key and tempo, a feature card outside U290, made name apply read the title's head first on purpose, so the recorded swap is now main's behaviour; the refactor owes it nothing"
+
+[[excluded]]
+table = "u167.json"
+id = "M11_sigmas"
+reason = "its guard is gone at main: b1e44ba9 feat(u343): analyze run measures no key and writes no head, a feature card outside U290, removed the key floor of analyze check, KEY_AGREEMENT_SIGMAS among it, which no file under src names now; the refactor owes it nothing"
+
+[[excluded]]
+table = "u167.json"
+id = "M12_floor_rate"
+reason = "its guard is gone at main: b1e44ba9 feat(u343): analyze run measures no key and writes no head, a feature card outside U290, removed the key floor of analyze check, key_floor among it, which no file under src names now; the refactor owes it nothing"
+
