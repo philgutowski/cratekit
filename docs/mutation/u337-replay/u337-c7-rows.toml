@@ -1,0 +1,15 @@
+name = "u337-c7"
+pass_kind = "replay"
+
+[[rows]]
+id = "r658-a.C7_state_roots_not_redirected"
+source = { table = "r658-a.json", id = "C7_state_roots_not_redirected" }
+description = "Composite for C1: the state roots fixture sets no HOME, so the platformdirs config resolves to the process home"
+file = "tests/conftest.py"
+surface = "user"
+moved = "The same line, the state roots fixture setting HOME, nested one level deeper under with _own_patch() by 5819920f (test(r658)) before the survey; the recorded text, at four spaces, now matches inside the eight space line, so deleting it left a dangling indent and every replay under U290 read an error, never a measurement. Anchored on the whole line, the deletion the row was written to make"
+tests = ["tests/test_isolation_survives_undo.py"]
+old = '''
+        monkeypatch.setenv("HOME", str(home))
+'''
+new = ''

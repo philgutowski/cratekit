@@ -1,0 +1,32 @@
+name = "u337-librosa-1-0-0"
+pass_kind = "replay"
+
+[[rows]]
+id = "u264.M1_fast_path_never"
+source = { table = "u264.json", id = "M1_fast_path_never" }
+description = "mono: never take the one add, so every mix is librosa.to_mono (the speed is lost, the samples are not)"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+    )'''
+new = '''
+        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+        and False
+    )'''
+
+[[rows]]
+id = "u264.M8_finite_check"
+source = { table = "u264.json", id = "M8_finite_check" }
+description = "mono: drop librosa's valid_audio before the one add, so mono no longer refuses audio that is not finite itself"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    librosa.util.valid_audio(samples)
+    return _mean_of_two(samples, zero_after=zero_after)'''
+new = '    return _mean_of_two(samples, zero_after=zero_after)'
+

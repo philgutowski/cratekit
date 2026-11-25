@@ -1,0 +1,79 @@
+name = "u337-survey-b2a"
+pass_kind = "replay"
+
+[[rows]]
+id = "u100-a.R1_slug_only_presence"
+source = { table = "u100-a.json", id = "R1_slug_only_presence" }
+description = "RegistryStore.adopt checks presence by slug alone, the R-381 hazard: a label held under sueno is filed again as sue-o"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_tidal_catalogue.py"]
+old = '                held = Registry(labels=current).resolve(name)'
+new = '                held = Registry(labels=current).by_id(label_id)'
+
+[[rows]]
+id = "u99-a.A13_by_name_unnormalized"
+source = { table = "u99-a.json", id = "A13_by_name_unnormalized" }
+description = "_folded: drop the NFC normalization, so a decomposed accented name resolves nothing"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '    return unicodedata.normalize("NFC", name.strip()).casefold()'
+new = '    return name.strip().casefold()'
+
+[[rows]]
+id = "r259.O1_no_tracks_guard"
+source = { table = "r259.json", id = "O1_no_tracks_guard" }
+description = "A release the provider lists with no track reads as owned, since all over nothing is True"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''
+        if not rows:
+            return False
+'''
+new = ''
+
+[[rows]]
+id = "r259.O5_memo"
+source = { table = "r259.json", id = "O5_memo" }
+description = "The answer is not kept, so the increment's scope reads every release a second time"
+file = "src/cratekit/label/sweep.py"
+surface = "maintainer"
+tests = ["tests/modules/test_labels.py", "tests/test_incremental_sync.py", "tests/test_label_approved.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''
+        if identity not in self._answers:
+            self._answers[identity] = self._holds(identity)
+        return self._answers[identity]'''
+new = '        return self._holds(identity)'
+
+[[rows]]
+id = "r1308.M10_count_unchecked"
+source = { table = "r1308.json", id = "M10_count_unchecked" }
+description = "_removal_read_back: drop the whole number check on the count"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = 'if not _count(declared) or not _count(videos) or videos != 0'
+new = 'if not _count(videos) or videos != 0'
+
+[[rows]]
+id = "u226.M18_waited_unformatted"
+source = { table = "u226.json", id = "M18_waited_unformatted" }
+description = "_waited: seconds named as 7.0 rather than 7"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '    return f"{seconds:g}"'
+new = '    return f"{seconds}"'
+
+[[rows]]
+id = "u112-b.A6_exported_not_product_made"
+source = { table = "u112-b.json", id = "A6_exported_not_product_made" }
+description = "An exported playlist the ledger records as product made is listed as the author's"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))'
+new = '            | frozenset()'
+

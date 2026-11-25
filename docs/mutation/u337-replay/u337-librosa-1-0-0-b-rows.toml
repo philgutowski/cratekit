@@ -1,0 +1,13 @@
+name = "u337-librosa-1-0-0-b"
+pass_kind = "replay"
+
+[[rows]]
+id = "u264.M7_three_channels_one_add"
+source = { table = "u264.json", id = "M7_three_channels_one_add" }
+description = "_two_float32_channels: take the one add for two or more channels, so a three channel file mixes its first two"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        and samples.shape[0] == 2'
+new = '        and samples.shape[0] >= 2'
+

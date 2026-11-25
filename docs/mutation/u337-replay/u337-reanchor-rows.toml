@@ -1,0 +1,486 @@
+name = "u337-reanchor"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1709.M25_fallback_identity_fold"
+source = { table = "r1709.json", id = "M25_fallback_identity_fold" }
+description = "the upload question keys the folded title"
+file = "src/cratekit/acquire/match_list.py"
+surface = "user"
+moved = "0293c2eb (U305, refactor(u305)) split match.py and moved Wanted.folded_row into acquire/match_list.py, the one identity dict both the upload question and the search question are keyed by; the title is still keyed by title_identity on that line, so folding it makes two emoji titles one question as before"
+tests = ["tests/test_acquire_fallback.py", "tests/test_intake_missing_search.py"]
+old = '''
+            "artist": fold(self.artist), "title": title_identity(self.title),
+'''
+new = '''
+            "artist": fold(self.artist), "title": fold(self.title),
+'''
+
+[[rows]]
+id = "r664.G5_key_not_read_from_the_tag_head"
+source = { table = "r664.json", id = "G5_key_not_read_from_the_tag_head" }
+description = "Stop reading the key off a head found only inside the title tag, the first draft's precedence the review reversed"
+file = "src/cratekit/acquire/match_library.py"
+surface = "user"
+moved = "0293c2eb (U305) moved the library index reader into acquire/match_library.py, and bf177ec8 (U327) then put the title tag's head ahead of the stem's; the guard is the same, the tag's head is still read for the key, so reading the stem's head alone breaks it as before"
+tests = ["tests/test_match_states.py"]
+old = '''
+    written_key = tag_head.get("key") or head.get("key")
+'''
+new = '''
+    written_key = head.get("key")
+'''
+
+[[rows]]
+id = "r731-c.M25_planned_sub_outside_the_set"
+source = { table = "r731-c.json", id = "M25_planned_sub_outside_the_set" }
+description = "a planned sub outside the bucket's competing subs is no longer let through unasked"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+moved = "258b33aa (U340, fix(u340)) put a kept_beside line between this guard and the held line the old text ended on; the guard is the same early return for a planned sub outside the competing set, deleted the same way"
+tests = ["tests/test_adopt_placements.py"]
+old = '''
+    if sub not in competing:
+        return NO_COMPETING_PLACE
+    kept'''
+new = '    kept'
+
+[[rows]]
+id = "r780-b.B2_worker_asks_the_entry_bucket"
+source = { table = "r780-b.json", id = "B2_worker_asks_the_entry_bucket" }
+description = "the worker asks the plan's rule of the entry's own bucket rather than the bucket the move names, so every tree path move is refused as one the plan does not make"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+moved = "76b5dcf2 (U339) added moved= and 258b33aa (U340) added elsewhere= to the worker's standing_in call; the same call asks the bucket the move names, and calling standing (the entry's own bucket) in its place, keeping elsewhere which standing still takes, is the same substitution"
+tests = ["tests/test_adopt_move.py"]
+old = '''
+        now = move_engine.standing_in(
+            entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused,
+            elsewhere=move_engine.elsewhere_of(claimed, entry), moved=moved,
+        )
+'''
+new = '''
+        now = move_engine.standing(
+            entry, current.placements, declared, tree=current.tree,
+            elsewhere=move_engine.elsewhere_of(claimed, entry),
+        )
+'''
+
+[[rows]]
+id = "u119.G2_source_folder_counts"
+source = { table = "u119.json", id = "G2_source_folder_counts" }
+description = "source_playlist: a source playlist holding no live track is mirrored, emptying every Favorites"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+moved = "6ecbd2c0 (U302, refactor(u302)) folded the nested empty check into one condition, len(live) == 1 and live_members(...), with the empty refusal as the branch after it; dropping the live_members half returns an empty source as before"
+tests = ["tests/test_genre_favorites.py"]
+old = '''
+    if len(live) == 1 and live_members(db, str(live[0].ID)):
+'''
+new = '''
+    if len(live) == 1:
+'''
+
+[[rows]]
+id = "u119.G3_two_sources_first_wins"
+source = { table = "u119.json", id = "G3_two_sources_first_wins" }
+description = "source_playlist: two live sources, the first is taken"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+moved = "6ecbd2c0 (U302, refactor(u302)) folded the nested check into one condition on the same len(live) == 1 test; widening it to >= 1 takes the first of two live sources as before"
+tests = ["tests/test_genre_favorites.py"]
+old = '''
+    if len(live) == 1 and live_members(db, str(live[0].ID)):
+'''
+new = '''
+    if len(live) >= 1 and live_members(db, str(live[0].ID)):
+'''
+
+[[rows]]
+id = "u196.S1_any_word"
+source = { table = "u196.json", id = "S1_any_word" }
+description = "search_residuals: match a heading carrying any word rather than every word"
+file = "scripts/board.py"
+surface = "maintainer"
+moved = "e5e9252b (U314, feat(u314)) made search_residuals read every ledger file as (number, title, path) hits, so the every word test is the same all() over hit[1]; any() matches a heading with any word as before"
+tests = ["tests/test_board_residual_search.py"]
+old = 'all(w in hit[1].casefold() for w in wanted)'
+new = 'any(w in hit[1].casefold() for w in wanted)'
+
+[[rows]]
+id = "u196.S2_case_sensitive"
+source = { table = "u196.json", id = "S2_case_sensitive" }
+description = "search_residuals: compare without folding case, so a heading in capitals is missed"
+file = "scripts/board.py"
+surface = "maintainer"
+moved = "e5e9252b (U314, feat(u314)) made search_residuals read every ledger file as (number, title, path) hits; the same comparison now folds hit[1], and dropping the fold misses a heading in capitals as before"
+tests = ["tests/test_board_residual_search.py"]
+old = 'all(w in hit[1].casefold() for w in wanted)'
+new = 'all(w in hit[1] for w in wanted)'
+
+[[rows]]
+id = "u219.M1_accept_fingerprint"
+source = { table = "u219.json", id = "M1_accept_fingerprint" }
+description = "accept_as_it_stands: record no fingerprint, so an accepted INBOX still meets the restore latch (round two's first hold)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+moved = "3f0175b1 (R2056) put the Membership class after accept_as_it_stands, so the old text's trailing def declared_membership no longer follows; the same record_fingerprint call, the only one in rebuild.py, is deleted the same way"
+tests = ["tests/test_resort_scope.py"]
+old = '''
+        convergence.record_fingerprint(cfg, handle)
+    finally:
+'''
+new = '''
+    finally:
+'''
+
+[[rows]]
+id = "u223.M1_composite"
+source = { table = "u223.json", id = "M1_composite" }
+description = "What M1 holds with the staged report fallback gone too: the shipped bug, through the verb and the printed resume"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+moved = "c474d295 (U306, refactor(u306)) gave the intent and the staged report one record reader, _item_record, and shortened the docstrings inside the span; the same two edits, staged_path no longer keeping the intent and staged_report reading nothing, applied to the span as it reads at HEAD"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+                entry.name == RENAME_INTENT_FILENAME
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    elif directory.is_symlink() or directory.exists():
+        # ``rmtree`` refuses a link and a plain file, loudly, rather than this
+        # call deciding to remove or follow one.
+        shutil.rmtree(directory)
+    config.mkdir_private(directory)
+    return directory / _report_name(ordinal)
+
+
+def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    """Where one item's rename intent lives: in its staging directory.
+
+    Written before the rename, so a kill between the rename and the row
+    flipping to done leaves the resume the file the item BECAME, never a guess
+    from the folder. It outlives the attempt (U223) and is removed only where
+    known false: a rename that did not land, or a source still a file.
+    """
+    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
+
+
+def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    config.mkdir_private(path.parent)
+    return write(path, {"item": item.item_id, "target": str(target)})
+
+
+def _item_record(path: Path, item) -> dict[str, Any] | None:
+    """The mapping ``path`` holds for this item, or None when it holds none."""
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded
+
+
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: it would name whatever its far end says as the twin.
+    """
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    target = (_item_record(path, item) or {}).get("target")
+    return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename is known not to stand. Left behind, either would
+    name whatever later sits at that target as this item's twin. The report
+    goes too because :func:`staged_report` is read as the same proof.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK: its far end is not this item's staging, and
+        # ``staged_path`` refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path`` to remove; an
+        # ``unlink`` would fail the item for good.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place, never cleared. A report that says it renamed is staged only
+    after the rename, so it is the item's record when the intent is gone
+    (U223). Another item's report, a non mapping, or a link is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if path.is_symlink() or not path.is_file():
+'''
+new = '''
+                entry.name == "never-kept.json"
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    elif directory.is_symlink() or directory.exists():
+        # ``rmtree`` refuses a link and a plain file, loudly, rather than this
+        # call deciding to remove or follow one.
+        shutil.rmtree(directory)
+    config.mkdir_private(directory)
+    return directory / _report_name(ordinal)
+
+
+def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    """Where one item's rename intent lives: in its staging directory.
+
+    Written before the rename, so a kill between the rename and the row
+    flipping to done leaves the resume the file the item BECAME, never a guess
+    from the folder. It outlives the attempt (U223) and is removed only where
+    known false: a rename that did not land, or a source still a file.
+    """
+    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
+
+
+def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    config.mkdir_private(path.parent)
+    return write(path, {"item": item.item_id, "target": str(target)})
+
+
+def _item_record(path: Path, item) -> dict[str, Any] | None:
+    """The mapping ``path`` holds for this item, or None when it holds none."""
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded
+
+
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: it would name whatever its far end says as the twin.
+    """
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    target = (_item_record(path, item) or {}).get("target")
+    return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename is known not to stand. Left behind, either would
+    name whatever later sits at that target as this item's twin. The report
+    goes too because :func:`staged_report` is read as the same proof.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK: its far end is not this item's staging, and
+        # ``staged_path`` refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path`` to remove; an
+        # ``unlink`` would fail the item for good.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place, never cleared. A report that says it renamed is staged only
+    after the rename, so it is the item's record when the intent is gone
+    (U223). Another item's report, a non mapping, or a link is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if True:
+'''
+
+[[rows]]
+id = "u250.M1_three_opens_again"
+source = { table = "u250.json", id = "M1_three_opens_again" }
+description = "read_truth: go back to the three single field readers, three opens a file, the regression the card removes"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+moved = "e64715d6 (U340, feat(u340)) added second_genre to the one read_tags call in read_truth; going back to a reader per field, the three single field readers and read_tag for the fourth, opens the file once per field as the old regression did"
+tests = ["tests/test_rebuild_one_open.py"]
+old = '''
+    values = tags.read_tags(path, _TRUTH_FIELDS)
+    return Truth(
+        location=str(path),
+        genre=values["genre"],
+        energy=tags.whole_number(values["energylevel"], field="energylevel", path=path),
+        voxlevel=tags.whole_number(values["voxlevel"], field="voxlevel", path=path),
+        second_genre=values["secondgenre"],
+    )'''
+new = '''
+    return Truth(
+        location=str(path),
+        genre=tags.read_genre_from_file(path),
+        energy=tags.read_energy_from_file(path),
+        voxlevel=tags.read_vox_from_file(path),
+        second_genre=tags.read_tag(path, "secondgenre"),
+    )'''
+
+[[rows]]
+id = "u28-skills-independent.X2_mount_rule_removed"
+source = { table = "u28-skills-independent.json", id = "X2_mount_rule_removed" }
+description = "the portability scanner stops looking for a hardcoded volume path at all"
+file = "scripts/scan_repo.py"
+surface = "user"
+moved = "fc06797b (U957) added a segments.add line inside the mount loop for the shape only tokens; the volume path report is the same problems.append, deleted here while the segment collection, another guard, is kept"
+tests = ["tests/test_portability.py"]
+old = '''
+        segments.add(segment.lower())
+        problems.append(
+            f"hardcoded volume path {match.group(0)!r}; the library root is "
+            f"configuration, not a literal"
+        )
+'''
+new = '''
+        segments.add(segment.lower())
+'''
+
+[[rows]]
+id = "u39-author-full.R1_filename_source_dropped"
+source = { table = "u39-author-full.json", id = "R1_filename_source_dropped" }
+description = "Head recovery loses the filename source and keeps only the title fallback"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+moved = "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the filename is still a head source, now the second, so dropping it leaves the title tag the only one as before"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    head = (
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "u39-author-full.R2_title_fallback_dropped"
+source = { table = "u39-author-full.json", id = "R2_title_fallback_dropped" }
+description = "Head recovery loses the title fallback that heals the tag then rename crash window"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+moved = "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the title tag is still a head source, now the first, so dropping it loses the head recovered from the title tag when the filename lost it, as before"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    head = (
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "u41-author-full.R1_filename_head_source_dropped"
+source = { table = "u41-author-full.json", id = "R1_filename_head_source_dropped" }
+description = "The filename is no longer a head source, leaving the title as the only one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+moved = "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the same two lines in the other order, and dropping the filename line leaves the title as the only source as before"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
+'''
+new = '''
+        naming.parse_head(title, template=template)
+'''
+
+[[rows]]
+id = "u41-naming-independent.B2_filename_head_source_dropped"
+source = { table = "u41-naming-independent.json", id = "B2_filename_head_source_dropped" }
+description = "The filename is no longer a head source, so only a tag-carried head is recovered"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+moved = "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the filename line is now the second operand, so it becomes or None rather than None, which drops the filename as a head source as before"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        or naming.parse_head(path.name, template=template)
+'''
+new = '''
+        or None
+'''
+
+[[rows]]
+id = "u79-b.B7_identity_without_version"
+source = { table = "u79-b.json", id = "B7_identity_without_version" }
+description = "The question is keyed without the version, so two versions are one item"
+file = "src/cratekit/acquire/match_list.py"
+surface = "user"
+moved = "0293c2eb (U305, refactor(u305)) split match.py and moved Wanted.folded_row, which candidates.identity returns, into acquire/match_list.py; the version key is the same field, so blanking it makes two versions one question as before"
+tests = ["tests/test_intake_missing_search.py", "tests/test_acquire_fallback.py"]
+old = '''
+            "version": self.version_key,
+'''
+new = '''
+            "version": "",
+'''
+
+[[rows]]
+id = "r504-a.A11_boundary_refuses"
+source = { table = "r504-a.json", id = "A11_boundary_refuses" }
+description = "The verb boundary no longer catches the shortfall, so it is refused as an unreadable listing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+moved = "The same guard at a new text: b4468190 (U308, the second pass) folded the broad except Exception and the CratekitError re-raise into catalogue.translated, leaving the HeartsShortfall clause of favourite_tracks_or_refuse the try's only handler, so the recorded deletion of that clause no longer parses. Narrowing translated's passing to CratekitError alone has the shortfall refused as the unreadable listing, as the recorded deletion had it through the broad except, and the clause is never reached"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/test_sync_all.py"]
+old = '''
+        ), passing=(CratekitError, catalogue.HeartsShortfall)):
+'''
+new = '''
+        ), passing=(CratekitError,)):
+'''
+
+[[rows]]
+id = "u59.G2_local_names_targets"
+source = { table = "u59.json", id = "G2_local_names_targets" }
+description = "Recognize only a bare Name target, reopening the four shadowing routes"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+moved = "76f82246 (U326, perf(u326)) replaced ast.walk with the module's _walk in _local_names, which docs/mutation/u326.json row W3_u59_g2_local_names_targets measured at this text; the same bind loop, and binding a bare Name target alone reopens the shadowing routes as before"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
+old = '''
+        for node in _walk(target):
+            if isinstance(node, ast.Name):
+                found.add(node.id)'''
+new = '''
+        if isinstance(target, ast.Name):
+            found.add(target.id)'''

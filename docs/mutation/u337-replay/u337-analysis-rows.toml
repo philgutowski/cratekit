@@ -1,0 +1,357 @@
+name = "u337-analysis"
+pass_kind = "replay"
+
+[[rows]]
+id = "u241-dsp.D4_settings_not_handed_to_the_head"
+source = { table = "u241-dsp.json", id = "D4_settings_not_handed_to_the_head" }
+description = "handle_run: the item's settings are not compared with the workers', so a real run stops its pool at the first head"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead_real.py"]
+old = '''
+    partial = ahead.head(job.job_id, str(path), settings)
+'''
+new = '''
+    partial = ahead.head(job.job_id, str(path), None)
+'''
+
+[[rows]]
+id = "u263.D3_libsndfile_opens_always"
+source = { table = "u263.json", id = "D3_libsndfile_opens_always" }
+description = "libsndfile_opens: answer yes for every file, so an M4A never reaches ffmpeg"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+        soundfile.info(str(path))
+    except Exception:
+        return False
+    return True'''
+new = '''
+        soundfile.info(str(path))
+    except Exception:
+        return True
+    return True'''
+
+[[rows]]
+id = "u263.D4_resampler"
+source = { table = "u263.json", id = "D4_resampler" }
+description = "decode.load: resample the ffmpeg samples with soxr_mq rather than librosa's soxr_hq"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = 'res_type="soxr_hq")'
+new = 'res_type="soxr_mq")'
+
+[[rows]]
+id = "u263.D6_window_round"
+source = { table = "u263.json", id = "D6_window_round" }
+description = "_window: round the frame count rather than truncate it as libsndfile does"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    return native[..., start : start + int(duration * native_rate)]'
+new = '    return native[..., start : start + round(duration * native_rate)]'
+
+[[rows]]
+id = "u264.M10_window_dropped"
+source = { table = "u264.json", id = "M10_window_dropped" }
+description = "decode.load: read the whole file through librosa, dropping the offset and duration"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        native, native_rate = librosa.load(str(path), sr=None, mono=False, **window)'
+new = '        native, native_rate = librosa.load(str(path), sr=None, mono=False)'
+
+[[rows]]
+id = "u264.M11_ffmpeg_left_channel"
+source = { table = "u264.json", id = "M11_ffmpeg_left_channel" }
+description = "decode.load: mix the ffmpeg path's samples by keeping the left channel"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+new = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    native = native[0] if native.ndim == 2 else native
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+
+[[rows]]
+id = "u264.M12_resampler"
+source = { table = "u264.json", id = "M12_resampler" }
+description = "_mono_at: resample with soxr_mq rather than librosa.load's soxr_hq"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    return librosa.resample(mono(native), orig_sr=native_rate, target_sr=rate, res_type="soxr_hq")'
+new = '    return librosa.resample(mono(native), orig_sr=native_rate, target_sr=rate, res_type="soxr_mq")'
+
+[[rows]]
+id = "u264.M14_ffmpeg_numpy_mean"
+source = { table = "u264.json", id = "M14_ffmpeg_numpy_mean" }
+description = "decode.load: mix the ffmpeg path's samples with numpy's mean, the arithmetic before librosa 1.0, rather than the shared mix"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+new = '''
+    native = _window(native, native_rate, offset=offset, duration=duration)
+    samples = native.mean(axis=0) if native.ndim == 2 else native
+    return librosa.resample(samples, orig_sr=native_rate, target_sr=rate, res_type="soxr_hq"), rate'''
+
+[[rows]]
+id = "u264.M1_fast_path_never"
+source = { table = "u264.json", id = "M1_fast_path_never" }
+description = "mono: never take the one add, so every mix is librosa.to_mono (the speed is lost, the samples are not)"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+    )'''
+new = '''
+        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+        and False
+    )'''
+
+[[rows]]
+id = "u264.M7_three_channels_one_add"
+source = { table = "u264.json", id = "M7_three_channels_one_add" }
+description = "_two_float32_channels: take the one add for two or more channels, so a three channel file mixes its first two"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        and samples.shape[0] == 2'
+new = '        and samples.shape[0] >= 2'
+
+[[rows]]
+id = "u264.M8_finite_check"
+source = { table = "u264.json", id = "M8_finite_check" }
+description = "mono: drop librosa's valid_audio before the one add, so mono no longer refuses audio that is not finite itself"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    librosa.util.valid_audio(samples)
+    return _mean_of_two(samples, zero_after=zero_after)'''
+new = '    return _mean_of_two(samples, zero_after=zero_after)'
+
+[[rows]]
+id = "u264.M9_read_at_target_rate"
+source = { table = "u264.json", id = "M9_read_at_target_rate" }
+description = "decode.load: read through librosa.load at the target rate, so the channels are resampled before the mix rather than after"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        native, native_rate = librosa.load(str(path), sr=None, mono=False, **window)'
+new = '        native, native_rate = librosa.load(str(path), sr=rate, mono=False, **window)'
+
+[[rows]]
+id = "r744-b.E7_no_prior"
+source = { table = "r744-b.json", id = "E7_no_prior" }
+description = "the prior over metrical levels is dropped, so of two levels inside the window the stronger raw peak wins rather than the one nearer the centre"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    score = np.where(inside, np.nan_to_num(strength * prior, nan=-np.inf), -np.inf)'
+new = '    score = np.where(inside, strength, -np.inf)'
+
+[[rows]]
+id = "r744.E1_no_floor"
+source = { table = "r744.json", id = "E1_no_floor" }
+description = "the window's floor is not applied, so a pulse below it is named at its own level rather than by the level inside the window"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    inside = (frequencies >= floor) & (frequencies <= ceiling)'
+new = '    inside = (frequencies > 0) & (frequencies <= ceiling)'
+
+[[rows]]
+id = "r744.E2_no_ceiling"
+source = { table = "r744.json", id = "E2_no_ceiling" }
+description = "the window's ceiling is not applied, so a 166 pulse is named 166 under the shipped window instead of 83"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    inside = (frequencies >= floor) & (frequencies <= ceiling)'
+new = '    inside = (frequencies >= floor) & (frequencies <= 10 * ceiling)'
+
+[[rows]]
+id = "r744.E3_no_interpolation"
+source = { table = "r744.json", id = "E3_no_interpolation" }
+description = "the strongest bin alone is named, which is the six beat bin width R-744 recorded as off by one to three"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''
+    lag = _interpolated_peak(strength, index)
+    if lag <= 0.0:'''
+new = '''
+    lag = float(index)
+    if lag <= 0.0:'''
+
+[[rows]]
+id = "r744.E4_offset_not_held"
+source = { table = "r744.json", id = "E4_offset_not_held" }
+description = "the parabola's offset is not held to half a bin, so a stronger raw neighbour pulls the vertex past the midpoint toward a bin the score did not choose"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    return index + max(-0.5, min(0.5, offset))'
+new = '    return index + offset'
+
+[[rows]]
+id = "r744.E5_answer_not_held_in_window"
+source = { table = "r744.json", id = "E5_answer_not_held_in_window" }
+description = "the interpolated answer is not held inside the window, so an edge bin's parabola can name a tempo below the floor"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '    return float(min(max(60.0 * rate / (hop * lag), float(floor)), float(ceiling)))'
+new = '    return 60.0 * rate / (hop * lag)'
+
+[[rows]]
+id = "r744.E6_flat_run_divides"
+source = { table = "r744.json", id = "E6_flat_run_divides" }
+description = "a flat run of three equal bins is fitted anyway, dividing by a zero curvature"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_tempo.py"]
+old = '''
+    if curvature >= 0.0:
+        return float(index)'''
+new = '''
+    if curvature > 0.0:
+        return float(index)'''
+
+[[rows]]
+id = "u157.D10_verdict_cut"
+source = { table = "u157.json", id = "D10_verdict_cut" }
+description = "analyse_file: read the verdict against the shipped default, not the bound cut"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'drift_words.verdict(drift, drift_cut)'
+new = 'drift_words.verdict(drift, DEFAULT_DRIFT_CUT)'
+
+[[rows]]
+id = "u157.D1_band_narrow"
+source = { table = "u157.json", id = "D1_band_narrow" }
+description = "DRIFT_BAND: back to the first band of 0.12, so the other section of a two tempo track falls outside it"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'DRIFT_BAND = 0.25'
+new = 'DRIFT_BAND = 0.12'
+
+[[rows]]
+id = "u157.D2_band_wide"
+source = { table = "u157.json", id = "D2_band_wide" }
+description = "DRIFT_BAND: widened to 0.5, so a window reaches a related metrical level"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'DRIFT_BAND = 0.25'
+new = 'DRIFT_BAND = 0.5'
+
+[[rows]]
+id = "u157.D3_pulse_gate"
+source = { table = "u157.json", id = "D3_pulse_gate" }
+description = "drift_from_tempogram: drop the pulse contrast gate, so a breakdown's window counts"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '(peak - float(column[around].mean())) / peak < DRIFT_PULSE_CONTRAST'
+new = '(peak - float(column[around].mean())) / peak < -1.0'
+
+[[rows]]
+id = "u157.D4_onset_floor"
+source = { table = "u157.json", id = "D4_onset_floor" }
+description = "drift_from_tempogram: drop the absolute onset floor, so a pad alone is judged"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'if strength[i] < DRIFT_ONSET_FLOOR or strength[i]'
+new = 'if strength[i] < -1.0 or strength[i]'
+
+[[rows]]
+id = "u157.D6_min_counted"
+source = { table = "u157.json", id = "D6_min_counted" }
+description = "drift_from_tempogram: judge on a single counted window"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '    if len(tempos) < DRIFT_MIN_WINDOWS:'
+new = '    if len(tempos) < 1:'
+
+[[rows]]
+id = "u157.D8_percentile"
+source = { table = "u157.json", id = "D8_percentile" }
+description = "DRIFT_PERCENTILE: the whole range instead of the tenth to ninetieth"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = 'DRIFT_PERCENTILE = 10.0'
+new = 'DRIFT_PERCENTILE = 0.0'
+
+[[rows]]
+id = "u157.D9_no_interpolation"
+source = { table = "u157.json", id = "D9_no_interpolation" }
+description = "drift_from_tempogram: the window's bin instead of its interpolated peak"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''
+        lag = _interpolated_peak(column, index)
+        if lag <= 0.0:
+            continue'''
+new = '''
+        lag = float(index)
+        if lag <= 0.0:
+            continue'''
+
+[[rows]]
+id = "u263.D16_head_no_decoder"
+source = { table = "u263.json", id = "D16_head_no_decoder" }
+description = "detect.analyse_file: report a missing decoder as undecodable, blaming the file"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''
+    except decode.DecoderMissing:
+        return {"path": path, "terminal": TERMINAL_NO_DECODER}
+'''
+new = ''
+
+[[rows]]
+id = "u241-dsp.D1_margin_not_applied"
+source = { table = "u241-dsp.json", id = "D1_margin_not_applied" }
+description = "separation: the mask ignores the margin, so the key's harmonic part is not the one librosa returns"
+file = "src/cratekit/analysis/separation.py"
+surface = "user"
+tests = ["tests/test_analysis_separation.py"]
+old = '''
+            along_time, along_frequency * margin, power=POWER, split_zeros=split_zeros
+'''
+new = '''
+            along_time, along_frequency, power=POWER, split_zeros=split_zeros
+'''
+
+[[rows]]
+id = "u263.D17_vocal_reraise"
+source = { table = "u263.json", id = "D17_vocal_reraise" }
+description = "vocal.decode: swallow a missing decoder as an undecodable file"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''
+    except decoder.DecoderMissing:
+        raise
+'''
+new = ''

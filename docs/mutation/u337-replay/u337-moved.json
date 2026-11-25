@@ -1,0 +1,362 @@
+{
+  "name": "u337-moved",
+  "pass_kind": "replay",
+  "branch": "cloud/986-every-guard-killed-at-survey-still-killed",
+  "head": "59cc5358",
+  "when": "2026-11-24 20:32 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 23349,
+  "baseline_exit": 1,
+  "pytest_runs": 16,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25)",
+  "reused_rows": 0,
+  "known_failures": 248,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: it is for commit `474653bacb22`, and this tree is at `59cc5358d37a`",
+  "subset_baselines": 5,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to tests/ratchets/reserved_causes/core.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "tests/ratchets/reserved_causes/core.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "e9a6a566788c0146",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 23349,
+    "baseline_collected": 23349,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u125.P1_drop_module_entry",
+      "description": "Delete the core/backup_facts.py entry from PINNED_KEBAB_LITERALS_BY_MODULE",
+      "file": "tests/ratchets/reserved_causes/core.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "ccbb813b74233d04",
+      "subset": [
+        "tests/test_reserved_causes.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 229,
+      "baseline_collected": 229,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module",
+        "tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    'core/backup_facts.py': [\n        'grant-path-access',\n        'never-recorded',\n        'recorded-in-the-future',\n        'repair-backup-facts',\n        'upgrade-cratekit',\n        'utf-8',\n    ],\n",
+      "new": "",
+      "source": {
+        "table": "u125.json",
+        "id": "P1_drop_module_entry"
+      },
+      "moved": "moved by 2b058f2c (U296, refactor(u296)) from tests/_pinned_reserved_populations.py to tests/ratchets/reserved_causes/core.py, which _pinned_reserved_populations.py reads back into PINNED_KEBAB_LITERALS_BY_MODULE; the same guard because it is the same core/backup_facts.py entry with the same six literals in the KEBAB_LITERALS table that feeds that name, and deleting it leaves the pins short of a module the tree holds"
+    },
+    {
+      "id": "u125.P3_pin_without_tree_member",
+      "description": "Add a fake module pin the tree does not hold",
+      "file": "tests/ratchets/reserved_causes/core.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "096b718125a63686",
+      "subset": [
+        "tests/test_reserved_causes.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 229,
+      "baseline_collected": 229,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module",
+        "tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted', 'utf-8'],\n    'core/backup_facts.py': [\n",
+      "new": "    'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted', 'utf-8'],\n    'core/zz_fake_u125.py': ['not-a-real-cause'],\n    'core/backup_facts.py': [\n",
+      "source": {
+        "table": "u125.json",
+        "id": "P3_pin_without_tree_member"
+      },
+      "moved": "moved by 2b058f2c (U296, refactor(u296)) from tests/_pinned_reserved_populations.py to tests/ratchets/reserved_causes/core.py; core/artifacts.py has since left the pins, so the fake pin is anchored after the first KEBAB_LITERALS entry, core/active_taxonomy.py; the fake module is named under core/ because the reader now refuses a key filed under another package's file at import, and a core path keeps the planted pin reaching the same comparison of the pins with the tree that the original row broke"
+    },
+    {
+      "id": "u125.P4_literal_added_to_pinned_module",
+      "description": "Add a kebab literal to acquire/adapter.py that the module does not carry",
+      "file": "tests/ratchets/reserved_causes/acquire.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "10c6be4fac31ae4f",
+      "subset": [
+        "tests/test_reserved_causes.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 229,
+      "baseline_collected": 229,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module",
+        "tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    'acquire/adapter.py': [\n        'adapter-broken',\n        'auth-failed',\n        'choose-known-adapter',\n        'install-adapter',\n",
+      "new": "    'acquire/adapter.py': [\n        'adapter-broken',\n        'auth-failed',\n        'zz-fake-literal-u125',\n        'choose-known-adapter',\n        'install-adapter',\n",
+      "source": {
+        "table": "u125.json",
+        "id": "P4_literal_added_to_pinned_module"
+      },
+      "moved": "moved by 2b058f2c (U296, refactor(u296)) from tests/_pinned_reserved_populations.py to tests/ratchets/reserved_causes/acquire.py; the same guard because it is the same acquire/adapter.py entry of the KEBAB_LITERALS table, read back into PINNED_KEBAB_LITERALS_BY_MODULE, and the planted literal is one the module does not carry"
+    },
+    {
+      "id": "r658-b.S1_adoption_unreadable_revert",
+      "description": "Drop the scoped unreadable digest around revert_tags; the refusal it pins must not be produced",
+      "file": "tests/test_adoption.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9693e417adc706ef",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 613,
+      "baseline_collected": 613,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_a_file_that_cannot_be_READ_is_not_reported_as_somebody_elses_bytes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        unreadable.setattr(adopt_changed, \"digest_of\", lambda _p: \"\")\n        report = adopt_revert.revert_tags(cfg)\n",
+      "new": "        report = adopt_revert.revert_tags(cfg)\n",
+      "source": {
+        "table": "r658-b.json",
+        "id": "S1_adoption_unreadable_revert"
+      },
+      "moved": "rewritten in place by ad92ab53 (U310, refactor(u310)), which split digest_of out of adopt/revert.py into adopt/revert_changed.py, so the scoped patch now names adopt_changed rather than adopt_revert; the same guard because it is the same scoped unreadable digest around revert_tags in test_a_file_that_cannot_be_READ_is_not_reported_as_somebody_elses_bytes, now patched where the read happens"
+    },
+    {
+      "id": "r658-b.S2_adoption_unreadable_stamp",
+      "description": "Drop the scoped unreadable digest around the stamping write",
+      "file": "tests/test_adoption.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e478298ed1b5e61e",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 613,
+      "baseline_collected": 613,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_a_stamping_read_that_FAILS_is_recorded_as_its_own_state"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        unreadable.setattr(adopt_changed, \"digest_of\", lambda _p: \"\")\n        record, landed = _adopt(cfg, path, written=\"Adopted\", entry_id=\"e1\")\n",
+      "new": "        record, landed = _adopt(cfg, path, written=\"Adopted\", entry_id=\"e1\")\n",
+      "source": {
+        "table": "r658-b.json",
+        "id": "S2_adoption_unreadable_stamp"
+      },
+      "moved": "rewritten in place by ad92ab53 (U310, refactor(u310)), which moved digest_of to adopt/revert_changed.py so the patch names adopt_changed, and the stamping call became the _adopt helper (9f781441, U310, and 060353bf, U332), which still calls adopt_revert.write_tag_with_record; the same guard because it is the same scoped unreadable digest around the stamping write in test_a_stamping_read_that_FAILS_is_recorded_as_its_own_state"
+    },
+    {
+      "id": "r658-b.S5_adoption_swap",
+      "description": "Drop the scoped byte swap between the two reads",
+      "file": "tests/test_adoption.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "12995306e99db612",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 613,
+      "baseline_collected": 613,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_a_REWRITE_INSIDE_ONE_TICK_that_moves_no_stat_field_is_still_caught"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        swapping.setattr(adopt_changed, \"digest_of\", swap_the_bytes_after_the_first_read)\n",
+      "new": "",
+      "source": {
+        "table": "r658-b.json",
+        "id": "S5_adoption_swap"
+      },
+      "moved": "rewritten in place by ad92ab53 (U310, refactor(u310)), which moved digest_of to adopt/revert_changed.py, so the swap is now patched onto adopt_changed; the same guard because it is the same scoped byte swap between the two reads in test_a_REWRITE_INSIDE_ONE_TICK_that_moves_no_stat_field_is_still_caught"
+    },
+    {
+      "id": "u253.L1_relative_per_node",
+      "description": "_location_codec_offenders: compute the relative path inside the node loop again, main's shape, so a run makes one relative_to per node",
+      "file": "tests/test_locations.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4bbbed96722a0d7a",
+      "subset": [
+        "tests/test_locations.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 146,
+      "baseline_collected": 146,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_locations.py::test_the_sweep_computes_each_relative_path_once_per_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        relative = path.relative_to(root).as_posix()\n        text = path.read_text()\n        if \"quote\" not in unicodedata.normalize(\"NFKC\", text):\n            continue\n        for node in ast.walk(parsed(text)):\n",
+      "new": "        text = path.read_text()\n        if \"quote\" not in unicodedata.normalize(\"NFKC\", text):\n            continue\n        for node in ast.walk(parsed(text)):\n            relative = path.relative_to(root).as_posix()\n",
+      "source": {
+        "table": "u253.json",
+        "id": "L1_relative_per_node"
+      },
+      "moved": "rewritten in place by 56bea733 (U299, test(u299)), which parses through the shared cached parsed() rather than ast.parse, and then by b28fac9a (U299), which reads the text first and skips a file that never spells quote; the same guard because relative is still computed once per file in _location_codec_offenders before the node walk, and moving it inside the walk again makes one relative_to per node, which test_the_sweep_computes_each_relative_path_once_per_file counts"
+    },
+    {
+      "id": "u199.M8_stale_table_applied",
+      "description": "_problems: compare with a stale table rather than report it, so an entry whose old text is in no moved paragraph excuses nothing and passes",
+      "file": "tests/test_restart_and_residual_files.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "9cc646a1933ee5d2",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_stale_rewording_fails_rather_than_excusing_nothing[entry0-in the split base 0 times]",
+        "tests/test_restart_and_residual_files.py::test_a_stale_rewording_fails_rather_than_excusing_nothing[entry1-times, not once]",
+        "tests/test_restart_and_residual_files.py::test_a_stale_rewording_fails_rather_than_excusing_nothing[entry2-its new text is not in r301.md]",
+        "tests/test_restart_and_residual_files.py::test_a_stale_rewording_fails_rather_than_excusing_nothing[entry3-its new text is not in r999.md]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if stale and check:\n        return stale\n",
+      "new": "    if False:\n        return stale\n",
+      "source": {
+        "table": "u199.json",
+        "id": "M8_stale_table_applied"
+      },
+      "moved": "rewritten in place by 899ee372 (U313, refactor(u313)), which folded _problems and _lost_paragraphs into one _lost with a check flag; the same guard because _lost still returns the stale table entries before comparing, and skipping that return applies a stale rewording rather than reporting it, which test_a_stale_rewording_fails_rather_than_excusing_nothing catches"
+    },
+    {
+      "id": "r658-d.D1_an_undo_comes_back",
+      "description": "Put a body monkeypatch.undo() back into the restore retry test; the ban must name it",
+      "file": "tests/test_restore.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "cab53c3ff71916d7",
+      "subset": [
+        "tests/test_isolation_survives_undo.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 3,
+      "baseline_collected": 3,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isolation_survives_undo.py::test_no_test_undoes_the_shared_monkeypatch"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    assert stranded.read_bytes() == b\"the first attempt's log\"\n    log.write_bytes(b\"the second attempt's log\")\n",
+      "new": "    assert stranded.read_bytes() == b\"the first attempt's log\"\n    monkeypatch.undo()\n    log.write_bytes(b\"the second attempt's log\")\n",
+      "source": {
+        "table": "r658-d.json",
+        "id": "D1_an_undo_comes_back"
+      },
+      "moved": "the comment the old text began with was cut by 21a862f4 (U300, refactor(u300)), which kept the code of test_round6_a_retry_after_a_partial_failure_still_runs; the same guard because the planted monkeypatch.undo() goes into the same retry test at the same point, before the second attempt's log is written, and the ban in tests/test_isolation_survives_undo.py scans every test file's text for it"
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
