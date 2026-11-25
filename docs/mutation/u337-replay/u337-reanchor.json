@@ -1,0 +1,791 @@
+{
+  "name": "u337-reanchor",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "5671db8c8",
+  "when": "2026-11-25 04:59 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 23364,
+  "baseline_exit": 1,
+  "pytest_runs": 34,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25)",
+  "reused_rows": 0,
+  "known_failures": 248,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py baseline` at 2026-11-25 04:59 UTC for commit `5671db8c8101`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 14,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/match_list.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/match_list.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1128045d21cac7c8",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 23364,
+    "baseline_collected": 23364,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r1709.M25_fallback_identity_fold",
+      "description": "the upload question keys the folded title",
+      "file": "src/cratekit/acquire/match_list.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c68bfd1ba34f9816",
+      "subset": [
+        "tests/test_acquire_fallback.py",
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback.py::test_an_upload_question_about_one_emoji_title_is_not_another_ones",
+        "tests/test_intake_missing_search.py::test_the_identity_is_the_folded_row_and_not_its_spelling"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"artist\": fold(self.artist), \"title\": title_identity(self.title),\n",
+      "new": "            \"artist\": fold(self.artist), \"title\": fold(self.title),\n",
+      "source": {
+        "table": "r1709.json",
+        "id": "M25_fallback_identity_fold"
+      },
+      "moved": "0293c2eb (U305, refactor(u305)) split match.py and moved Wanted.folded_row into acquire/match_list.py, the one identity dict both the upload question and the search question are keyed by; the title is still keyed by title_identity on that line, so folding it makes two emoji titles one question as before"
+    },
+    {
+      "id": "r664.G5_key_not_read_from_the_tag_head",
+      "description": "Stop reading the key off a head found only inside the title tag, the first draft's precedence the review reversed",
+      "file": "src/cratekit/acquire/match_library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cecb7a7944d9330c",
+      "subset": [
+        "tests/test_match_states.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 613,
+      "baseline_collected": 613,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_match_states.py::test_a_head_in_the_title_tag_reads_as_the_stems_head_does[a-head-found-only-in-the-tag-carries-the-key-when-the-stem-has-none]",
+        "tests/test_match_states.py::test_the_tag_head_outranks_the_stem_head_and_both_outrank_the_initialkey_tag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    written_key = tag_head.get(\"key\") or head.get(\"key\")\n",
+      "new": "    written_key = head.get(\"key\")\n",
+      "source": {
+        "table": "r664.json",
+        "id": "G5_key_not_read_from_the_tag_head"
+      },
+      "moved": "0293c2eb (U305) moved the library index reader into acquire/match_library.py, and bf177ec8 (U327) then put the title tag's head ahead of the stem's; the guard is the same, the tag's head is still read for the key, so reading the stem's head alone breaks it as before"
+    },
+    {
+      "id": "r731-c.M25_planned_sub_outside_the_set",
+      "description": "a planned sub outside the bucket's competing subs is no longer let through unasked",
+      "file": "src/cratekit/adopt/plan.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e200ae9701a03fdd",
+      "subset": [
+        "tests/test_adopt_placements.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 41,
+      "baseline_collected": 41,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_placements.py::test_a_planned_sub_outside_the_competing_set_is_never_withheld"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sub not in competing:\n        return NO_COMPETING_PLACE\n    kept",
+      "new": "    kept",
+      "source": {
+        "table": "r731-c.json",
+        "id": "M25_planned_sub_outside_the_set"
+      },
+      "moved": "258b33aa (U340, fix(u340)) put a kept_beside line between this guard and the held line the old text ended on; the guard is the same early return for a planned sub outside the competing set, deleted the same way"
+    },
+    {
+      "id": "r780-b.B2_worker_asks_the_entry_bucket",
+      "description": "the worker asks the plan's rule of the entry's own bucket rather than the bucket the move names, so every tree path move is refused as one the plan does not make",
+      "file": "src/cratekit/adopt/move_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "907043d411f5436f",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_failure_after_the_add_leaves_the_track_in_both_and_a_resume_finishes",
+        "tests/test_adopt_move.py::test_a_refusal_at_the_second_commit_keeps_its_own_cause_and_the_job_says_in_both",
+        "tests/test_adopt_move.py::test_a_removal_that_did_not_take_fails_the_job_though_nothing_raised",
+        "tests/test_adopt_move.py::test_a_track_filed_somewhere_nobody_was_shown_is_a_stale_decision",
+        "tests/test_adopt_move.py::test_a_tree_path_move_is_checked_by_the_worker_in_the_bucket_it_names",
+        "tests/test_adopt_move.py::test_a_verdict_on_another_bucket_keeps_the_tree_path_out_of_its_folder",
+        "tests/test_adopt_move.py::test_an_addition_never_lands_in_a_playlist_rekordbox_removed",
+        "tests/test_adopt_move.py::test_an_approved_move_adds_the_new_sub_and_removes_the_old"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        now = move_engine.standing_in(\n            entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused,\n            elsewhere=move_engine.elsewhere_of(claimed, entry), moved=moved,\n        )\n",
+      "new": "        now = move_engine.standing(\n            entry, current.placements, declared, tree=current.tree,\n            elsewhere=move_engine.elsewhere_of(claimed, entry),\n        )\n",
+      "source": {
+        "table": "r780-b.json",
+        "id": "B2_worker_asks_the_entry_bucket"
+      },
+      "moved": "76b5dcf2 (U339) added moved= and 258b33aa (U340) added elsewhere= to the worker's standing_in call; the same call asks the bucket the move names, and calling standing (the entry's own bucket) in its place, keeping elsewhere which standing still takes, is the same substitution"
+    },
+    {
+      "id": "u119.G2_source_folder_counts",
+      "description": "source_playlist: a source playlist holding no live track is mirrored, emptying every Favorites",
+      "file": "src/cratekit/write/genre_favorites.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "648d2638c3ec33df",
+      "subset": [
+        "tests/test_genre_favorites.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites.py::test_a_smart_playlist_or_an_emptied_playlist_of_the_source_name_is_not_the_source"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(live) == 1 and live_members(db, str(live[0].ID)):\n",
+      "new": "    if len(live) == 1:\n",
+      "source": {
+        "table": "u119.json",
+        "id": "G2_source_folder_counts"
+      },
+      "moved": "6ecbd2c0 (U302, refactor(u302)) folded the nested empty check into one condition, len(live) == 1 and live_members(...), with the empty refusal as the branch after it; dropping the live_members half returns an empty source as before"
+    },
+    {
+      "id": "u119.G3_two_sources_first_wins",
+      "description": "source_playlist: two live sources, the first is taken",
+      "file": "src/cratekit/write/genre_favorites.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a7dc78e5e229fa75",
+      "subset": [
+        "tests/test_genre_favorites.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites.py::test_two_source_playlists_are_refused_rather_than_one_chosen"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(live) == 1 and live_members(db, str(live[0].ID)):\n",
+      "new": "    if len(live) >= 1 and live_members(db, str(live[0].ID)):\n",
+      "source": {
+        "table": "u119.json",
+        "id": "G3_two_sources_first_wins"
+      },
+      "moved": "6ecbd2c0 (U302, refactor(u302)) folded the nested check into one condition on the same len(live) == 1 test; widening it to >= 1 takes the first of two live sources as before"
+    },
+    {
+      "id": "u196.S1_any_word",
+      "description": "search_residuals: match a heading carrying any word rather than every word",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "612bf20adb3f41b6",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 7,
+      "baseline_collected": 7,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_every_word_must_appear_in_any_case_newest_first[words1-25-found1-0]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "all(w in hit[1].casefold() for w in wanted)",
+      "new": "any(w in hit[1].casefold() for w in wanted)",
+      "source": {
+        "table": "u196.json",
+        "id": "S1_any_word"
+      },
+      "moved": "e5e9252b (U314, feat(u314)) made search_residuals read every ledger file as (number, title, path) hits, so the every word test is the same all() over hit[1]; any() matches a heading with any word as before"
+    },
+    {
+      "id": "u196.S2_case_sensitive",
+      "description": "search_residuals: compare without folding case, so a heading in capitals is missed",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6dc29ab4299c1901",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 7,
+      "baseline_collected": 7,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_every_word_must_appear_in_any_case_newest_first[words0-25-found0-0]",
+        "tests/test_board_residual_search.py::test_every_word_must_appear_in_any_case_newest_first[words1-25-found1-0]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "all(w in hit[1].casefold() for w in wanted)",
+      "new": "all(w in hit[1] for w in wanted)",
+      "source": {
+        "table": "u196.json",
+        "id": "S2_case_sensitive"
+      },
+      "moved": "e5e9252b (U314, feat(u314)) made search_residuals read every ledger file as (number, title, path) hits; the same comparison now folds hit[1], and dropping the fold misses a heading in capitals as before"
+    },
+    {
+      "id": "u219.M1_accept_fingerprint",
+      "description": "accept_as_it_stands: record no fingerprint, so an accepted INBOX still meets the restore latch (round two's first hold)",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4c9cccddcae64a77",
+      "subset": [
+        "tests/test_resort_scope.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_resort_scope.py::test_a_restore_marked_inbox_is_accepted_by_a_named_person",
+        "tests/test_resort_scope.py::test_a_second_restore_clears_the_acceptance_of_the_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        convergence.record_fingerprint(cfg, handle)\n    finally:\n",
+      "new": "    finally:\n",
+      "source": {
+        "table": "u219.json",
+        "id": "M1_accept_fingerprint"
+      },
+      "moved": "3f0175b1 (R2056) put the Membership class after accept_as_it_stands, so the old text's trailing def declared_membership no longer follows; the same record_fingerprint call, the only one in rebuild.py, is deleted the same way"
+    },
+    {
+      "id": "u223.M1_composite",
+      "description": "What M1 holds with the staged report fallback gone too: the shipped bug, through the verb and the printed resume",
+      "file": "src/cratekit/analysis/artifacts.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f57a77485f8925c9",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 176,
+      "baseline_collected": 176,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_job_an_older_build_left_with_no_intent_resumes_from_its_staged_report",
+        "tests/test_analysis_workers.py::test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent",
+        "tests/test_analysis_workers.py::test_a_staged_report_is_a_twin_only_for_this_item_renamed_in_its_own_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                entry.name == RENAME_INTENT_FILENAME\n                and entry.is_file()\n                and not entry.is_symlink()\n            ):\n                continue\n            if entry.is_dir() and not entry.is_symlink():\n                shutil.rmtree(entry)\n            else:\n                entry.unlink()\n    elif directory.is_symlink() or directory.exists():\n        # ``rmtree`` refuses a link and a plain file, loudly, rather than this\n        # call deciding to remove or follow one.\n        shutil.rmtree(directory)\n    config.mkdir_private(directory)\n    return directory / _report_name(ordinal)\n\n\ndef intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:\n    \"\"\"Where one item's rename intent lives: in its staging directory.\n\n    Written before the rename, so a kill between the rename and the row\n    flipping to done leaves the resume the file the item BECAME, never a guess\n    from the folder. It outlives the attempt (U223) and is removed only where\n    known false: a rename that did not land, or a source still a file.\n    \"\"\"\n    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME\n\n\ndef record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    config.mkdir_private(path.parent)\n    return write(path, {\"item\": item.item_id, \"target\": str(target)})\n\n\ndef _item_record(path: Path, item) -> dict[str, Any] | None:\n    \"\"\"The mapping ``path`` holds for this item, or None when it holds none.\"\"\"\n    try:\n        loaded = json.loads(path.read_text(encoding=\"utf-8\"))\n    except (OSError, ValueError):\n        return None\n    if not isinstance(loaded, dict) or loaded.get(\"item\") != item.item_id:\n        return None\n    return loaded\n\n\ndef rename_intent(cfg: config.Config, job, item) -> Path | None:\n    \"\"\"The target this item's last attempt meant to rename it to, if recorded.\n\n    A link is no record: it would name whatever its far end says as the twin.\n    \"\"\"\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    if path.is_symlink() or not path.is_file():\n        return None\n    target = (_item_record(path, item) or {}).get(\"target\")\n    return Path(str(target)) if target else None\n\n\ndef discard_rename_evidence(cfg: config.Config, job, item) -> None:\n    \"\"\"Drop this item's intent AND its staged report, once neither can be true.\n\n    Called where the rename is known not to stand. Left behind, either would\n    name whatever later sits at that target as this item's twin. The report\n    goes too because :func:`staged_report` is read as the same proof.\n    \"\"\"\n    directory = _staging_dir(cfg, job.job_id, item.ordinal)\n    if directory.is_symlink() or not directory.is_dir():\n        # NOT THROUGH A LINK: its far end is not this item's staging, and\n        # ``staged_path`` refuses the link loudly when the attempt reaches it.\n        return\n    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):\n        entry = directory / name\n        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path`` to remove; an\n        # ``unlink`` would fail the item for good.\n        if entry.is_symlink() or not entry.is_dir():\n            entry.unlink(missing_ok=True)\n\n\ndef staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:\n    \"\"\"This item's report, staged by an attempt whose row never moved, if any.\n\n    Read in place, never cleared. A report that says it renamed is staged only\n    after the rename, so it is the item's record when the intent is gone\n    (U223). Another item's report, a non mapping, or a link is no report.\n    \"\"\"\n    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)\n    if path.is_symlink() or not path.is_file():\n",
+      "new": "                entry.name == \"never-kept.json\"\n                and entry.is_file()\n                and not entry.is_symlink()\n            ):\n                continue\n            if entry.is_dir() and not entry.is_symlink():\n                shutil.rmtree(entry)\n            else:\n                entry.unlink()\n    elif directory.is_symlink() or directory.exists():\n        # ``rmtree`` refuses a link and a plain file, loudly, rather than this\n        # call deciding to remove or follow one.\n        shutil.rmtree(directory)\n    config.mkdir_private(directory)\n    return directory / _report_name(ordinal)\n\n\ndef intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:\n    \"\"\"Where one item's rename intent lives: in its staging directory.\n\n    Written before the rename, so a kill between the rename and the row\n    flipping to done leaves the resume the file the item BECAME, never a guess\n    from the folder. It outlives the attempt (U223) and is removed only where\n    known false: a rename that did not land, or a source still a file.\n    \"\"\"\n    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME\n\n\ndef record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    config.mkdir_private(path.parent)\n    return write(path, {\"item\": item.item_id, \"target\": str(target)})\n\n\ndef _item_record(path: Path, item) -> dict[str, Any] | None:\n    \"\"\"The mapping ``path`` holds for this item, or None when it holds none.\"\"\"\n    try:\n        loaded = json.loads(path.read_text(encoding=\"utf-8\"))\n    except (OSError, ValueError):\n        return None\n    if not isinstance(loaded, dict) or loaded.get(\"item\") != item.item_id:\n        return None\n    return loaded\n\n\ndef rename_intent(cfg: config.Config, job, item) -> Path | None:\n    \"\"\"The target this item's last attempt meant to rename it to, if recorded.\n\n    A link is no record: it would name whatever its far end says as the twin.\n    \"\"\"\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    if path.is_symlink() or not path.is_file():\n        return None\n    target = (_item_record(path, item) or {}).get(\"target\")\n    return Path(str(target)) if target else None\n\n\ndef discard_rename_evidence(cfg: config.Config, job, item) -> None:\n    \"\"\"Drop this item's intent AND its staged report, once neither can be true.\n\n    Called where the rename is known not to stand. Left behind, either would\n    name whatever later sits at that target as this item's twin. The report\n    goes too because :func:`staged_report` is read as the same proof.\n    \"\"\"\n    directory = _staging_dir(cfg, job.job_id, item.ordinal)\n    if directory.is_symlink() or not directory.is_dir():\n        # NOT THROUGH A LINK: its far end is not this item's staging, and\n        # ``staged_path`` refuses the link loudly when the attempt reaches it.\n        return\n    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):\n        entry = directory / name\n        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path`` to remove; an\n        # ``unlink`` would fail the item for good.\n        if entry.is_symlink() or not entry.is_dir():\n            entry.unlink(missing_ok=True)\n\n\ndef staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:\n    \"\"\"This item's report, staged by an attempt whose row never moved, if any.\n\n    Read in place, never cleared. A report that says it renamed is staged only\n    after the rename, so it is the item's record when the intent is gone\n    (U223). Another item's report, a non mapping, or a link is no report.\n    \"\"\"\n    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)\n    if True:\n",
+      "source": {
+        "table": "u223.json",
+        "id": "M1_composite"
+      },
+      "moved": "c474d295 (U306, refactor(u306)) gave the intent and the staged report one record reader, _item_record, and shortened the docstrings inside the span; the same two edits, staged_path no longer keeping the intent and staged_report reading nothing, applied to the span as it reads at HEAD"
+    },
+    {
+      "id": "u250.M1_three_opens_again",
+      "description": "read_truth: go back to the three single field readers, three opens a file, the regression the card removes",
+      "file": "src/cratekit/write/rebuild.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fce91baea07a87bd",
+      "subset": [
+        "tests/test_rebuild_one_open.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 49,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rebuild_one_open.py::test_a_derivation_over_n_files_makes_n_opens",
+        "tests/test_rebuild_one_open.py::test_a_file_no_open_can_read_reads_three_absent_values[empty.flac-]",
+        "tests/test_rebuild_one_open.py::test_a_file_no_open_can_read_reads_three_absent_values[garbage.aiff-FORM\\x00\\x00\\x00\\x04AIFX]",
+        "tests/test_rebuild_one_open.py::test_a_file_no_open_can_read_reads_three_absent_values[garbage.m4a-\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk\\x00\\x00\\x00\\x08junk]",
+        "tests/test_rebuild_one_open.py::test_a_file_no_open_can_read_reads_three_absent_values[garbage.mp3-content1]",
+        "tests/test_rebuild_one_open.py::test_a_file_no_open_can_read_reads_three_absent_values[truncated.wav-RIFF$\\x00\\x00\\x00WAVEfmt ]",
+        "tests/test_rebuild_one_open.py::test_an_undecodable_field_reads_none_and_its_neighbours_still_read",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[decimal-.aiff]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[decimal-.flac]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[decimal-.m4a]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[decimal-.mp3]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[decimal-.ogg]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[decimal-.wav]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[energy-word-.aiff]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[energy-word-.flac]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[energy-word-.m4a]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[energy-word-.mp3]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[energy-word-.ogg]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[energy-word-.wav]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[genre-only-.aiff]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[genre-only-.flac]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[genre-only-.m4a]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[genre-only-.mp3]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[genre-only-.ogg]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[genre-only-.wav]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[numeric-.aiff]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[numeric-.flac]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[numeric-.m4a]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[numeric-.mp3]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[numeric-.ogg]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[numeric-.wav]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[padded-.aiff]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[padded-.flac]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[padded-.m4a]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[padded-.mp3]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[padded-.ogg]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[padded-.wav]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[untagged-.aiff]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[untagged-.flac]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[untagged-.m4a]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[untagged-.mp3]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[untagged-.ogg]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[untagged-.wav]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[vox-word-.aiff]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[vox-word-.flac]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[vox-word-.m4a]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[vox-word-.mp3]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[vox-word-.ogg]",
+        "tests/test_rebuild_one_open.py::test_one_open_reads_what_the_three_readers_read[vox-word-.wav]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    values = tags.read_tags(path, _TRUTH_FIELDS)\n    return Truth(\n        location=str(path),\n        genre=values[\"genre\"],\n        energy=tags.whole_number(values[\"energylevel\"], field=\"energylevel\", path=path),\n        voxlevel=tags.whole_number(values[\"voxlevel\"], field=\"voxlevel\", path=path),\n        second_genre=values[\"secondgenre\"],\n    )",
+      "new": "    return Truth(\n        location=str(path),\n        genre=tags.read_genre_from_file(path),\n        energy=tags.read_energy_from_file(path),\n        voxlevel=tags.read_vox_from_file(path),\n        second_genre=tags.read_tag(path, \"secondgenre\"),\n    )",
+      "source": {
+        "table": "u250.json",
+        "id": "M1_three_opens_again"
+      },
+      "moved": "e64715d6 (U340, feat(u340)) added second_genre to the one read_tags call in read_truth; going back to a reader per field, the three single field readers and read_tag for the fourth, opens the file once per field as the old regression did"
+    },
+    {
+      "id": "u28-skills-independent.X2_mount_rule_removed",
+      "description": "the portability scanner stops looking for a hardcoded volume path at all",
+      "file": "scripts/scan_repo.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9e3a7fc573ddeb1e",
+      "subset": [
+        "tests/test_portability.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 161,
+      "baseline_collected": 161,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_portability.py::test_any_volume_is_caught_not_just_one",
+        "tests/test_portability.py::test_guard_covers_every_shipped_surface[docs/install.md-Put the library at /Volumes/BigAudioDrive/Music\\n]",
+        "tests/test_portability.py::test_guard_covers_every_shipped_surface[scripts/backup.sh-VOLUME=/Volumes/BigAudioDrive/Music\\n]",
+        "tests/test_portability.py::test_guard_covers_every_shipped_surface[src/cratekit/core/config.py-ROOT = \"/Volumes/BigAudioDrive/Music\"\\n]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        segments.add(segment.lower())\n        problems.append(\n            f\"hardcoded volume path {match.group(0)!r}; the library root is \"\n            f\"configuration, not a literal\"\n        )\n",
+      "new": "        segments.add(segment.lower())\n",
+      "source": {
+        "table": "u28-skills-independent.json",
+        "id": "X2_mount_rule_removed"
+      },
+      "moved": "fc06797b (U957) added a segments.add line inside the mount loop for the shape only tokens; the volume path report is the same problems.append, deleted here while the segment collection, another guard, is kept"
+    },
+    {
+      "id": "u39-author-full.R1_filename_source_dropped",
+      "description": "Head recovery loses the filename source and keeps only the title fallback",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ebfbc944c20db75",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_file_analyze_run_measured_is_named_with_no_head_and_a_head_on_file_is_kept",
+        "tests/test_naming_apply_cli.py::test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher",
+        "tests/test_naming_apply_cli.py::test_a_padded_text_stem_with_tags_plans_nothing",
+        "tests/test_naming_apply_cli.py::test_a_stem_carrying_text_is_not_recomposed_from_its_tags",
+        "tests/test_naming_apply_cli.py::test_an_applied_rename_lands_its_name_and_title_tag_and_converges[the-filename-head-alone-is-enough]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    head = (\n        naming.parse_head(title, template=template)\n        or naming.parse_head(path.name, template=template)\n        or {}\n    )\n",
+      "new": "    head = (\n        naming.parse_head(title, template=template)\n        or {}\n    )\n",
+      "source": {
+        "table": "u39-author-full.json",
+        "id": "R1_filename_source_dropped"
+      },
+      "moved": "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the filename is still a head source, now the second, so dropping it leaves the title tag the only one as before"
+    },
+    {
+      "id": "u39-author-full.R2_title_fallback_dropped",
+      "description": "Head recovery loses the title fallback that heals the tag then rename crash window",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "604fc32cdafd6afb",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_file_analyze_run_measured_is_named_with_no_head_and_a_head_on_file_is_kept",
+        "tests/test_naming_apply_cli.py::test_an_applied_rename_lands_its_name_and_title_tag_and_converges[the-head-is-recovered-from-the-title-tag]",
+        "tests/test_naming_apply_cli.py::test_an_identifier_stem_composes_its_one_name[a-head-in-the-title-tag-stays-out-of-the-body]",
+        "tests/test_naming_apply_cli.py::test_one_file_is_planned_its_one_rename[the-title-head-wins-over-the-filename-head]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    head = (\n        naming.parse_head(title, template=template)\n        or naming.parse_head(path.name, template=template)\n        or {}\n    )\n",
+      "new": "    head = (\n        naming.parse_head(path.name, template=template)\n        or {}\n    )\n",
+      "source": {
+        "table": "u39-author-full.json",
+        "id": "R2_title_fallback_dropped"
+      },
+      "moved": "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the title tag is still a head source, now the first, so dropping it loses the head recovered from the title tag when the filename lost it, as before"
+    },
+    {
+      "id": "u41-author-full.R1_filename_head_source_dropped",
+      "description": "The filename is no longer a head source, leaving the title as the only one",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "84e6372aa8ba6db6",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_file_analyze_run_measured_is_named_with_no_head_and_a_head_on_file_is_kept",
+        "tests/test_naming_apply_cli.py::test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher",
+        "tests/test_naming_apply_cli.py::test_a_padded_text_stem_with_tags_plans_nothing",
+        "tests/test_naming_apply_cli.py::test_a_stem_carrying_text_is_not_recomposed_from_its_tags",
+        "tests/test_naming_apply_cli.py::test_an_applied_rename_lands_its_name_and_title_tag_and_converges[the-filename-head-alone-is-enough]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        naming.parse_head(title, template=template)\n        or naming.parse_head(path.name, template=template)\n",
+      "new": "        naming.parse_head(title, template=template)\n",
+      "source": {
+        "table": "u41-author-full.json",
+        "id": "R1_filename_head_source_dropped"
+      },
+      "moved": "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the same two lines in the other order, and dropping the filename line leaves the title as the only source as before"
+    },
+    {
+      "id": "u41-naming-independent.B2_filename_head_source_dropped",
+      "description": "The filename is no longer a head source, so only a tag-carried head is recovered",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7993355a0895b84d",
+      "subset": [
+        "tests/test_naming_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_naming_apply_cli.py::test_a_file_analyze_run_measured_is_named_with_no_head_and_a_head_on_file_is_kept",
+        "tests/test_naming_apply_cli.py::test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher",
+        "tests/test_naming_apply_cli.py::test_a_padded_text_stem_with_tags_plans_nothing",
+        "tests/test_naming_apply_cli.py::test_a_stem_carrying_text_is_not_recomposed_from_its_tags",
+        "tests/test_naming_apply_cli.py::test_an_applied_rename_lands_its_name_and_title_tag_and_converges[the-filename-head-alone-is-enough]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        or naming.parse_head(path.name, template=template)\n",
+      "new": "        or None\n",
+      "source": {
+        "table": "u41-naming-independent.json",
+        "id": "B2_filename_head_source_dropped"
+      },
+      "moved": "bf177ec8 (U327, feat(u327)) reversed the head order in _spec_for so the title tag's head is read first and the filename's second, since analyze adopt corrects the tag and never renames the file; the filename line is now the second operand, so it becomes or None rather than None, which drops the filename as a head source as before"
+    },
+    {
+      "id": "u79-b.B7_identity_without_version",
+      "description": "The question is keyed without the version, so two versions are one item",
+      "file": "src/cratekit/acquire/match_list.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1178022805b8a390",
+      "subset": [
+        "tests/test_intake_missing_search.py",
+        "tests/test_acquire_fallback.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 87,
+      "baseline_collected": 87,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback.py::test_an_upload_question_about_one_emoji_title_is_not_another_ones",
+        "tests/test_intake_missing_search.py::test_the_identity_is_the_folded_row_and_not_its_spelling"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"version\": self.version_key,\n",
+      "new": "            \"version\": \"\",\n",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B7_identity_without_version"
+      },
+      "moved": "0293c2eb (U305, refactor(u305)) split match.py and moved Wanted.folded_row, which candidates.identity returns, into acquire/match_list.py; the version key is the same field, so blanking it makes two versions one question as before"
+    },
+    {
+      "id": "r504-a.A11_boundary_refuses",
+      "description": "The verb boundary no longer catches the shortfall, so it is refused as an unreadable listing",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0e5c1a13274ece9d",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 290,
+      "baseline_collected": 290,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall",
+        "tests/test_label_tidal_catalogue.py::test_the_verb_boundary_keeps_the_rows_and_hands_back_the_shortfall",
+        "tests/test_sync_all.py::test_a_short_hearts_listing_is_queued_and_fails_the_inbound_check_by_count",
+        "tests/test_sync_all.py::test_hearts_all_withheld_are_not_reported_as_an_account_with_none",
+        "tests/test_sync_all.py::test_the_human_output_prints_the_inbound_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        ), passing=(CratekitError, catalogue.HeartsShortfall)):\n",
+      "new": "        ), passing=(CratekitError,)):\n",
+      "source": {
+        "table": "r504-a.json",
+        "id": "A11_boundary_refuses"
+      },
+      "moved": "The same guard at a new text: b4468190 (U308, the second pass) folded the broad except Exception and the CratekitError re-raise into catalogue.translated, leaving the HeartsShortfall clause of favourite_tracks_or_refuse the try's only handler, so the recorded deletion of that clause no longer parses. Narrowing translated's passing to CratekitError alone has the shortfall refused as the unreadable listing, as the recorded deletion had it through the broad except, and the clause is never reached"
+    },
+    {
+      "id": "u59.G2_local_names_targets",
+      "description": "Recognize only a bare Name target, reopening the four shadowing routes",
+      "file": "tests/_source_guards.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "492d0eaecfb2be62",
+      "subset": [
+        "tests/test_rb_writer_guard.py",
+        "tests/test_reserved_causes.py",
+        "tests/test_review_queue.py",
+        "tests/test_adoption.py",
+        "tests/test_cli_contract.py",
+        "tests/test_pool_sizing.py",
+        "tests/modules/test_reports.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 2865,
+      "baseline_collected": 2865,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_guard.py::test_every_way_of_shadowing_a_lookup_table_still_fires[for target-    for TABLE, _ in rows:\\n        return TABLE.get(COLUMN, 0)\\n]",
+        "tests/test_rb_writer_guard.py::test_every_way_of_shadowing_a_lookup_table_still_fires[nested unpacking-    (a, [TABLE, b]) = rows[0]\\n    return TABLE.get(COLUMN, 0)\\n]",
+        "tests/test_rb_writer_guard.py::test_every_way_of_shadowing_a_lookup_table_still_fires[tuple unpacking-    TABLE, meta = rows[0]\\n    return TABLE.get(COLUMN, 0)\\n]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        for node in _walk(target):\n            if isinstance(node, ast.Name):\n                found.add(node.id)",
+      "new": "        if isinstance(target, ast.Name):\n            found.add(target.id)",
+      "source": {
+        "table": "u59.json",
+        "id": "G2_local_names_targets"
+      },
+      "moved": "76f82246 (U326, perf(u326)) replaced ast.walk with the module's _walk in _local_names, which docs/mutation/u326.json row W3_u59_g2_local_names_targets measured at this text; the same bind loop, and binding a bare Name target alone reopens the shadowing routes as before"
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
