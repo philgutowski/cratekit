@@ -1,0 +1,15 @@
+---
+title: U290's point 5 is short at its last measurement, test lines at 278,018 against 249,132 and the suite 11.4 percent faster than at ff8e5ec against 30, with 51 survey kills readable only on a Mac
+found: at the build of #987, U338, the last measurement of U290 (#847), 2026-11-25.
+issue: no
+---
+
+**The mechanism.** Point 5 of #847's definition of done: test lines at least 25 percent below the survey's 332,177, so at most 249,132; the full suite at least 30 percent faster on the cloud runner; every guard a test killed at the survey still killed. Measured on `main` at `147574d`:
+
+- **Lines: 278,018** in 528 files by `scripts/refactor_measure.py table`, 28,886 over the bar, 16.3 percent below the survey. U315 read 289,090. By the numstat of the commits in `d289f61..147574d` grouped by the unit their subjects name, the epic's further cards took 21,967 net off (U333 10,731, U335 5,903, U334 3,604, U332 2,557, against 828 added by U331, U336, U329 and U328), and feature cards outside the epic added 10,835 (U339 1,064, U340 973, R-1716 836, U958 825, U344 802 the largest). R-2048, R-2051 and R-2052 record why the four slices fell short of their shares.
+- **Time: 11.4 percent faster, not 30.** `scripts/cloud_battery.py compare` three times a side on one four core container with nothing else running, `ff8e5ec` from its own clone and venv, interleaved: `main` 436.45, 422.78, 412.50 s, median **422.78**; `ff8e5ec` 476.91, 484.74, 432.59 s, median **476.91**; ratio 0.887 against the bar's 0.70 (333.84 s here). R-2068 records where the rest of the time goes.
+- **Kill set: held on Linux, not whole.** U337's `survey.py join`, rebuilt at `147574d` against a clone of `ff8e5ec`, writes tables equal to the committed ones apart from their head and time, and `killset.py check` over them reads 6,883 owed, 5,302 killed as written, 1,576 at a new anchor, 5 mapped, **0 lost**; `check` over the 122 before and after pairs the records name exits 0 on 121, and the one exit 1, U332's batch 1 (u317 Q10), is its record's intermittent death, re-measured killed on both sides. Of the 210 rows left out, **51 cannot be read on Linux** (every killer fails here for the machine, or is one of the two inode tests R-2073 names), 40 were killed by no Linux run at the survey either (R-2071, R-2072), 82 had their text or guard changed by a feature card, and 37 were never killed under the epic.
+
+**Measured cost.** Maintainer facing: the suite is larger and slower than the refactor was asked to leave it, and 51 survey kills are unproven until a Mac's test run reads them. No verb's behaviour is affected.
+
+**Closes when:** the lines read at most 249,132 and the suite reads at most 0.70 of `ff8e5ec`'s time on one container, interleaved, and the 51 rows are read on a Mac, or Phillip retires the bars. By Phillip's decision of 2026-11-24 on #847, no further area card is filed for it, and by his rule of the same day no attended card for a mutation row. Ledger only.
