@@ -1,0 +1,113 @@
+{
+  "$comment": "U960: the shape of crate status's data.summary.glance, the one object a menu bar app reads. tests/test_status_glance.py validates every glance it drives against this file and refuses a glance missing any key. Bump version, and add a v2 file beside this one, when a key changes meaning or goes.",
+  "schema": "status_glance/1",
+  "$defs": {
+    "unreadable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unreadable"],
+      "properties": {"unreadable": {"type": "string"}}
+    },
+    "portion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "age_seconds", "completed_at"],
+      "properties": {
+        "state": {"enum": ["known", "never-recorded", "recorded-in-the-future"]},
+        "age_seconds": {"type": ["integer", "null"]},
+        "completed_at": {"type": ["string", "null"]}
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "verb", "state"],
+      "properties": {
+        "job_id": {"type": "string"},
+        "verb": {"type": "string"},
+        "state": {"type": "string"}
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id", "verb", "gate", "options", "explicit", "writes_database", "since", "old"
+      ],
+      "properties": {
+        "run_id": {"type": "string"},
+        "verb": {"type": "string"},
+        "gate": {"type": "string"},
+        "options": {"type": "array", "items": {"type": "string"}},
+        "explicit": {"type": ["boolean", "null"]},
+        "writes_database": {"type": "boolean"},
+        "since": {"type": "string"},
+        "old": {"type": "boolean"}
+      }
+    },
+    "unreadable_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "unreadable"],
+      "properties": {"run_id": {"type": "string"}, "unreadable": {"type": "string"}}
+    },
+    "night": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "line", "gate_run", "pass_run", "staging"],
+      "properties": {
+        "outcome": {"type": "string"},
+        "line": {"type": "string"},
+        "gate_run": {"type": ["string", "null"]},
+        "pass_run": {"type": ["string", "null"]},
+        "staging": {"type": ["string", "null"]}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "attention", "backup", "rekordbox", "jobs_running", "gates", "night"],
+  "properties": {
+    "version": {"enum": [1]},
+    "attention": {"enum": ["fail", "gate", "running", "backup-due", "ok"]},
+    "backup": {
+      "anyOf": [
+        {"$ref": "#/$defs/unreadable"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["files", "database"],
+          "properties": {
+            "files": {"$ref": "#/$defs/portion"},
+            "database": {"$ref": "#/$defs/portion"}
+          }
+        }
+      ]
+    },
+    "rekordbox": {
+      "anyOf": [{"$ref": "#/$defs/unreadable"}, {"enum": ["closed", "open", "unknown"]}]
+    },
+    "jobs_running": {
+      "anyOf": [
+        {"$ref": "#/$defs/unreadable"},
+        {"type": "array", "items": {"$ref": "#/$defs/job"}}
+      ]
+    },
+    "gates": {
+      "anyOf": [
+        {"$ref": "#/$defs/unreadable"},
+        {
+          "type": "array",
+          "items": {"anyOf": [{"$ref": "#/$defs/gate"}, {"$ref": "#/$defs/unreadable_run"}]}
+        }
+      ]
+    },
+    "night": {
+      "anyOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/unreadable"},
+        {"$ref": "#/$defs/night"}
+      ]
+    }
+  }
+}

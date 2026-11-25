@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from cratekit.cli import gates, output, registry, render
+from cratekit.cli import gates, output, registry, render, status_glance
 from cratekit.cli.doctor_backup import (
     FULL_COMPARISON_DUE_DAYS,  # noqa: F401
     _check_backup_acknowledgment,
@@ -636,6 +636,8 @@ def status(ctx: "Context") -> Envelope:
             "sources": sum(1 for f in findings if f.key.startswith("source.")),
             "trees": sum(1 for f in findings if f.key.startswith("tree.")),
             "library": str(cfg.library.root),
+            # One machine readable object an app shows (U960).
+            "glance": status_glance.glance(cfg),
         },
     }
     return ctx.envelope(data=data, outcome=Outcome.OK if findings else Outcome.NO_OP)

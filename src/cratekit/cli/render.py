@@ -276,6 +276,19 @@ def render_checks(envelope: Envelope) -> list[str]:
     return lines
 
 
+def render_attention(envelope: Envelope) -> list[str]:
+    """``crate status``'s one line naming its glance's ``attention`` word (U960), or nothing.
+
+    Gated on the payload, never the verb's name, as the check table is.
+    """
+    if not envelope.schema.startswith("diagnostic/"):
+        return []
+    summary = envelope.data.get("summary")
+    glance = summary.get("glance") if isinstance(summary, Mapping) else None
+    word = glance.get("attention") if isinstance(glance, Mapping) else None
+    return [f"attention: {word}"] if isinstance(word, str) and word else []
+
+
 def render_review_set(envelope: Envelope) -> list[str]:
     """The review set a person reads, or nothing at all.
 
@@ -748,6 +761,7 @@ def render(envelope: Envelope, *, drive: Sequence[str] | None = None) -> str:
         lines.append(f"{envelope.verb}: {envelope.outcome}")
     else:
         lines.append(f"{envelope.verb}: {envelope.outcome} ({envelope.exit_code.name})")
+    lines += render_attention(envelope)
 
     pending = envelope.pending_human_action
     if pending is not None:
@@ -905,6 +919,7 @@ __all__ = [
     "remedy_text",
     "render",
     "render_cause",
+    "render_attention",
     "render_checks",
     "render_gate",
     "render_import_proof",
