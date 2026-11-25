@@ -1,8 +1,8 @@
 {
  "name": "survey-before",
  "pass_kind": "replay",
- "head": "9234fb2c",
- "when": "2026-11-25 05:31 UTC",
+ "head": "420d683d",
+ "when": "2026-11-25 05:45 UTC",
  "valid": true,
  "invalid_reason": "",
  "note": "The survey of U290 at ff8e5ec: 7093 live killed rows, 6883 held to a kill and 210 left out, each named under excluded with its reason. Each row as its own table recorded it.",
@@ -265726,7 +265726,7 @@
    },
    "id": "r788-d.A5_move_worker_reads_vocals",
    "file": "src/cratekit/adopt/move_cli.py",
-   "reason": "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/adopt/move_cli.py that a feature card outside U290 changed since, 3c0d7a9b fix(u340): the move worker's check and read back keep a split pair's band, so the refactor owes it nothing at main's text; that text is stale on main"
+   "reason": "its killed reading at the text main last held, in u310-replay-after-b.json at 3ab6abf3 (the one line U310 wrote), is at a text of src/cratekit/adopt/move_cli.py that two feature cards outside U290 changed since, 76b5dcf2 (U339) and 3c0d7a9b fix(u340): the move worker's check and read back keep a split pair's band, so the refactor owes it nothing at main's text; that text is stale on main"
   },
   {
    "source": {
@@ -266743,7 +266743,7 @@
    },
    "id": "u50-author.W1_no_narrowing",
    "file": "src/cratekit/backup/cli.py",
-   "reason": "LOST: killed at the survey's commit ff8e5ec on Linux (docs/mutation/u337-replay/u337-survey-a.json, 6 deaths) and by no test on main (docs/mutation/u337-replay/u337-1.json read it zero); recorded in docs/residuals/u337-kills-lost-since-the-survey.md"
+   "reason": "a feature card outside U290 made this guard a second layer: a94c7644 feat(u317): crate backup run skips an unchanged library and sends only the change otherwise has plan_backup plan only the named portion itself, so the CLI's narrowing no longer changes what a backup does. Measured by the review on tests/test_backup_cli.py: at a619edb0, U317's parent, the mutant fails 14 against the unmutated control's 8 (the six kills u337-survey-a reads at ff8e5ec); at a94c7644, 8 against 8. u337-1 read it zero on main. The refactor owes it nothing; the layer is a residual"
   },
   {
    "source": {

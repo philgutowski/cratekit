@@ -27,11 +27,12 @@ every survey row held to a kill, as its own table recorded it, and
 still holds, from U290's cards and this card's batches, with every mapping
 they made. A survey row not held to a kill is left out of the before table
 and named in its `excluded` list with the reason, so the count `check` prints
-and that list add up to 7,093. A row is left out for one of four reasons, each
-spelled in its entry: a feature card outside U290 changed its text, no Linux
-run can kill it (unmeasured on Linux), no replay kills it at the survey's
-commit either (not killed at the survey on Linux), or it is LOST: killed at
-the survey's commit and by no test on main. A lost row is owed a kill and
+and that list add up to 7,093. A row is left out for one of five reasons, each
+spelled in its entry: a feature card outside U290 changed its text or its
+guard, every replay of it under U290 read no death (never killed under U290),
+no Linux run can kill it (unmeasured on Linux), no replay kills it at the
+survey's commit either (not killed at the survey on Linux), or it is LOST:
+killed at the survey's commit and by no test on main. A lost row is owed a kill and
 does not have one, so `check` exiting 0 over these tables says that every row
 held to a kill keeps it, not that none was lost; the lost ones are named, and
 recorded as a residual. `at-survey` writes the rows main read with no death
@@ -126,21 +127,24 @@ def survey_rows(survey_root: Path) -> list[K.Recorded]:
     return [row for row in K.read_kill_set(survey_root).rows if row.state == K.LIVE]
 
 
-def standing(row: K.Recorded, seen: Measurements) -> dict:
+def standing(row: K.Recorded, seen: Measurements, tree: K.Tree | None = None) -> dict:
+    """Where a survey row stands: held when its reading at main's text is killed, or
+    a replay mapped it, by the rule `join` holds it to."""
+    tree = tree or K.Tree(REPO_ROOT)
     measured, how = seen.of(row)
-    after = [one for one in measured if one[2] == "after"]
-    newest = after[-1] if after else None
+    chosen = reading_on_main(measured, tree)
+    killed_here = bool(chosen and K.killed(chosen[3]) and live_on_main(chosen[3], tree))
     return {
         "measured": measured,
         "how": how,
-        "after": after,
-        "newest": newest,
-        "held": bool(newest and K.killed(newest[3])) or bool(seen.mapped.get(row.source)),
+        "chosen": chosen,
+        "held": killed_here or bool(seen.mapped.get(row.source)),
     }
 
 
 def owed(survey: list[K.Recorded], seen: Measurements) -> list[K.Recorded]:
-    return [row for row in survey if not standing(row, seen)["held"]]
+    tree = K.Tree(REPO_ROOT)
+    return [row for row in survey if not standing(row, seen, tree)["held"]]
 
 
 def cmd_owed(args) -> int:
@@ -325,8 +329,9 @@ INODE_PAIR = frozenset(
     }
 )
 
-#: Where the kills this card finds lost since the survey are recorded.
-LOST_RESIDUAL = "docs/residuals/u337-kills-lost-since-the-survey.md"
+#: What a lost kill's reason says of where it is recorded. This card found
+#: none lost under U290; a later run that does files a residual naming each.
+LOST_RESIDUAL = "a residual under docs/residuals/ naming it"
 
 
 def live_on_main(row: dict, tree: K.Tree) -> bool:
@@ -385,7 +390,7 @@ def measured_reason(
         return (
             f"LOST: killed at the survey's commit ff8e5ec on Linux ({table}, "
             f"{replayed.get('deaths')} deaths) and by no test on main ({where}); "
-            f"recorded in {LOST_RESIDUAL}"
+            f"to be recorded in {LOST_RESIDUAL}"
         )
     return (
         f"not killed at the survey on Linux: its replay at ff8e5ec ({table}) read it "
@@ -495,6 +500,10 @@ def cmd_join(args) -> int:
             target = copy.deepcopy(recorded_row((curated["to_table"], curated["to_id"])))
             target["id"] = K.row_id((curated["to_table"], curated["to_id"]))
             target["measured_in"] = f"docs/mutation/{curated['to_table']}"
+            if not (K.killed(target) and live_on_main(target, tree)):
+                raise SystemExit(
+                    f"{K.row_id(row.source)}: mapped to {target['id']}, not killed at main's text"
+                )
             after_rows[("", target["id"])] = target
             mapped.append(
                 {
@@ -516,12 +525,27 @@ def cmd_join(args) -> int:
                 ),
                 None,
             )
-            if target is not None:
-                key = K.source_of(target) or ("", str(target.get("id")))
-                if key not in after_rows:
-                    kept = copy.deepcopy(target)
-                    kept["measured_in"] = str(path.relative_to(REPO_ROOT))
-                    after_rows[key] = kept
+            if target is not None and not live_on_main(target, tree):
+                # The target was measured at a text main has since moved; its own
+                # reading at main's text stands for it, under the same id.
+                moved = reading_on_main(
+                    sorted(
+                        seen.by_source.get(K.source_of(target), []),
+                        key=lambda one: (one[0], one[1]),
+                    ),
+                    tree,
+                )
+                if moved is not None:
+                    target = dict(moved[3], id=entry.get("to"))
+                    path = REPO_ROOT / moved[1]
+            if target is None or not (K.killed(target) and live_on_main(target, tree)):
+                raise SystemExit(
+                    f"{K.row_id(row.source)}: mapped to {entry.get('to')}, not killed at main's text"
+                )
+            key = K.source_of(target) or ("", str(target.get("id")))
+            kept = copy.deepcopy(target)
+            kept["measured_in"] = str(path.relative_to(REPO_ROOT))
+            after_rows[key] = kept
             continue
         reason = measured_reason(row, measured, chosen, tree, machine)
         if reason:

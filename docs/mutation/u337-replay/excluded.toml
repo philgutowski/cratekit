@@ -441,7 +441,7 @@ reason = "its newest killed reading, in u332-replay-after-8.json at fb09b891, is
 [[excluded]]
 table = "r788-d.json"
 id = "A5_move_worker_reads_vocals"
-reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/adopt/move_cli.py that a feature card outside U290 changed since, 3c0d7a9b fix(u340): the move worker's check and read back keep a split pair's band, so the refactor owes it nothing at main's text; that text is stale on main"
+reason = "its killed reading at the text main last held, in u310-replay-after-b.json at 3ab6abf3 (the one line U310 wrote), is at a text of src/cratekit/adopt/move_cli.py that two feature cards outside U290 changed since, 76b5dcf2 (U339) and 3c0d7a9b fix(u340): the move worker's check and read back keep a split pair's band, so the refactor owes it nothing at main's text; that text is stale on main"
 
 [[excluded]]
 table = "r797-b.json"
@@ -607,4 +607,9 @@ reason = "its guard is gone at main: b1e44ba9 feat(u343): analyze run measures n
 table = "u167.json"
 id = "M12_floor_rate"
 reason = "its guard is gone at main: b1e44ba9 feat(u343): analyze run measures no key and writes no head, a feature card outside U290, removed the key floor of analyze check, key_floor among it, which no file under src names now; the refactor owes it nothing"
+
+[[excluded]]
+table = "u50-author.json"
+id = "W1_no_narrowing"
+reason = "a feature card outside U290 made this guard a second layer: a94c7644 feat(u317): crate backup run skips an unchanged library and sends only the change otherwise has plan_backup plan only the named portion itself, so the CLI's narrowing no longer changes what a backup does. Measured by the review on tests/test_backup_cli.py: at a619edb0, U317's parent, the mutant fails 14 against the unmutated control's 8 (the six kills u337-survey-a reads at ff8e5ec); at a94c7644, 8 against 8. u337-1 read it zero on main. The refactor owes it nothing; the layer is a residual"
 
