@@ -500,6 +500,22 @@ def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_re
     assert "the adopted intake root could not be read back" in cause["message"]
     assert "no row was added" in cause["message"]
     assert cause["detail"]["tree_id"] == INTAKE and cause["detail"]["source"] == str(path)
+
+
+def test_intake_file_refuses_an_analysis_value_its_row_carries_after_the_commit(
+        native_library, silence, monkeypatch):
+    """The landed row is read again after the commit, as ``intake land``'s are (R-2075).
+
+    The key is planted on the verb's handle after the guarded commit, so only
+    the read back after the commit can refuse it, in its own wording.
+    """
+    cfg, _root = native_library
+    path = _single(cfg, silence)
+    land.taint_after_the_guarded_commit(monkeypatch)
+    code, acted, _refused = _two_acts(_file(path))
+    assert code != int(ExitCode.OK), acted
+    land.assert_refused_after_the_commit(acted)
+
 # 2. intake file on the bridge, unchanged
 def test_on_the_bridge_the_export_is_spliced_as_before(bridge_library, silence, export, tmp_path):
     cfg = bridge_library
