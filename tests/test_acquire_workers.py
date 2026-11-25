@@ -1133,3 +1133,14 @@ def test_a_list_under_a_home_that_cannot_be_expanded_is_refused_by_name(cfg, lib
 
     refused_as_unusable(code, envelope)
     assert states(job_id) == {"1": jobs.ItemState.PENDING}
+
+
+def test_a_download_job_whose_payload_froze_no_list_is_not_compared_with_one_named(tmp_path):
+    """R-2071: no frozen list is nothing to disagree with, never the working directory."""
+
+    class Job:
+        job_id = "j"
+        handler_key = "acquire.download"
+        payload: dict = {}
+
+    acquire_cli._same_list_or_refuse(str(tmp_path / "mine.json"), Job(), Job.handler_key)
