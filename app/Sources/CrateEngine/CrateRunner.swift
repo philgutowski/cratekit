@@ -91,7 +91,7 @@ public struct CrateRunner: Sendable {
         let process = Process()
         process.executableURL = crate
         process.arguments = Self.arguments(for: call)
-        process.environment = environment
+        process.environment = CrateEnvironment.minimal(for: crate, from: environment)
         process.standardInput = FileHandle.nullDevice
         let stdout = Pipe()
         let stderr = Pipe()
@@ -117,7 +117,6 @@ public struct CrateRunner: Sendable {
             timedOut = true
             process.terminate()
             if exited.wait(timeout: .now() + Self.terminationGrace) == .timedOut {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
                 _ = exited.wait(timeout: .now() + Self.terminationGrace)
             }
         }
