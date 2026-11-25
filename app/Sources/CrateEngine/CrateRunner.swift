@@ -72,7 +72,7 @@ public struct CrateRunner: Sendable {
 
     /// The arguments crate is started with for `call`.
     public static func arguments(for call: VerbCall) -> [String] {
-        call.arguments
+        ["--output", "json"] + call.arguments
     }
 
     /// Run `call` off the caller's thread.
@@ -91,7 +91,7 @@ public struct CrateRunner: Sendable {
         let process = Process()
         process.executableURL = crate
         process.arguments = Self.arguments(for: call)
-        process.environment = CrateEnvironment.minimal(for: crate, from: environment)
+        process.environment = environment
         process.standardInput = FileHandle.nullDevice
         let stdout = Pipe()
         let stderr = Pipe()
