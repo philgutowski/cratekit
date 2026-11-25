@@ -323,3 +323,268 @@ table = "u193.json"
 id = "M25_crawl_spent_ignored"
 reason = "unmeasured on Linux: its one killer at the survey, tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random, is one of the two inode tests of #702 that fail alone on these containers; u337-2 read it zero on main with the pair subtracted by its helper, and the replay at ff8e5ec was refused on the red subset baseline; only the macOS battery can read it"
 
+[[excluded]]
+table = "r290-author.json"
+id = "S07_rebuild_call_removed"
+reason = "its newest killed reading, in u312-replay-after-4.json at 55e2f3b6, is at a text of src/cratekit/cli/rebuild.py that a feature card outside U290 changed since, 0f14401a fix(r2020): each resume keeps its own drive call, and no layer below the CLI spells a verb, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r290-author.json"
+id = "S08_route_resort_call_removed"
+reason = "its newest killed reading, in u312-replay-after-4.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, 0f14401a fix(r2020): each resume keeps its own drive call, and no layer below the CLI spells a verb, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r312.json"
+id = "E5_cap_not_applied"
+reason = "its newest killed reading, in u302-replay-after-c.json at 9e27b874, is at a text of src/cratekit/write/rebuild.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r312.json"
+id = "E7_rest_not_counted"
+reason = "its newest killed reading, in u302-replay-after-c.json at 9e27b874, is at a text of src/cratekit/write/rebuild.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r312.json"
+id = "E8_unsorted"
+reason = "its newest killed reading, in u302-replay-after-c.json at 9e27b874, is at a text of src/cratekit/write/rebuild.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r312.json"
+id = "E9_row_fallback_blank"
+reason = "its newest killed reading, in u302-replay-after-c.json at 9e27b874, is at a text of src/cratekit/write/rebuild.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r312.json"
+id = "E10_empty_still_warns"
+reason = "its newest killed reading, in u335-after-12.json at 1a401a39, is at a text of src/cratekit/write/rebuild.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r312.json"
+id = "E12_check_names_no_file"
+reason = "its newest killed reading, in u334-replay-after-9.json at 90c0cc08, is at a text of src/cratekit/write/convergence_check.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r312.json"
+id = "W2_worker_writes_nothing"
+reason = "its newest killed reading, in u312-replay-after-3.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r312.json"
+id = "W3_success_exit_silent"
+reason = "its newest killed reading, in u312-replay-after-3.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r312.json"
+id = "W4_failure_exit_silent"
+reason = "its newest killed reading, in u312-replay-after-3.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r312.json"
+id = "W5_cause_steps_replaced"
+reason = "its newest killed reading, in u312-replay-after-3.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r312.json"
+id = "W6_type_not_carried"
+reason = "its newest killed reading, in u312-replay-after-4.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r312.json"
+id = "W7b_pre_drive_refusal_extended"
+reason = "its newest killed reading, in u312-replay-after-3.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r312.json"
+id = "W8_list_not_by_job"
+reason = "its newest killed reading, in u312-replay-after-3.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r368.json"
+id = "G11_the_target_is_dropped_before_the_engine"
+reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/session/restore_cli.py that a feature card outside U290 changed since, 138de275 feat(r1924): a restore of an adopt session puts the files' title and key tags back, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r722.json"
+id = "S5_catch_oserror_only"
+reason = "its newest killed reading, in u312-replay-after-1.json at 55e2f3b6, is at a text of src/cratekit/adopt/scan.py that a feature card outside U290 changed since, e64715d6 feat(u340): a second genre files a track into a second genre folder, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "r731-a.json"
+id = "M02_held_sub_class_competes"
+reason = "its newest killed reading, in u310-replay-after-a.json at 3ab6abf3, is at a text of src/cratekit/adopt/plan.py that a feature card outside U290 changed since, 258b33aa fix(u340): a split pair keeps both folders, a fallback move is not taken, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r780-b.json"
+id = "B1_reading_not_rechecked"
+reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/adopt/move_cli.py that a feature card outside U290 changed since, 76b5dcf2 feat(u339): adopt move takes a row tag set moved out of its old genre folder, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r788-b.json"
+id = "P10_manual_class_is_vocal"
+reason = "its newest killed reading, in u310-replay-after-a.json at 3ab6abf3, is at a text of src/cratekit/adopt/plan.py that a feature card outside U290 changed since, 0150e182 feat(r1965): adopt move leaves the old genre folder's with vox and Favorites too, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r788-b.json"
+id = "P12_name_clash_files_into_a_style"
+reason = "its newest killed reading, in u310-replay-after-a.json at 3ab6abf3, is at a text of src/cratekit/adopt/plan.py that a feature card outside U290 changed since, 0150e182 feat(r1965): adopt move leaves the old genre folder's with vox and Favorites too, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r788-c.json"
+id = "L1_any_vox_value_is_the_tag"
+reason = "its newest killed reading, in u332-replay-after-7.json at fb09b891, is at a text of src/cratekit/adopt/placements.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r788-c.json"
+id = "L2_removed_tag_files"
+reason = "its newest killed reading, in u332-replay-after-8.json at fb09b891, is at a text of src/cratekit/adopt/placements.py that a feature card outside U290 changed since, 3f0175b1 feat(r2056): the check, the rebuild and the resort file the vocal sub by the vox My Tag, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r788-d.json"
+id = "A5_move_worker_reads_vocals"
+reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/adopt/move_cli.py that a feature card outside U290 changed since, 3c0d7a9b fix(u340): the move worker's check and read back keep a split pair's band, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r797-b.json"
+id = "M4_the_writer_never_files_into_one"
+reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/adopt/move_cli.py that a feature card outside U290 changed since, 76b5dcf2 feat(u339): adopt move takes a row tag set moved out of its old genre folder, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "r797-c.json"
+id = "G6_the_fallback_is_no_folder"
+reason = "its newest killed reading, in u301-replay-after.json at 9781ec04, is at a text of src/cratekit/core/routing.py that a feature card outside U290 changed since, e64715d6 feat(u340): a second genre files a track into a second genre folder, so the refactor owes it nothing at main's text; that text is ambiguous on main"
+
+[[excluded]]
+table = "u111-a.json"
+id = "A4_memberships_unmarked"
+reason = "its newest killed reading, in u333-replay-after-2x.json at b7e08062, is at a text of src/cratekit/core/rb_nodes.py that a feature card outside U290 changed since, 7f4b7f48 feat(u958): every membership removal leaves its playlists numbered 1 to N, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u132.json"
+id = "W5_rebuild_note"
+reason = "its newest killed reading, in u312-replay-after-5.json at 55e2f3b6, is at a text of src/cratekit/cli/rebuild.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u132.json"
+id = "W6_resort_note"
+reason = "its newest killed reading, in u312-replay-after-3.json at 55e2f3b6, is at a text of src/cratekit/write/routing_cli.py that a feature card outside U290 changed since, f26f28f1 feat(r2020): the resort gate and the rebuild name every playlist not compared, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u155.json"
+id = "W1_derivation"
+reason = "its newest killed reading, in u312-replay-after-1.json at 55e2f3b6, is at a text of src/cratekit/write/rebuild.py that a feature card outside U290 changed since, e64715d6 feat(u340): a second genre files a track into a second genre folder, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u167.json"
+id = "M16_suspect_outranks"
+reason = "its newest killed reading, in u306-replay-after-d.json at a04bd201, is at a text of src/cratekit/analysis/rekordbox_check.py that a feature card outside U290 changed since, bf177ec8 feat(u327): analyze adopt gives a landed title rekordbox's key and tempo, so the refactor owes it nothing at main's text; that text is gone on main"
+
+[[excluded]]
+table = "u189.json"
+id = "M6_label_not_passed"
+reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/label/sync_cli.py that a feature card outside U290 changed since, 09d91525 feat(u341): label sync and registry list ask one genre group, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u189.json"
+id = "M8_entries_ignore_the_one"
+reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/label/sync_cli.py that a feature card outside U290 changed since, 09d91525 feat(u341): label sync and registry list ask one genre group, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u201-composites.json"
+id = "C5_leave_nothing"
+reason = "its newest killed reading, in u335-after-06.json at 1a401a39, is at a text of src/cratekit/organize/mirror_edits.py that a feature card outside U290 changed since, 2b488033 fix(r2062): a move within its folder keeps an untagged with vox, as the resort does, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u204.json"
+id = "P11_inbox_hold_per_batch"
+reason = "its newest killed reading, in u335-after-06.json at 1a401a39, is at a text of src/cratekit/modules/outbound/mirror_edits.py that a feature card outside U290 changed since, b44dd4cc feat(u959): mirror every playlist under rekordbox's WIP folder onto the account, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u211.json"
+id = "C2_doctor_paths_take_no_copy"
+reason = "its newest killed reading, in u335-after-01.json at 1a401a39, is at a text of src/cratekit/cli/doctor_library.py that a feature card outside U290 changed since, a1fe7c99 feat(u958): crate repair numbers, and a doctor row for the playlists it would number, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u223.json"
+id = "M17_claim_failure_keeps_evidence"
+reason = "its newest killed reading, in u312-replay-after-2.json at 55e2f3b6, is at a text of src/cratekit/analysis/cli.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u223.json"
+id = "M18_refused_rename_keeps_evidence"
+reason = "its newest killed reading, in u312-replay-after-2.json at 55e2f3b6, is at a text of src/cratekit/analysis/cli.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u25-author-light.json"
+id = "G1_resume_prefix"
+reason = "its newest killed reading, in u306-replay-after-b.json at 8c3c2c3a, is at a text of src/cratekit/analysis/run.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K1_default_is_whole"
+reason = "its newest killed reading, in u306-replay-after-d.json at a04bd201, is at a text of src/cratekit/analysis/detect.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K2_profile_default_whole"
+reason = "its newest killed reading, in u306-replay-after-b.json at 8c3c2c3a, is at a text of src/cratekit/analysis/detect.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K3_analyse_file_default_whole"
+reason = "its newest killed reading, in u306-replay-after-b.json at 8c3c2c3a, is at a text of src/cratekit/analysis/detect.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K5_stages_of_plain_keeps_harmonic"
+reason = "its newest killed reading, in u306-replay-after-c2.json at 1102a864, is at a text of src/cratekit/analysis/detect.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K6_stages_of_refuses_nothing"
+reason = "its newest killed reading, in u306-replay-after-c2.json at 1102a864, is at a text of src/cratekit/analysis/detect.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K7_stage_table_keeps_every_row"
+reason = "its newest killed reading, in u313-replay-after.json at d98853e8, is at a text of scripts/analyze_stages.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K8_stage_table_drops_too_much"
+reason = "its newest killed reading, in u313-replay-after.json at d98853e8, is at a text of scripts/analyze_stages.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K9_agreement_script_default_whole"
+reason = "its newest killed reading, in u313-replay-after.json at d98853e8, is at a text of scripts/head_agreement.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K10_stage_script_default_whole"
+reason = "its newest killed reading, in u313-replay-after.json at d98853e8, is at a text of scripts/analyze_stages.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K13_record_key_method_dropped"
+reason = "its newest killed reading, in u306-replay-after-d.json at a04bd201, is at a text of src/cratekit/analysis/detect.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K14_record_read_with_plain"
+reason = "its newest killed reading, in u306-replay-after-d.json at a04bd201, is at a text of src/cratekit/analysis/detect.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u276.json"
+id = "K16_json_totals_keep_harmonic"
+reason = "its newest killed reading, in u313-replay-after.json at d98853e8, is at a text of scripts/analyze_stages.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u41-naming-independent.json"
+id = "B3_title_head_source_dropped"
+reason = "its newest killed reading, in u325-replay-after.json at db120fdb, is at a text of src/cratekit/write/naming_cli.py that a feature card outside U290 changed since, bf177ec8 feat(u327): analyze adopt gives a landed title rekordbox's key and tempo, so the refactor owes it nothing at main's text; that text is stale on main"
+
+[[excluded]]
+table = "u58-workers-and-wav.json"
+id = "R8_title_without_head"
+reason = "its newest killed reading, in u312-replay-after-2.json at 55e2f3b6, is at a text of src/cratekit/analysis/cli.py that a feature card outside U290 changed since, b1e44ba9 feat(u343): analyze run measures no key and writes no head, so the refactor owes it nothing at main's text; that text is stale on main"
+

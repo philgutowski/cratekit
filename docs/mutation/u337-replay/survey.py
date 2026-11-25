@@ -11,6 +11,8 @@ where it stands.
 
     survey.py --survey-root <ff8e5ec checkout> owed
     survey.py --survey-root <ff8e5ec checkout> rows --out-dir DIR
+    survey.py --survey-root <ff8e5ec checkout> at-survey BATCH ... --known-failures F --out R
+    survey.py --survey-root <ff8e5ec checkout> combine
     survey.py --survey-root <ff8e5ec checkout> join --out-dir DIR
 
 `owed` prints each survey row that has no killed measurement after, and no
@@ -20,11 +22,21 @@ that are live on this checkout, in batches: the rows whose tests need the
 analysis extra, any row of `r926.json` (its mutant can leave a folder outside
 the test roots) alone, and the rest in groups by file. `join` writes the two
 tables `killset.py check` reads for the whole survey: `survey-before.json`,
-every survey row owed a kill as its own table recorded it, and
-`survey-after.json`, the newest measurement of each after U290's cards and
-this card's batches, with every mapping they made. A survey row not owed a
-kill is left out of the before table and named in its `excluded` list with
-the reason, so the count `check` prints and that list add up to 7,093.
+every survey row held to a kill, as its own table recorded it, and
+`survey-after.json`, the newest after measurement of each at a text main
+still holds, from U290's cards and this card's batches, with every mapping
+they made. A survey row not held to a kill is left out of the before table
+and named in its `excluded` list with the reason, so the count `check` prints
+and that list add up to 7,093. A row is left out for one of four reasons, each
+spelled in its entry: a feature card outside U290 changed its text, no Linux
+run can kill it (unmeasured on Linux), no replay kills it at the survey's
+commit either (not killed at the survey on Linux), or it is LOST: killed at
+the survey's commit and by no test on main. A lost row is owed a kill and
+does not have one, so `check` exiting 0 over these tables says that every row
+held to a kill keeps it, not that none was lost; the lost ones are named, and
+recorded as a residual. `at-survey` writes the rows main read with no death
+for a replay at the survey's commit, and `combine` joins this card's batches
+into the one replay table at the top of `docs/mutation/`.
 
 Nothing here runs a test or writes a source file; it only reads tables and
 the two trees, and writes row files and tables.
@@ -317,7 +329,26 @@ INODE_PAIR = frozenset(
 LOST_RESIDUAL = "docs/residuals/u337-kills-lost-since-the-survey.md"
 
 
-def measured_reason(row: K.Recorded, measured: list[tuple], machine: frozenset[str]) -> str:
+def live_on_main(row: dict, tree: K.Tree) -> bool:
+    return tree.state(K.Anchor(*text_of(row))) == K.LIVE
+
+
+def reading_on_main(measured: list[tuple], tree: K.Tree) -> tuple | None:
+    """The newest after reading at a text that stands once on this checkout, else the
+    newest after reading, else none. A reading at a text main no longer holds says
+    nothing of the guard main has, however new it is."""
+    after = [one for one in measured if one[2] == "after"]
+    live = [one for one in after if live_on_main(one[3], tree)]
+    return (live or after or [None])[-1]
+
+
+def measured_reason(
+    row: K.Recorded,
+    measured: list[tuple],
+    chosen: tuple | None,
+    tree: K.Tree,
+    machine: frozenset[str],
+) -> str:
     """Why a row this card measured with no death on main is owed no kill, or that
     it is lost, or nothing when the measurements cannot say.
 
@@ -326,8 +357,11 @@ def measured_reason(row: K.Recorded, measured: list[tuple], machine: frozenset[s
     decides: no death there means the survey's Linux tree did not kill it
     either, a death there means the kill was lost since.
     """
-    newest = [one for one in measured if one[2] == "after"][-1]
-    where = f"{newest[1]} read it {newest[3].get('status')}"
+    if chosen is None or not live_on_main(chosen[3], tree):
+        return ""
+    if chosen[3].get("status") in ("collect-error", "error") and not K.killed(chosen[3]):
+        return ""  # a mutant that broke collection or the run measured nothing
+    where = f"{chosen[1]} read it {chosen[3].get('status')}"
     killers = recorded_row(row.source).get("killed") or []
     if killers and all(one in machine for one in killers):
         return (
@@ -396,6 +430,7 @@ def cmd_join(args) -> int:
     excluded = read_excluded()
     by_hand = read_mapped()
     machine = known_failures(KNOWN_FAILURES)
+    tree = K.Tree(REPO_ROOT)
     known = {row.source for row in survey}
     stray = sorted(set(excluded) - known)
     if stray:
@@ -417,22 +452,24 @@ def cmd_join(args) -> int:
         was["source"] = {"table": row.table, "id": row.id}
         before_rows.append(was)
         measured, how = seen.of(row)
-        first = measured[0][3] if measured else None
+        earlier = [one for one in measured if one[2] == "before"]
+        first = earlier[0][3] if earlier else None
         if first is not None and K.strength(first) == 1 and K.strength(was) == 2:
-            # Its first measurement under U290 already read a collection error with
-            # deaths: noticed, but not as a clean kill, which `check` ranks lower.
+            # Its first measurement under U290, on a before side, already read a
+            # collection error with deaths: noticed, but not as a clean kill, which
+            # `check` ranks lower.
             was["status"] = first.get("status")
             was["status_from"] = (
-                f"{measured[0][1]}, the first measurement under U290, which read it a "
+                f"{earlier[0][1]}, the first measurement under U290, which read it a "
                 f"{first.get('status')} with {first.get('deaths')} deaths; its own table "
                 f"recorded {recorded_row(row.source).get('status') or 'a kill'}"
             )
-        after = [one for one in measured if one[2] == "after"]
-        if after:
-            pick = copy.deepcopy(after[-1][3])
+        chosen = reading_on_main(measured, tree)
+        if chosen is not None:
+            pick = copy.deepcopy(chosen[3])
             pick["id"] = K.row_id(row.source)
             pick["source"] = {"table": row.table, "id": row.id}
-            pick["measured_in"] = after[-1][1]
+            pick["measured_in"] = chosen[1]
             if how == "text":
                 pick["matched_by"] = "its file and text, as U315 matched it"
             if text_of(pick) != text_of(was) and K.unvouched_move(row.killers, pick):
@@ -440,29 +477,21 @@ def cmd_join(args) -> int:
                 if reason:
                     pick["moved"] = reason
             after_rows[row.source] = pick
-        held = bool(after) and K.strength(after_rows[row.source]) >= K.strength(was)
+        held = (
+            chosen is not None
+            and live_on_main(chosen[3], tree)
+            and K.strength(after_rows[row.source]) >= K.strength(was)
+        )
         if held and set(after_rows[row.source].get("killed") or []) <= INODE_PAIR:
             raise SystemExit(
-                f"{K.row_id(row.source)}: its newest measurement, in "
+                f"{K.row_id(row.source)}: its measurement on main's text, in "
                 f"{after_rows[row.source]['measured_in']}, was killed only by #702's inode "
                 "tests, which is no kill of the row; measure it again"
             )
-        if not held and row.source not in by_hand and not seen.mapped.get(row.source):
-            reason = measured_reason(row, measured, machine)
-            if reason:
-                before_rows.pop()
-                after_rows.pop(row.source, None)
-                left_out.append(
-                    {
-                        "source": {"table": row.table, "id": row.id},
-                        "id": K.row_id(row.source),
-                        "file": row.anchor.file,
-                        "reason": reason,
-                    }
-                )
-                continue
+        if held:
+            continue
         curated = by_hand.get(row.source)
-        if curated is not None and not (after and K.killed(after[-1][3])):
+        if curated is not None:
             target = copy.deepcopy(recorded_row((curated["to_table"], curated["to_id"])))
             target["id"] = K.row_id((curated["to_table"], curated["to_id"]))
             target["measured_in"] = f"docs/mutation/{curated['to_table']}"
@@ -476,7 +505,7 @@ def cmd_join(args) -> int:
             )
             continue
         held_by_map = seen.mapped.get(row.source)
-        if held_by_map and not (after and K.killed(after[-1][3])):
+        if held_by_map:
             path, table, entry = held_by_map[-1]
             mapped.append(copy.deepcopy(entry))
             target = next(
@@ -493,18 +522,34 @@ def cmd_join(args) -> int:
                     kept = copy.deepcopy(target)
                     kept["measured_in"] = str(path.relative_to(REPO_ROOT))
                     after_rows[key] = kept
-        if not after and not held_by_map:
-            unheld.append(row)
+            continue
+        reason = measured_reason(row, measured, chosen, tree, machine)
+        if reason:
+            before_rows.pop()
+            after_rows.pop(row.source, None)
+            left_out.append(
+                {
+                    "source": {"table": row.table, "id": row.id},
+                    "id": K.row_id(row.source),
+                    "file": row.anchor.file,
+                    "reason": reason,
+                }
+            )
+            continue
+        unheld.append(row)
     if unheld and args.draft:
         drop = {row.source for row in unheld}
         before_rows = [one for one in before_rows if K.source_of(one) not in drop]
     elif unheld:
         for row in unheld:
-            print(f"NO MEASUREMENT {row.anchor.file}  {row.table}  {row.id}")
-        raise SystemExit(f"{len(unheld)} survey rows owed a kill have no measurement after")
+            print(f"NOT SHOWN {row.anchor.file}  {row.table}  {row.id}")
+        raise SystemExit(
+            f"{len(unheld)} survey rows have no killed measurement at main's text, no "
+            "mapping and no reason to be left out"
+        )
     note = (
         f"The survey of U290 at ff8e5ec: {len(survey)} live killed rows, "
-        f"{len(before_rows)} owed a kill and {len(left_out)} left out, each named under "
+        f"{len(before_rows)} held to a kill and {len(left_out)} left out, each named under "
         "excluded with its reason. Each row as its own table recorded it."
     )
     before = table_head("survey-before", note)
