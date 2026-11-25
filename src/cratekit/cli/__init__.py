@@ -18,11 +18,10 @@ import importlib
 import shlex
 import sys
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 from cratekit import __version__
 from cratekit.cli import gates, output, registry, render
-from cratekit.cli import progress as progress_writer
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.registry import Entry
 from cratekit.core import config, processes, profiles, provider_gate
@@ -38,6 +37,13 @@ from cratekit.core.cause import (
     classified,
 )
 from cratekit.core.exit_codes import ExitCode, Remedy
+
+if TYPE_CHECKING:
+    from cratekit.cli.progress import Writer
+
+#: ``--progress``'s one value, :data:`cratekit.cli.progress.JSON` spelled here,
+#: so the parser loads no writer and ``crate doctor --help`` stays lean (U248).
+PROGRESS_JSON = "json"
 
 
 @dataclass
@@ -56,7 +62,7 @@ class Context:
     run: gates.RunState
     gate: gates.Gates
     started: str
-    progress: progress_writer.Writer | None = None
+    progress: Writer | None = None
 
     def envelope(
         self,
@@ -311,7 +317,7 @@ def build_parser(
     parser.add_argument(
         "--progress",
         dest="progress_format",
-        choices=(progress_writer.JSON,),
+        choices=(PROGRESS_JSON,),
         default=None,
         help=(
             "write a long verb's progress as one JSON event per line on standard "
@@ -423,17 +429,28 @@ def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
     if as_json:
         print(envelope.to_text(), file=stdout)
         if envelope.exit_code is not ExitCode.OK:
-            # A person's copy of the result, dropped when standard error is
-            # closed, since the envelope already carries it (U963).
-            try:
-                print(render.render(envelope), end="", file=stderr, flush=True)
-            except (OSError, ValueError):
-                pass
+            # A person's copy of the result, which the envelope already carries.
+            _to_stderr(render.render(envelope), stderr)
         return
-    stream = stdout if envelope.exit_code is ExitCode.OK else stderr
-    print(render.render(envelope, drive=_drive_argv(envelope)), end="", file=stream)
+    text = render.render(envelope, drive=_drive_argv(envelope))
+    if envelope.exit_code is ExitCode.OK:
+        print(text, end="", file=stdout)
+    else:
+        _to_stderr(text, stderr)
     if envelope.cause is not None and render.is_gate_screen(envelope.cause):
-        print(render.render_gate(envelope.cause), end="", file=stderr)
+        _to_stderr(render.render_gate(envelope.cause), stderr)
+
+
+def _to_stderr(text: str, stderr) -> None:
+    """Write to standard error, dropping what a closed reader cannot take (U963).
+
+    So a reader that closed the pipe never turns the run's own exit code into
+    a traceback, the rule the progress writer keeps.
+    """
+    try:
+        print(text, end="", file=stderr, flush=True)
+    except (OSError, ValueError):
+        pass
 
 
 def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
@@ -637,11 +654,14 @@ def _verb_argv(argv: Sequence[str], entry: Entry) -> tuple[str, ...] | None:
     return None
 
 
-def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
+def dispatch(argv: Sequence[str], *, stderr, progress: Writer | None = None) -> Envelope:
     """Parse and run one command line and answer its envelope, without writing it (U168).
 
     ``run decide --continue`` calls it to continue a run in this process. A
-    command line argparse refuses is a defect, since it was recorded.
+    command line argparse refuses is a defect, since it was recorded. The
+    recorded line keeps no root options, so a caller writing ``progress/1``
+    events hands its ``progress`` over and the continued verb writes events
+    beside it, under its own name (U963); otherwise the line's own form holds.
     """
     parser = build_parser()
     try:
@@ -668,10 +688,15 @@ def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
                 origin=("cli",),
             )
         )
-    progress = progress_writer.writer_for(
-        args.progress_format, stderr, verb=entry.name, as_json=args.output == "json"
-    )
-    return _dispatched(args, list(argv), entry, progress=progress)
+    from cratekit.cli import progress as progress_writer  # noqa: PLC0415 - see PROGRESS_JSON
+
+    if progress is not None and progress.events:
+        writer = progress.beside(entry.name)
+    else:
+        writer = progress_writer.writer_for(
+            args.progress_format, stderr, verb=entry.name, as_json=args.output == "json"
+        )
+    return _dispatched(args, list(argv), entry, progress=writer)
 
 
 #: The warning a run carries when the call ceiling stopped it but the verb
@@ -798,7 +823,7 @@ def _dispatched(
     argv: Sequence[str],
     entry: Entry,
     *,
-    progress: progress_writer.Writer | None,
+    progress: Writer | None,
 ) -> Envelope:
     """Run one parsed verb inside one command's call ceiling scope (U193).
 
@@ -841,7 +866,7 @@ def _dispatched_in_scope(
     argv: Sequence[str],
     entry: Entry,
     *,
-    progress: progress_writer.Writer | None,
+    progress: Writer | None,
 ) -> Envelope:
     """Run one parsed verb and answer its envelope; every refusal is converted here."""
     started = output.timestamp()
@@ -999,6 +1024,8 @@ def run(argv: list[str], *, stdout, stderr) -> int:
         return int(ExitCode.OK)
 
     as_json = args.output == "json"
+    from cratekit.cli import progress as progress_writer  # noqa: PLC0415 - see PROGRESS_JSON
+
     progress = progress_writer.writer_for(
         args.progress_format, stderr, verb=entry.name, as_json=as_json
     )

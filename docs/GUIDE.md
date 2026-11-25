@@ -145,10 +145,14 @@ happens, while the result stays where `--output` puts it. Every event carries
 
 `tests/schemas/progress.v1.json` is the declaration. Anything after `end` on
 standard error is the person's copy of a refusal, and a line that does not
-parse is not an event. A reader that closes standard error never ends the
-run: what cannot be written is dropped. Without the flag nothing changes: JSON
-output says nothing on standard error until its result, and human output
-writes its English progress lines there as before.
+parse is not an event. `crate --progress json run decide ... --continue`
+continues its verb with events too, each carrying that verb's name and run. A
+reader that closes standard error never ends the run: what cannot be written
+is dropped, and the exit code stays the run's. Without the flag nothing
+changes: JSON output writes no progress of its own on standard error, human
+output writes its English progress lines there, and a verb continued by `run
+decide --continue` writes its English lines there in either mode, all as
+before.
 
 ### The hour's provider budget
 

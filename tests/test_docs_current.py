@@ -32,7 +32,9 @@ _WORD = r"[a-z][a-z0-9-]*"
 
 #: The top level options that take a value, so ``crate --output json doctor``
 #: reads as ``doctor``. Held equal to the parser's own below.
-TOP_VALUED = frozenset({"--output", "-d", "--decision", "--run", "--calls", "--calls-per-hour"})
+TOP_VALUED = frozenset(
+    {"--output", "--progress", "-d", "--decision", "--run", "--calls", "--calls-per-hour"}
+)
 
 #: Every top level option, which argparse takes only before the verb.
 TOP_OPTIONS = TOP_VALUED | {"-h", "--help", "--version"}

@@ -28,6 +28,7 @@ from cratekit.core.exit_codes import ExitCode
 from tests.test_sync_land import (  # noqa: F401 - a fixture
     Tail,
     _machine,
+    _model_cannot_score,
     _ready,
     _summary,
     vocal_model,
@@ -155,12 +156,68 @@ def test_sync_land_streams_its_steps_in_order_each_job_then_end_then_the_envelop
     # A job event follows the step that drove it.
     first = events.index(reported[0])
     assert events[first - 1]["kind"] in ("step", "job")
+    # The watcher writes a change, never the same reading twice in a row, but
+    # always once after the drive.
+    for job_id in {event["job_id"] for event in reported}:
+        own = [(event["state"], event["progress"]) for event in reported if event["job_id"] == job_id]
+        repeated = [one for one, two in zip(own, own[1:]) if one == two]
+        assert repeated in ([], [own[-1]]), (job_id, own)
 
     # end is written before the envelope, which is standard output's one write.
     kinds = [(name, text) for name, text in tape.record if text.strip()]
     ended = next(i for i, (name, text) in enumerate(kinds) if '"kind":"end"' in text)
     (written,) = [i for i, (name, _text) in enumerate(kinds) if name == "out"]
     assert ended < written
+
+
+def test_a_pass_continued_by_run_decide_streams_its_steps_and_jobs_as_events(
+    tmp_path, monkeypatch, tail
+):
+    """The recorded line keeps no root options, so the continuation takes the caller's writer."""
+    _ready(_machine(tmp_path, monkeypatch, "full"), monkeypatch, "101")
+    _model_cannot_score(monkeypatch)
+    out, err = io.StringIO(), io.StringIO()
+    assert cli.run(FLAGGED, stdout=out, stderr=err) == int(ExitCode.DECISION_REQUIRED)
+    stopped = json.loads(out.getvalue())
+    run_id = stopped["run_id"]
+    answer = [
+        "--output", "json", "--progress", "json", "run", "decide", run_id,
+        sync_land.WITHOUT_VOCALS, sync_land.WITHOUT_VOCALS_GO, "--continue",
+    ]
+    out, err = io.StringIO(), io.StringIO()
+
+    code = cli.run(answer, stdout=out, stderr=err)
+
+    assert code == int(ExitCode.PENDING_HUMAN)
+    envelope = json.loads(out.getvalue())
+    events = _events(err.getvalue())
+    assert all(output.progress_problems(event) == [] for event in events)
+    assert not [line for line in err.getvalue().split('{"schema"')[0].splitlines() if line]
+    steps = [event for event in events if event["kind"] == "step"]
+    assert {event["name"] for event in steps} >= {tail_chain.TAG, tail_chain.LAND}
+    assert {(event["verb"], event["run_id"]) for event in steps} == {("sync.land", run_id)}
+    assert [event for event in events if event["kind"] == "job"]
+    assert events[-1]["kind"] == "end"
+    assert (events[-1]["exit_code"], events[-1]["run_id"]) == (code, envelope["run_id"])
+
+
+def test_end_carries_the_envelopes_run_when_the_verb_was_refused_before_its_run(
+    machine, monkeypatch, tail
+):
+    out, err = io.StringIO(), io.StringIO()
+
+    code = cli.run(["--output", "json", "--progress", "json", "--run", "no-such-run", "sync", "land"],
+                   stdout=out, stderr=err)
+
+    envelope = json.loads(out.getvalue())
+    assert code != int(ExitCode.OK)
+    (end,) = _events(err.getvalue())
+    assert (end["kind"], end["exit_code"], end["run_id"]) == ("end", code, envelope["run_id"])
+    assert end["run_id"]
+
+
+def test_the_parser_spells_the_writers_one_value():
+    assert cli.PROGRESS_JSON == progress.JSON
 
 
 def test_without_the_flag_json_output_says_nothing_on_standard_error_before_the_result(
@@ -351,4 +408,10 @@ def test_a_watched_job_is_reported_on_each_change_and_once_after_the_drive(machi
 
     first, last = (json.loads(line) for line in stream.getvalue().splitlines())
     assert (first["state"], first["progress"]["settled"]) == ("queued", 0)
+
+    # Read again after a drive that changed nothing, the settled state is written once more.
+    with progress.watching(writer, "tag", job.job_id):
+        pass
+    again = [json.loads(line) for line in stream.getvalue().splitlines()][2:]
+    assert [(event["state"], event["progress"]["settled"]) for event in again][-1] == ("succeeded", 2)
     assert (last["state"], last["progress"]["settled"], last["step"]) == ("succeeded", 2, "tag")

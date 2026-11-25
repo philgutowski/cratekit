@@ -22,7 +22,8 @@ from typing import Any, Iterator, Mapping
 from cratekit.cli import output
 from cratekit.core.cause import CratekitError
 
-#: The one value ``--progress`` takes.
+#: The one value ``--progress`` takes; the parser spells it as
+#: ``cratekit.cli.PROGRESS_JSON``, so it starts without this module.
 JSON = "json"
 
 #: How often a watched job is read off the queue while a chain drives it, in
@@ -37,12 +38,22 @@ class Writer:
     run is known, and ``end`` takes the envelope's own.
     """
 
-    def __init__(self, stream: Any, *, verb: str, events: bool) -> None:
+    def __init__(
+        self, stream: Any, *, verb: str, events: bool, lock: threading.Lock | None = None
+    ) -> None:
         self._stream = stream
-        self._lock = threading.Lock()
+        self._lock = lock or threading.Lock()
         self.verb = verb
         self.events = events
         self.run_id = ""
+
+    def beside(self, verb: str) -> Writer:
+        """A writer of the same form on the same stream and lock, for a verb run within this one.
+
+        ``run decide --continue`` continues a verb whose recorded line keeps no
+        root options; its events carry its own name and run.
+        """
+        return Writer(self._stream, verb=verb, events=self.events, lock=self._lock)
 
     def __call__(self, line: str) -> None:
         """A progress line with no structure yet, as every caller writes one."""
@@ -111,8 +122,9 @@ class _Watch:
     """A job a chain drives, read off the queue until the drive returns.
 
     A ``job`` event whenever its state or counts change, from a thread while
-    the drive runs and once more from the caller after it. A read that fails
-    writes nothing, so a missing event never claims a state.
+    the drive runs, and always once from the caller after it, so the last
+    event a drive writes is its job as the queue holds it then. A read that
+    fails writes nothing, so a missing event never claims a state.
     """
 
     def __init__(self, writer: Writer, step: str, job_id: str) -> None:
@@ -133,16 +145,18 @@ class _Watch:
 
     def __exit__(self, *_exc: object) -> None:
         self._stop.set()
-        # Bounded, so a reader that stopped draining blocks the watcher alone.
+        # Bounded, so a watcher stuck on a write never holds the drive's
+        # answer back by itself; a reader that stopped draining blocks the
+        # caller's own writes the same way.
         self._thread.join(timeout=self._every + 5.0)
-        self.poll()
+        self.poll(always=True)
 
     def _loop(self) -> None:
         self.poll()
         while not self._stop.wait(self._every):
             self.poll()
 
-    def poll(self) -> None:
+    def poll(self, *, always: bool = False) -> None:
         # Imported here, so ``crate`` starts without the queue (U248).
         from cratekit.core import jobs  # noqa: PLC0415 - see the comment above
 
@@ -154,7 +168,7 @@ class _Watch:
             except (CratekitError, sqlite3.Error, OSError):
                 return
             seen = (str(job.state), json.dumps(counted, sort_keys=True))
-            if seen == self._last:
+            if seen == self._last and not always:
                 return
             self._last = seen
             self._writer.job(
