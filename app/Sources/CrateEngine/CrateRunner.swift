@@ -115,7 +115,6 @@ public struct CrateRunner: Sendable {
         var timedOut = false
         if exited.wait(timeout: .now() + call.timeout) == .timedOut {
             timedOut = true
-            process.terminate()
             if exited.wait(timeout: .now() + Self.terminationGrace) == .timedOut {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
                 _ = exited.wait(timeout: .now() + Self.terminationGrace)
