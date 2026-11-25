@@ -225,3 +225,23 @@ def test_the_census_a_landing_files_walks_only_the_rows_it_made(monkeypatch):
     apply_cli.census(cfg, DECLARED, scope=frozenset({"2"}))
     apply_cli.census(cfg, DECLARED)
     assert [[row.content_id for row in got] for got in scanned] == [["2"], ["1", "2"]]
+
+
+def test_an_apply_that_fails_an_entry_after_the_memberships_reads_not_filed(
+    cfg, silence, monkeypatch
+):
+    """The memberships are written, then the apply fails the entry: the landing says not filed."""
+    _file(cfg, silence, "One.flac", genre="Deep House", energylevel=7)
+
+    def refusing(_into):
+        def place(_entry, _folder, _sub):
+            raise apply_cli.refuse("adopt-entries-failed", "this entry could not be placed")
+
+        return place
+
+    monkeypatch.setattr(filing.apply_cli, "_collector", refusing)
+    acted = _lands()[0]
+    assert acted["data"]["totals"]["filing"] == filing.NOT_FILED
+    (warning,) = [one for one in acted["warnings"] if one["code"] == filing.NOT_FILED_WARNING]
+    assert "could not be recorded as filed" in warning["message"]
+    assert filing.ADOPT_APPLY in warning["message"]
