@@ -71,6 +71,9 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'cutover-xml-pending',
     'database-open-failed',
     'db-schema-pin-drift',
+    # 2026-11-25, U962: an app answer with no digest, and a digest the run does not offer.
+    'decision-digest-mismatch',
+    'decision-digest-required',
     'decision-required',
     'decision-stale',
     'decision-unknown-gate',

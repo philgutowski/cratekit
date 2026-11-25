@@ -179,6 +179,23 @@ def test_decide_repeats_the_warning_over_a_sibling_answered_apply_on_the_same_pl
     assert gates.load(second).decisions[GATE].option == "apply"
 
 
+def test_an_answer_the_app_gave_is_named_as_the_apps_at_the_gate_and_at_decide(native_library):
+    """U962: the app answers over the digest it showed, and its sibling reads ``as app``."""
+    first = _planned()["run_id"]
+    shown = gates.load(first).offers[GATE]
+    code, decided = drive(
+        ["run", "decide", first, GATE, "apply", "--actor", "app", "--expect-digest", shown]
+    )
+    assert code == int(ExitCode.OK), decided
+    second = _planned()
+    (message,) = _siblings(second)
+    assert first in message and f"answered {GATE} apply as app at" in message
+    code, decided = _decided(second["run_id"])
+    assert code == int(ExitCode.OK), decided
+    (message,) = _siblings(decided)
+    assert first in message and f"answered {GATE} apply as app" in message
+
+
 #: The siblings a decide says nothing of: how the sibling is left, this run's offers, its answer.
 QUIET = {
     "the-sibling-answered-another-plan":

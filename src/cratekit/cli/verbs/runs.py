@@ -144,7 +144,19 @@ def build_decide(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
         default=None,
         help=(
             "who is making this decision; recorded with it (R34). Defaults to "
-            "'cli' at a terminal and 'session' with none"
+            "'cli' at a terminal and 'session' with none. 'app' is the menu bar "
+            "app, which must give --expect-digest on a gate that binds a plan"
+        ),
+    )
+    parser.add_argument(
+        "--expect-digest",
+        dest="expect_digest",
+        default=None,
+        metavar="DIGEST",
+        help=(
+            "the digest the screen being answered showed, as run show gives it; "
+            "the answer is refused, and nothing recorded, unless the run offers "
+            "that digest for the gate now"
         ),
     )
     parser.add_argument(
@@ -160,6 +172,10 @@ def build_decide(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
 #: session with none (U168).
 TERMINAL_ACTOR = "cli"
 SESSION_ACTOR = "session"
+#: The menu bar app, given with ``--actor`` (U962). Its answer on a gate that
+#: binds a plan names the digest its screen showed, or is refused. The one
+#: spelling the acknowledgment's rule selector reads, so the two cannot differ.
+APP_ACTOR = session.APP_ACTOR
 
 #: The warning a continued run carries, naming the answer it continued on.
 DECISION_RECORDED = "decision-recorded"
@@ -193,7 +209,11 @@ def decide(ctx: "Context") -> Envelope:
         )
 
     actor, why = _actor(ctx.args.actor)
-    gates.record(state, spec, ctx.args.option, actor=actor)
+    expect = ctx.args.expect_digest
+    if actor == APP_ACTOR and spec.digest_source is not None and expect is None:
+        # The app never answers a plan blind (U962): refused before the write.
+        raise gates.DigestRequired(state, spec, actor)
+    gates.record(state, spec, ctx.args.option, actor=actor, expect=expect)
     gates.save(state)
     said = same_plan_answered(state, spec.name, ctx.args.option)
     if ctx.args.continue_run:

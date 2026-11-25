@@ -73,6 +73,8 @@ KEBAB_LITERALS = {
         'database-absent',
         'database-open-failed',
         'db-schema-pin-drift',
+        'decision-digest-mismatch',  # 2026-11-25, U962
+        'decision-digest-required',  # 2026-11-25, U962
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',

@@ -228,6 +228,96 @@ class GateNotReached(CratekitError):
         )
 
 
+def show_command(state: RunState) -> str:
+    """The command that shows the screen a run's gate waits on now (U961, U962)."""
+    return f"crate run show {state.run_id}"
+
+
+class DigestRequired(CratekitError):
+    """An answer that must bind the plan it was shown named no digest (U962).
+
+    The app answers a gate that binds a plan only over the digest its screen
+    showed, so an app answer with no ``--expect-digest`` is refused before
+    anything is recorded. Its own reason and no ``answer-decision`` remedy, as
+    :class:`GateNotReached`, since an open gate's screen would invite the very
+    answer refused.
+    """
+
+    def __init__(self, state: RunState, spec: GateSpec, actor: str) -> None:
+        show = show_command(state)
+        super().__init__(
+            Cause(
+                reason="decision-digest-required",
+                message=(
+                    f"an answer as {actor} binds the {spec.digest_source} its screen "
+                    f"showed, and this one names no digest for {spec.name!r}; "
+                    f"nothing was recorded"
+                ),
+                remediation=Remediation(
+                    steps=(
+                        f"show the gate's current screen and its digest: {show}",
+                        f"then answer over that digest: crate run decide {state.run_id} "
+                        f"{spec.name} <option> --actor {actor} --expect-digest <digest>",
+                    )
+                ),
+                scope=Scope.RUN,
+                retryable=True,
+                origin=("gates",),
+                detail={
+                    "gate": spec.name,
+                    "run_id": state.run_id,
+                    "verb": state.verb,
+                    "actor": actor,
+                    "show": show,
+                },
+            )
+        )
+
+
+class DigestMismatch(CratekitError):
+    """An answer expected a digest its run does not offer for the gate now (U962).
+
+    The screen it was given over is not the run's current one: another process
+    planned again between the show and the answer, or the gate was never
+    offered that plan. Nothing is recorded, and ``run show`` shows the current
+    screen. Not a stale refusal, which judges an answer already recorded, and
+    no answer remedy, as :class:`GateNotReached`.
+    """
+
+    def __init__(self, state: RunState, spec: GateSpec, expected: str) -> None:
+        offered = state.offers.get(spec.name)
+        show = show_command(state)
+        now = f"offers {offered!r}" if offered is not None else "offers no digest for it"
+        super().__init__(
+            Cause(
+                reason="decision-digest-mismatch",
+                message=(
+                    f"the answer to {spec.name!r} was given over the digest {expected!r}, "
+                    f"and run {state.run_id} {now}, so the screen it answered is not the "
+                    f"run's current one; nothing was recorded"
+                ),
+                remediation=Remediation(
+                    steps=(
+                        f"show the gate's current screen: {show}",
+                        f"then answer over the digest it shows: crate run decide "
+                        f"{state.run_id} {spec.name} <option> --expect-digest <digest>",
+                    )
+                ),
+                scope=Scope.RUN,
+                retryable=True,
+                origin=("gates",),
+                detail={
+                    "gate": spec.name,
+                    "run_id": state.run_id,
+                    "verb": state.verb,
+                    "expected": expected,
+                    "offered": offered,
+                    "show": show,
+                },
+            )
+        )
+
+
 def continue_command(state: RunState) -> str:
     """The command that continues a kept run with every answer it holds (U211).
 
@@ -886,13 +976,26 @@ def _strings(document: Any) -> set[str]:
     return found
 
 
-def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
+def record(
+    state: RunState,
+    spec: GateSpec,
+    option: str,
+    *,
+    actor: str,
+    expect: str | None = None,
+) -> None:
     """Write a decision into a run record, validating it against the gate.
 
     The digest comes from what the run offered, never from the caller. So a
     gate that binds a plan is answered only once its run reached it (R-1349),
     meaning it holds the offer, holds the gate open, or holds an answer;
     otherwise nothing is written.
+
+    ``expect`` is the digest the answering screen showed (U962). Given, the
+    answer is refused, and nothing written, unless the run offers exactly that
+    digest for the gate now, so a screen shown before another process planned
+    again is never answered over a plan nobody showed. It is compared and never
+    recorded: the digest recorded is still the run's offer.
     """
     if option not in spec.options:
         raise UnknownOption(spec, option)
@@ -903,6 +1006,8 @@ def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
         and spec.name not in state.decisions
     ):
         raise GateNotReached(state, spec)
+    if expect is not None and state.offers.get(spec.name) != expect:
+        raise DigestMismatch(state, spec, expect)
     state.decisions[spec.name] = Decision(
         option=option,
         actor=actor,

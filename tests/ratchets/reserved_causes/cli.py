@@ -90,6 +90,8 @@ KEBAB_LITERALS = {
     ],
     'cli/gates.py': [
         'blocked-by-pending-action',
+        'decision-digest-mismatch',  # 2026-11-25, U962: a digest the run does not offer now.
+        'decision-digest-required',  # 2026-11-25, U962: an app answer that names no digest.
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',
@@ -350,6 +352,8 @@ LITERAL_HOLDERS = {
     'cli/export_collection.py': ['library-export-unusable', 'output-exists', 'path-permission-denied'],
     'cli/gates.py': [
         'blocked-by-pending-action',
+        'decision-digest-mismatch',  # 2026-11-25, U962
+        'decision-digest-required',  # 2026-11-25, U962
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',
