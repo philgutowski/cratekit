@@ -319,3 +319,36 @@ def test_a_reader_that_closes_standard_error_leaves_the_run_its_exit_and_its_sav
     answered = json.loads(result.read_text())
     assert answered["code"] == int(ExitCode.PENDING_HUMAN)
     assert answered["saved"] is True
+
+
+@pytest.mark.parametrize("events, job_id", [(False, "j"), (True, None)])
+def test_no_job_is_watched_without_events_or_without_a_job(monkeypatch, events, job_id):
+    """Asserted on the watch's construction, not on its output, so a dead thread cannot pass."""
+    built: list[tuple] = []
+    monkeypatch.setattr(progress, "_Watch", lambda *args: built.append(args))
+    writer = progress.Writer(io.StringIO(), verb="v", events=events)
+
+    with progress.watching(writer, "tag", job_id):
+        pass
+    with progress.watching(lambda _line: None, "tag", "j"):
+        pass
+
+    assert built == []
+
+
+def test_a_watched_job_is_reported_on_each_change_and_once_after_the_drive(machine, monkeypatch):
+    from tests.test_sync_land import _enqueue
+
+    cfg, _script = machine
+    job = _enqueue(cfg, "tag.folder", {"folder": "/staged"}, "a.flac", "b.flac")
+    stream = io.StringIO()
+    writer = progress.Writer(stream, verb="sync.land", events=True)
+    monkeypatch.setattr(progress, "WATCH_SECONDS", 3600.0)
+
+    with progress.watching(writer, "tag", job.job_id):
+        with jobs.open_store() as store:
+            jobs.drive(store, job.job_id, lambda _job, _item: None)
+
+    first, last = (json.loads(line) for line in stream.getvalue().splitlines())
+    assert (first["state"], first["progress"]["settled"]) == ("queued", 0)
+    assert (last["state"], last["progress"]["settled"], last["step"]) == ("succeeded", 2, "tag")
