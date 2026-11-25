@@ -219,7 +219,7 @@ final class StatusTests: XCTestCase {
         let texts = StatusMenu.readingLines(for: GoodReading(glance: try Self.glance(), at: Self.noon))
             .map(\.text)
         XCTAssertEqual(texts, [
-            "ok: nothing unreadable, no gate, no job running, both backups under five days",
+            "ok: every source answered, no gate, no job running, both backups under five days",
             "Files backup: 1 day old",
             "Database backup: under a day old",
             "rekordbox: closed",
@@ -270,7 +270,7 @@ final class StatusTests: XCTestCase {
             (StatusOutcome(.setup(.unset)), .setup(.unset), "Set the path to crate"),
             (StatusOutcome(.launchFailed("denied")), .launchFailed("denied"), "denied"),
             (StatusOutcome(.timedOut(after: 30, stderr: "slow\n")), .timedOut(after: 30, stderr: "slow\n"),
-             "within 30 seconds: slow"),
+             "within 30 seconds; on standard error: slow"),
             (StatusOutcome(.signalled(9, stderr: "")), .signalled(9, stderr: ""), "signal 9"),
             (outcome(Data("Traceback (most recent call last)".utf8), status: 1),
              .undecodable(
@@ -280,7 +280,7 @@ final class StatusTests: XCTestCase {
              .refused(reason: "config-missing", message: "no config at the path"),
              "no config at the path"),
             (outcome(Self.envelope(glance: Self.glanceText()), status: 2, stderr: "boom\nhere"),
-             .exitStatus(2, stderr: "boom\nhere"), "status 2: boom here"),
+             .exitStatus(2, stderr: "boom\nhere"), "status 2; on standard error: boom here"),
             (outcome(Self.envelope(glance: Self.glanceText(["version": "7"]))),
              .glance(.unsupportedVersion(7)), "version 7"),
         ]

@@ -218,8 +218,8 @@ days (or never recorded, or recorded ahead of now), whether rekordbox is
 closed, open or unknown, each running job, each run waiting at a gate with its
 verb, gate, how long it has waited, whether it writes the database and `old`
 when `crate run retire` would retire it, and the night pass's line; a source
-the glance could not read shows its message in its place, and the last line
-says when the reading was taken.
+the glance could not read shows its message in its place, and a current
+reading ends with the time it was read.
 
 It runs `crate --output json status` and no other verb, by the path in its
 settings, every minute and when the menu opens, never two calls at once. A

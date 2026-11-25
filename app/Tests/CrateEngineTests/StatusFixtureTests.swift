@@ -51,7 +51,7 @@ final class StatusFixtureTests: XCTestCase {
 
     func testTheQuietFixtureShowsBothAgesAndNothingWaiting() throws {
         XCTAssertEqual(try texts("status_ok"), [
-            "ok: nothing unreadable, no gate, no job running, both backups under five days",
+            "ok: every source answered, no gate, no job running, both backups under five days",
             "Files backup: 1 day old",
             "Database backup: 2 days old",
             "rekordbox: closed",

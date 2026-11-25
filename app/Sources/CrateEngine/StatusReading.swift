@@ -50,12 +50,13 @@ public enum StatusFailure: Equatable, Sendable {
         return folded.count > limit ? String(folded.prefix(limit)) + "..." : folded
     }
 
-    /// What crate said on standard error, as a clause, kept from its end,
+    /// What crate said on standard error, as a labelled clause, kept from its end,
     /// since a traceback's last line names the error and its first does not.
     static func said(_ stderr: String, limit: Int = 200) -> String {
         let folded = stderr.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
         if folded.isEmpty { return "" }
-        return folded.count > limit ? ": ..." + String(folded.suffix(limit)) : ": " + folded
+        let kept = folded.count > limit ? "..." + String(folded.suffix(limit)) : folded
+        return "; on standard error: " + kept
     }
 }
 
@@ -269,7 +270,7 @@ public enum StatusMenu {
         switch attention {
         case .ok:
             return MenuLine(
-                .heading, "ok: nothing unreadable, no gate, no job running, both backups under five days")
+                .heading, "ok: every source answered, no gate, no job running, both backups under five days")
         case .gate:
             return MenuLine(.heading, "gate: a run is waiting for an answer")
         case .running:
