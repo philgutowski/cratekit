@@ -67,6 +67,8 @@ from cratekit.core.processes import ProcessLister as ProcessLister
 from cratekit.core.processes import rekordbox_processes_running as rekordbox_processes_running
 from cratekit.core.processes import running_process_names as running_process_names
 from cratekit.core.session_ack import ACK_SCHEMA_VERSION as ACK_SCHEMA_VERSION
+from cratekit.core.session_ack import AGES_ACTORS as AGES_ACTORS
+from cratekit.core.session_ack import APP_ACTOR as APP_ACTOR
 from cratekit.core.session_ack import RULE_SESSION_AGES as RULE_SESSION_AGES
 from cratekit.core.session_ack import SESSION_ACTOR as SESSION_ACTOR
 from cratekit.core.session_ack import SESSION_MAX_BACKUP_AGE as SESSION_MAX_BACKUP_AGE
