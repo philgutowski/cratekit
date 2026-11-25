@@ -1073,3 +1073,15 @@ more, options 2 and 3 are a card each. Ledger only.
 **Measured cost.** Maintainer facing: the size the refactor was asked to reach is not where `main` stands. No verb's behaviour is affected.
 
 **Closes when:** `refactor_measure.py table` reads at most 193,000 lines and 0 files over 1,500, or Phillip retires the bar. By Phillip's decision of 2026-11-24 on #847, no further area card is filed for it. Ledger only.
+
+---
+
+## R-2079. A failed writer rolls back the session and leaves the binding's update buffer and its playlist file, so a later commit on the handle bumps the update count and saves playlists that never landed
+
+**Found:** at the review of #1077, R-2075, 2026-11-25.
+
+**The mechanism.** `trees.rollback_quietly` in `src/cratekit/write/trees.py` calls `db.session.rollback()` and never the binding's own `db.rollback()`, which also clears pyrekordbox's process wide update buffer. After a failed native landing the buffer still holds the landing's creations and updates, and the binding's `commit` raises `agentRegistry.localUpdateCount` by one per buffered entry before it commits. Beside the buffer, the binding's `create_playlist` adds a node to its in memory `masterPlaylists6.xml`, which neither rollback removes, so the next commit saves nodes for playlists that have no row. Twenty one modules in `src/cratekit` unwind through `trees.rollback_quietly` (in `intake/`, `write/`, `tagging/`, `organize/`, `sync/`, `favorites/` and `analysis/`), and two private copies, `write/metadata_cli._rollback_quietly` and `sync/removed._rollback_quietly`, do the same.
+
+**Measured cost.** Not driven to a user. The two reviews of #1077 drove the C11 test's shape on the disposable copy: after the landing failed, a later `db.commit()` on the same handle landed no row and no playlist row, but moved the update count from 100 to 137 (the binding's commit failing) and from 100 to 131 (the binding failing mid write); with `db.rollback()` in its place the buffer read 0 and the count did not move. With a minimal `masterPlaylists6.xml` planted beside the copy, the later commit wrote two nodes, the batch playlist and ANALYZE, under either rollback. No caller commits on a handle after a failed write: the two `native.apply_rows` callers (`intake/landing.py` and `intake/file_cli.py`) raise, seven other sites read raise too, and `open_db` clears the buffer for the next handle. Seven candidates were read and none commits after a failure.
+
+**Closes when:** a failed write leaves neither the binding's buffer nor its playlist file holding what it rolled back (the binding's own `rollback` and the playlist file read again, or the handle closed), through the one helper and its two copies alike, and the C11 test in `tests/test_intake_land_native.py` also asserts the update count is unchanged after the later commit. Ledger only: no reachable producer.
