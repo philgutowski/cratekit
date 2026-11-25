@@ -598,6 +598,7 @@ SUPERSEDED = {
     ("u264.json", "M8_finite_check"): "u337-librosa-1-0-0",
     ("u264.json", "M7_three_channels_one_add"): "u337-librosa-1-0-0-b",
     ("r658-a.json", "C7_state_roots_not_redirected"): "u337-c7",
+    ("r504-a.json", "A11_boundary_refuses"): "u337-reanchor",
 }
 
 
