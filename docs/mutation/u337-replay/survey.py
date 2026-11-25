@@ -589,6 +589,7 @@ BATCHES = (
     "u337-librosa-1-0-0-b",
     "u337-moved",
     "u337-c7",
+    "u337-reanchor",
 )
 
 #: A row measured again in a later batch, and the batch whose reading stands.
