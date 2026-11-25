@@ -22,7 +22,6 @@ public enum CrateSetup: Equatable, Sendable {
     /// Read the state of `path` from the file system.
     public static func check(_ path: String?, fileManager: FileManager = .default) -> CrateSetup {
         guard let path, !path.isEmpty else { return .unset }
-        guard path.hasPrefix("/") else { return .notAbsolute(path) }
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
             return .missing(path)
