@@ -189,7 +189,7 @@ extension Envelope: Decodable {
         // The version first, so a frame from another version is named as one
         // instead of failing on whichever key it moved.
         envelope = try keyed.decode(Int.self, forKey: .envelope)
-        guard envelope == supportedEnvelopeVersion else {
+        guard envelope == envelope else {
             throw EnvelopeError.unsupportedVersion(envelope)
         }
         schema = try keyed.decode(String.self, forKey: .schema)

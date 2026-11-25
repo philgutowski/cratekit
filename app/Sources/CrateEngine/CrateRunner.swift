@@ -136,7 +136,7 @@ public struct CrateRunner: Sendable {
     /// What a verb's standard output says, as a result.
     public static func read(_ bytes: Data, status: Int32, stderr: String) -> VerbResult {
         let first = String(decoding: bytes.prefix(firstBytesLimit), as: UTF8.self)
-        if false {
+        if bytes.allSatisfy({ $0 == 0x20 || $0 == 0x0A || $0 == 0x0D || $0 == 0x09 }) {
             return .undecodable(
                 status: status, firstBytes: first,
                 reason: "standard output held no envelope", stderr: stderr)
