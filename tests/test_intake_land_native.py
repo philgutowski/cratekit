@@ -885,7 +885,7 @@ def test_a_failure_on_the_second_file_leaves_the_database_as_it_was_and_names_th
 @pytest.mark.parametrize(
     ("sql", "named"),
     [
-        # A tempo: the guard's read back sees a flushed creation (R-760).
+        # A tempo, which the membership step's read loads into the object (R-2072).
         ("UPDATE djmdContent SET BPM = 12400 WHERE ID = :id", "BPM"),
         # The key, held on a content row beyond the playlist tables' columns (R-746).
         ("UPDATE djmdContent SET KeyID = '283157525' WHERE ID = :id", "KeyID"),
@@ -899,7 +899,14 @@ def test_a_failure_on_the_second_file_leaves_the_database_as_it_was_and_names_th
 )
 def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commit(
         one_staged, monkeypatch, sql, named):
-    """Written by SQL after the flush, past the in memory judge, so refused on the row stored."""
+    """Written by SQL at the restamp, after the flush, and refused before the commit.
+
+    THE LAYER THAT REFUSES DIFFERS BY CASE (R-2072): the membership step asks the
+    binding for the row, which reloads every column not yet read into the object,
+    so the whitelist's in memory judge refuses the tempo and the key first, and the
+    SQL read back refuses the analysis table row, which no object carries. The
+    read back alone is pinned by the test below, planted after the last reload.
+    """
     from sqlalchemy import text
     cfg = one_staged
     real = native._restamp
@@ -914,6 +921,60 @@ def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commi
     assert _landed_rows(cfg) == [], "a row carrying an analysis value was committed"
     assert _batch_playlist(cfg) == []
     assert _query(cfg, "SELECT COUNT(*) FROM djmdMixerParam")[0] == (0,)
+
+
+#: What the SQL read back says when it refuses, and what the whitelist says.
+_READ_BACK_REFUSES = "a row this session creates carries analysis data"
+_WHITELIST_REFUSES = "declaring analysis column"
+
+
+@pytest.mark.parametrize(
+    ("sql", "named"),
+    [
+        # A tempo, on the stored row only.
+        ("UPDATE djmdContent SET BPM = 12400 WHERE ID = :id", "BPM"),
+        # The key, a content row column beyond the playlist tables' five (R-746).
+        ("UPDATE djmdContent SET KeyID = '283157525' WHERE ID = :id", "KeyID"),
+    ],
+)
+def test_an_analysis_value_only_the_stored_row_holds_is_refused_by_the_read_back(
+        one_staged, monkeypatch, sql, named):
+    """Planted at the guarded commit, after the last read that reloads the row (R-2072).
+
+    The membership step asks the binding for the row, which reloads every column
+    not yet read into the object, so a value written at the restamp is seen by the
+    whitelist's in memory judge first. Written here, the object never holds it:
+    only :func:`rb_writer.assert_created_rows_are_gridless`, reading the stored
+    row, can refuse it, and the message must be that layer's own, which is also
+    what fails this test if a read is ever added between the plant and the judge.
+    """
+    from sqlalchemy import text
+    cfg = one_staged
+    made: list = []
+    real_restamp = native._restamp
+    real_commit = rb_writer.commit_guarded
+
+    def restamp_and_note(content, row, plan):
+        real_restamp(content, row, plan)
+        made.append(content)
+
+    def taint_then_commit(db, **kwargs):
+        while made:
+            content = made.pop()
+            # The stored row only: nothing reads the row into the object between
+            # here and the judge, which the wording asserted below proves.
+            db.session.execute(text(sql), {"id": str(content.ID)})
+        return real_commit(db, **kwargs)
+
+    monkeypatch.setattr(native, "_restamp", restamp_and_note)
+    monkeypatch.setattr(rb_writer, "commit_guarded", taint_then_commit)
+    acted = _land_fails()
+    message = acted["cause"]["message"]
+    assert acted["cause"]["reason"] == "whitelist-violation"
+    assert _READ_BACK_REFUSES in message and _WHITELIST_REFUSES not in message, message
+    assert f"djmdContent.{named} = " in message, message
+    assert _landed_rows(cfg) == [], "a row carrying an analysis value was committed"
+    assert _batch_playlist(cfg) == []
 
 
 # What is stored: the base drive form

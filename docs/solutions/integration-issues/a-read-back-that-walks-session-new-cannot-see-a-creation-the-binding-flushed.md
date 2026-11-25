@@ -46,7 +46,11 @@ to select rows. `add_content` ends in `flush()`, so its row had left
 `session.new` before the guard ran: the whitelist judged the row's declared
 columns and the SQL check selected nothing. A tempo put on the row by SQL
 after the flush, where the in memory judge cannot see it, would have been
-committed.
+committed. (On the landing path since, a tempo planted by SQL at the restamp
+is loaded into the object by the membership step's read, so the whitelist
+meets it first; a test reaching this layer plants after the last read, R-2072,
+in `a-value-planted-at-the-restamp-reaches-the-whitelist-because-the-membership-step-reloads-the-row.md`
+under `docs/solutions/database-writes/`.)
 
 The fix reads the created instances from the buffer as well, through one
 walk of the buffer both readers share, and a content row is held to the ten
