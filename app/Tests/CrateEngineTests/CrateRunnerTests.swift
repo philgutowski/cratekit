@@ -169,6 +169,20 @@ final class CrateRunnerTests: XCTestCase {
         try assertEnded(pidFile)
     }
 
+    func testATimedOutVerbIsAskedToStopBeforeItIsKilled() throws {
+        // A job driver stops cleanly on SIGTERM, so the kill comes only after it.
+        let stopped = folder.appendingPathComponent("stopped")
+        let path = try fake(
+            "trap 'echo asked > \"\(stopped.path)\"; exit 143' TERM\nwhile :; do sleep 0.1; done")
+        let began = Date()
+        let result = CrateRunner(path: path).runBlocking(VerbCall(["doctor"], timeout: 0.3))
+        guard case .timedOut = result else { return XCTFail("not reported as timed out: \(result)") }
+        XCTAssertEqual(try String(contentsOf: stopped, encoding: .utf8), "asked\n")
+        XCTAssertLessThan(
+            Date().timeIntervalSince(began), 0.3 + CrateRunner.terminationGrace,
+            "the verb was killed rather than asked to stop")
+    }
+
     func testAVerbThatIgnoresTerminateIsKilled() throws {
         let pidFile = folder.appendingPathComponent("pid")
         let path = try fake("echo $$ > '\(pidFile.path)'\ntrap '' TERM\nwhile :; do sleep 1; done")
