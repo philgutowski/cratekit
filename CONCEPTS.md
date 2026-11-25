@@ -1272,8 +1272,9 @@ inherits the run.
 
 ### Run
 The persisted record of one invocation: which verb made it, decisions by gate
-with their actor, and the digest each gate offered (recorded where the gate was
-reached). Continued with `--run`; owned by one verb.
+with their actor, the digest each gate offered (recorded where the gate was
+reached), and the screen each waiting gate refused with, which `crate run show`
+prints (U961). Continued with `--run`; owned by one verb.
 
 ## Findings
 
