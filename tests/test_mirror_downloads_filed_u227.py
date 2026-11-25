@@ -89,3 +89,20 @@ def test_only_this_librarys_adopt_approvals_are_a_persons(acknowledged):
     # This library's own adopt job carrying it makes it a person's filing.
     _queue(cfg, QUEUED, handler="adopt.apply", payload={"digest": "shared-digest"})
     assert _filed(cfg) == {}
+
+
+def test_an_earlier_approval_on_another_tree_is_not_the_landings(acknowledged):
+    """R12: the row filed earlier under another tree, in a band this tree also names, is not read."""
+    cfg = acknowledged
+    _queue(cfg, QUEUED)
+    bucket = DECLARED.bucket_for_display("Tech House")
+    (sub,) = [one.id for one in DECLARED.energy.bands if one.display == "High"]
+    adoption.mark_applied(
+        cfg,
+        adoption.AppliedEntry(
+            entry_id=f"another_tree:3:{bucket}:{sub}", tree="another_tree", content_id="3",
+            bucket=bucket, sub=sub, actor="session", digest="elsewhere", applied="2026-11-06T15:05:00+00:00",
+        ),
+    )
+    _entry(cfg, "3", "Deep House", "Low", LANDING_FILED, "landing")
+    assert _filed(cfg) == {"r3": frozenset({("Deep House", "Low")})}
