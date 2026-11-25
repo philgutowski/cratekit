@@ -5374,3 +5374,50 @@ def test_a_git_install_of_a_branch_head_names_no_tag_that_does_not_exist(monkeyp
     origin = _vcs("0.3.1.dev3+gabc1234", ("analysis",))
     assert doctor_state.vocals_install_command(origin) == "the vocals module's own command"
     assert "@v0.3.0" in doctor_state.vocals_install_command(_vcs("0.3.0", ("analysis",)))
+
+
+#: R-2082: what each check that reads the backup record said off an absent volume.
+NEVER_SAID = {
+    "backup.age.files": "no completion has been recorded",
+    "backup.age.database": "no completion has been recorded",
+    "backup.full_comparison": "no backup here has compared",
+    "backup.full_check": "no full check of the remote is on record",
+}
+
+
+def test_no_backup_age_is_claimed_never_recorded_off_a_volume_nobody_read(configured, tmp_path):
+    """R-2082: the record lives on the library volume, so an ejected one is not "never"."""
+    at = GREEN_NOW - timedelta(days=2)
+    for portion in backup_facts.Portion:
+        backed_up(configured, portion, at)
+    backup_facts.record(configured, FILES, completed_at=at, destination="remote:backups",
+                        full_comparison=True, full_check=True)
+    present = report_on(configured)
+    for key in NEVER_SAID:
+        assert "2 days ago" in checked(find(present, key), INFO).detail, key
+    configured.library.root.rename(tmp_path / "ejected")
+    absent = report_on(configured)
+    for key, never in NEVER_SAID.items():
+        finding = checked(find(absent, key), INFO)
+        assert finding.detail.startswith("not asserted: the backup record lives on the library volume"), finding.detail
+        assert "could not establish that the volume is there" in finding.detail
+        assert never not in finding.detail and "days ago" not in finding.detail, finding.detail
+
+
+def test_a_never_recorded_age_on_a_volume_that_is_here_still_says_never(configured):
+    """The control: a present volume with no record is the state before a first backup."""
+    report = report_on(configured)
+    for key, never in NEVER_SAID.items():
+        assert never in checked(find(report, key), INFO).detail, key
+
+
+def test_a_deadca7_push_off_an_absent_library_volume_is_not_warned_as_unbacked(
+        configured, tmp_path):
+    """R-2082: the push is read off the Mac, the backup it is compared with off the volume."""
+    backed_up(configured, DATABASE, GREEN_NOW - timedelta(days=1))
+    support = _deadca7(tmp_path, pushed_at=GREEN_NOW - timedelta(days=3))
+    assert "which holds it" in _push_check(configured, support).detail
+    configured.library.root.rename(tmp_path / "ejected")
+    finding = _push_check(configured, support)
+    assert "cannot be said, since the backup record could not be read" in finding.detail
+    assert "warning" not in finding.detail and "no database backup" not in finding.detail

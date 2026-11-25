@@ -31,6 +31,26 @@ def _whole_days(age: timedelta | None) -> int:
     return max(age.days, 0) if age is not None else 0
 
 
+#: What the library volume note names when a check would read the backup record.
+_RECORD = "the backup record"
+
+
+def _before_the_record(key: str, title: str, inputs: _Inputs) -> Finding | None:
+    """What a check reading the backup record answers before it reads, or None to read.
+
+    Unchecked without a configuration. The record is library scoped, so off a
+    volume not established a missing file would read as no completion recorded
+    (R-2082): that is a note, asked as the acknowledgment check asks, by the
+    rule the glance's ``backup`` asks.
+    """
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, _RECORD)
+    if unreadable is None:
+        return None
+    return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+
+
 def _unreadable_facts(key: str, title: str, exc) -> Finding:
     """The one finding every check reading the backup fact file gives for that."""
     return Finding(
@@ -45,8 +65,9 @@ def _unreadable_facts(key: str, title: str, exc) -> Finding:
 def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     portion = backup_facts.PORTIONS[key.split(".")[-1]]
     title = f"backup age, {portion} portion"
-    if inputs.cfg is None:
-        return _unchecked(key, title)
+    before = _before_the_record(key, title, inputs)
+    if before is not None:
+        return before
     try:
         ages = backup_facts.ages(inputs.cfg, now=inputs.probes.now)
     except backup_facts.BackupFactsUnreadable as exc:
@@ -184,8 +205,9 @@ def _check_full_comparison(inputs: _Inputs) -> Finding:
     unchecked for ever.
     """
     key, title = "backup.full_comparison", "backup, last full comparison"
-    if inputs.cfg is None:
-        return _unchecked(key, title)
+    before = _before_the_record(key, title, inputs)
+    if before is not None:
+        return before
     try:
         answer = backup_facts.full_comparison_age(inputs.cfg, now=inputs.probes.now)
     except backup_facts.BackupFactsUnreadable as exc:
@@ -232,8 +254,9 @@ def _check_full_check(inputs: _Inputs) -> Finding:
     A due check is not a fault, since the next ``crate backup run`` runs it.
     """
     key, title = "backup.full_check", "backup, last full check"
-    if inputs.cfg is None:
-        return _unchecked(key, title)
+    before = _before_the_record(key, title, inputs)
+    if before is not None:
+        return before
     try:
         answer = backup_facts.full_check_age(inputs.cfg, now=inputs.probes.now)
     except backup_facts.BackupFactsUnreadable as exc:
@@ -415,9 +438,14 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
         return said(f"{no_push}its backup folder {held}. {unconfirmed}")
     when = pushed.strftime("%Y-%m-%d %H:%M UTC")
     run_one = "Run one with: crate backup run"
-    try:
-        ages = backup_facts.ages(inputs.cfg, now=inputs.probes.now)
-    except backup_facts.BackupFactsUnreadable:
+    ages = None
+    # Off a volume not established the record is unread, never none (R-2082).
+    if _library_state_unreadable(inputs, _RECORD) is None:
+        try:
+            ages = backup_facts.ages(inputs.cfg, now=inputs.probes.now)
+        except backup_facts.BackupFactsUnreadable:
+            ages = None
+    if ages is None:
         return Finding(
             key=key,
             title=title,
