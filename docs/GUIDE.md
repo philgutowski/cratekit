@@ -171,8 +171,8 @@ gate (with whether it writes the database and whether `crate run retire`
 would retire it), and the last night pass as `crate sync night --last` reads
 it. A source it could not read is `{"unreadable": "..."}` in its own key,
 never an empty list, `never-recorded` or `closed`; the backup ages read
-unreadable while the library volume cannot be confirmed, since their record
-is on it. It only reads, and
+unreadable while the library root is absent, or is not on the volume recorded
+for it, since their record is on that volume. It only reads, and
 `tests/schemas/status_glance.v1.json` is its shape.
 
 Which workflows have run on a real library, and with what result, is recorded
