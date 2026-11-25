@@ -1,0 +1,57 @@
+name = "u966"
+pass_kind = "light"
+
+# U966 adds no source under src/. Its Python guards are the status fixtures in
+# tests/test_app_fixtures.py, which hold the JSON the Swift status path reads
+# to what the real crate status emits, at a held clock. These rows edit a
+# status fixture away from its verb and remove each half of the held clock.
+# The Swift guards are measured on the App workflow, since no container
+# compiles Swift, in docs/mutation/u966-swift.md.
+
+[[rows]]
+id = "F1_gate_fixture_old"
+description = "status_gate.json: the old gate's old flag edited to false, a fixture that no longer matches its verb"
+file = "app/Tests/CrateEngineTests/Fixtures/status_gate.json"
+tests = ["tests/test_app_fixtures.py"]
+old = '''            "old": true,'''
+new = '''            "old": false,'''
+
+[[rows]]
+id = "F2_backup_due_fixture_age"
+description = "status_backup_due.json: the files portion's age one second off"
+file = "app/Tests/CrateEngineTests/Fixtures/status_backup_due.json"
+tests = ["tests/test_app_fixtures.py"]
+old = '''            "age_seconds": 777600,'''
+new = '''            "age_seconds": 777601,'''
+
+[[rows]]
+id = "F3_fail_fixture_message"
+description = "status_fail.json: the unreadable rekordbox message reworded"
+file = "app/Tests/CrateEngineTests/Fixtures/status_fail.json"
+tests = ["tests/test_app_fixtures.py"]
+old = '''          "unreadable": "RuntimeError: the process table could not be read"'''
+new = '''          "unreadable": "RuntimeError: the process table could not be listed"'''
+
+[[rows]]
+id = "C1_run_report_clock_live"
+description = "the held clock left off doctor's run report, so its old gate fold reads the real clock"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''    patch.setattr(doctor, "_run_report", functools.partial(doctor._run_report, now=STATUS_NOW))'''
+new = '''    patch.setattr(doctor, "_run_report", functools.partial(doctor._run_report))'''
+
+[[rows]]
+id = "C2_glance_clock_live"
+description = "the held clock left off the glance, so ages and the old flag read the real clock"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''    patch.setattr(status_glance, "glance", lambda cfg, **kw: real(cfg, now=STATUS_NOW, **kw))'''
+new = '''    patch.setattr(status_glance, "glance", lambda cfg, **kw: real(cfg, **kw))'''
+
+[[rows]]
+id = "C3_scenario_word_unchecked"
+description = "status_of no longer checks the attention word its setup was built to read"
+file = "tests/test_app_fixtures.py"
+tests = ["tests/test_app_fixtures.py"]
+old = '''    assert glance["attention"] == word, glance'''
+new = '''    assert glance["attention"] or word, glance'''
