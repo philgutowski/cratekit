@@ -167,7 +167,7 @@ STATE_VERBS: tuple[Entry, ...] = (
         ),
     ),
     Entry(
-        name="status", summary="per-source sync state, open runs, and unconverged trees",
+        name="status", summary="per-source sync state, open runs, unconverged trees, and a glance an app shows",
         module="cratekit.cli.doctor", builder="build_status", handler_key="status",
         feature_rows=(28,), emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
     ),

@@ -96,6 +96,7 @@ KEBAB_LITERALS = {
         'gate-not-reached',  # 2026-11-06, R-1349: a decide on a gate its run has not reached.
         'gate-sibling-run',  # 2026-11-01, U186: the sibling run warning joined.
         'internal-error',
+        'unknown-option',  # 2026-11-25, U961: a kept screen's kind, never a cause's reason.
     ],
     'cli/handlers.py': ['config-drift', 'internal-error'],
     'cli/jobs.py': ['internal-error', 'job-unknown'],
@@ -190,6 +191,8 @@ KEBAB_LITERALS = {
         'vocal-model',  # 2026-11-01, U181
         'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
+    # 2026-11-25, U960: crate status's glance, whose attention word is no cause.
+    'cli/status_glance.py': ['backup-due'],
     # 2026-11-01, U179: the Bandcamp source of the same driver, its fetch verb's
     # words and the closing report's three warnings.
     'cli/sync_bandcamp.py': [

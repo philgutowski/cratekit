@@ -61,6 +61,8 @@ def show(ctx: "Context") -> Envelope:
             "verb": state.verb,
             "created": state.created,
             "open_gate": state.open_gate,
+            # Under ``summary``, since ``diagnostic/1`` declares no other field.
+            "gate": waiting_gate(state),
         },
     }
     if state.pending is not None:
@@ -74,6 +76,63 @@ def show(ctx: "Context") -> Envelope:
             resumable=True,
         )
     return ctx.envelope(data=data)
+
+
+def waiting_gate(state: gates.RunState) -> dict[str, Any] | None:
+    """The gate the run waits at, as ``run show`` carries it, or None when none waits (U961).
+
+    Read from the screen the gate's refusal kept with the run, so any process
+    shows what the refusal showed without running the verb again. A gate with
+    no screen that can be shown carries ``screen_missing``, the reason and the
+    command that shows the gate again, and no digest, plan or pins, so nothing
+    reads as an empty plan.
+    """
+    found = gates.waiting(state)
+    if found is None:
+        return None
+    again = gates.continue_command(state)
+    gate: dict[str, Any] = {
+        "name": found.gate,
+        "writes_database": gates.writes_the_database(state.verb),
+        "answer": f"crate run decide {state.run_id} {found.gate} <option>",
+        "continue": again,
+    }
+    screen = found.screen
+    if screen is not None:
+        return {
+            **gate,
+            "kind": screen.kind,
+            "prompt": screen.prompt,
+            "options": list(screen.options),
+            "explicit": screen.explicit,
+            "digest": screen.digest,
+            "shown": screen.shown,
+            "pins": dict(screen.pins),
+            "cut": screen.cut,
+            "screen_missing": None,
+        }
+    spec = _declared(state.verb, found.gate)
+    return {
+        **gate,
+        "kind": None,
+        "prompt": spec.prompt if spec is not None else None,
+        "options": list(spec.options) if spec is not None else [],
+        "explicit": spec.explicit if spec is not None else None,
+        "digest": None,
+        "shown": None,
+        "pins": None,
+        "cut": None,
+        "screen_missing": {"reason": found.missing, "command": again},
+    }
+
+
+def _declared(verb: str, gate: str) -> registry.GateSpec | None:
+    """The gate as this build declares it, or None for a verb or gate it no longer has."""
+    try:
+        owner = registry.entry(verb)
+    except KeyError:
+        return None
+    return next((one for one in owner.gates if one.name == gate), None)
 
 
 def build_decide(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:

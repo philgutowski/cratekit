@@ -1,0 +1,271 @@
+name = "u961"
+pass_kind = "light"
+
+# The subset: the files that drive the gates and run show. A zero is promoted
+# to the full suite by the driver before it is reported.
+
+[[rows]]
+id = "G01_keep_open_gate"
+description = "Gates.require: keep no screen when a gate with no answer opens, so run show names the gate with its screen missing"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''        if chosen is None:
+            self.state.open_gate = spec.name
+            self._keep(spec, SCREEN_OPEN, digest, context)'''
+new = '''        if chosen is None:
+            self.state.open_gate = spec.name'''
+
+[[rows]]
+id = "G02_keep_explicit_inline"
+description = "Gates.require: keep no screen when an explicit gate refuses an inline answer (round one's M7)"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            if recorded is None:
+                self.state.open_gate = spec.name
+            self._keep(spec, SCREEN_OPEN, digest, context)'''
+new = '''            if recorded is None:
+                self.state.open_gate = spec.name'''
+
+[[rows]]
+id = "G03_keep_unknown_option"
+description = "Gates.require: keep no screen for an option the gate does not offer, so run show says nothing waits"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            self._keep(spec, SCREEN_UNKNOWN_OPTION, digest, context)
+'''
+new = ''''''
+
+[[rows]]
+id = "G04_keep_stale_replace"
+description = "Gates.require: keep no screen on the gate's own stale, so the moved offer stands with the old screen behind it (the replace on a moved offer)"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''                self._keep(spec, SCREEN_STALE, digest, context)
+'''
+new = ''''''
+
+[[rows]]
+id = "G05_pass_keeps_screen"
+description = "Gates.require: leave the screen on the run when the gate passes"
+file = "src/cratekit/cli/gates.py"
+surface = "maintainer"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''        self.state.screens.pop(spec.name, None)
+        self.state.open_gate = None
+        return chosen'''
+new = '''        self.state.open_gate = None
+        return chosen'''
+
+[[rows]]
+id = "G06_record_keeps_screen"
+description = "record: leave the answered gate's screen on the run, so a decide or a retirement no longer shrinks the record"
+file = "src/cratekit/cli/gates.py"
+surface = "maintainer"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''    state.screens.pop(spec.name, None)
+    if state.open_gate == spec.name:'''
+new = '''    if state.open_gate == spec.name:'''
+
+[[rows]]
+id = "G07_keep_no_digest"
+description = "_keep: keep every screen with no digest, so no kept screen is ever current over a digest bound gate"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            digest=digest if spec.digest_source is not None else None,'''
+new = '''            digest=None,'''
+
+[[rows]]
+id = "G08_keep_no_pins"
+description = "_keep: keep no pins, so a pinned gate's screen is never current"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            pins=dict(self.state.pins.get(spec.name, {})),'''
+new = '''            pins={},'''
+
+[[rows]]
+id = "G09_keep_uncut"
+description = "_keep: keep the shown whole, so a plan of thousands of items grows the record without bound"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            shown, cut = cut_shown(json.loads(json.dumps(dict(context), default=str)))'''
+new = '''            shown, cut = json.loads(json.dumps(dict(context), default=str)), None'''
+
+[[rows]]
+id = "G10_shown_sorted"
+description = "Screen.to_json: write shown with sorted keys, so run show prints the facts in another order than the refusal did"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            "shown": None if self.shown is None else _compact(self.shown),'''
+new = '''            "shown": None if self.shown is None else json.dumps(self.shown, sort_keys=True),'''
+
+[[rows]]
+id = "G11_current_ignores_digest"
+description = "_current: compare the pins alone, so a screen behind a moved offer is shown as the gate's"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''    return screen.digest == state.offers.get(gate) and screen.pins == state.pins.get(gate, {})'''
+new = '''    return screen.pins == state.pins.get(gate, {})'''
+
+[[rows]]
+id = "G12_current_ignores_pins"
+description = "_current: compare the digest alone, so a screen whose pinned facts moved is shown as the gate's"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''    return screen.digest == state.offers.get(gate) and screen.pins == state.pins.get(gate, {})'''
+new = '''    return screen.digest == state.offers.get(gate)'''
+
+[[rows]]
+id = "G13_waits_not_on_a_stale_answer"
+description = "_waits: never read an answer bound to another plan than the offer as waiting, so a stale run reads as nothing waiting"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''    return answer.digest is not None and offer is not None and answer.digest != offer'''
+new = '''    return False'''
+
+[[rows]]
+id = "G14_waits_not_on_an_unanswered_offer"
+description = "_waits: an offer with no answer and no screen does not wait, so a run from before U961 refused an unknown option reads as nothing waiting (round one's M12)"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''        return screen is not None or offer is not None'''
+new = '''        return screen is not None'''
+
+[[rows]]
+id = "G15_waits_not_on_an_option_withdrawn"
+description = "_waits: a recorded option the screen no longer offers does not wait, so a run every resume refuses reads as nothing waiting"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''    if screen is not None and answer.option not in screen.options:
+        return True
+'''
+new = ''''''
+
+[[rows]]
+id = "G16_waiting_drops_the_open_gate"
+description = "waiting: name no open gate that has no current screen, so a run from before U961 reads as nothing waiting (the screen_missing branch)"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''    named = [state.open_gate] if state.open_gate is not None else []'''
+new = '''    named = []'''
+
+[[rows]]
+id = "G17_waiting_earliest"
+description = "waiting: name the earliest kept screen rather than the refusal the run last ended on"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''        _, name, screen = max(shown, key=lambda one: (one[0], one[1]))'''
+new = '''        _, name, screen = min(shown, key=lambda one: (one[0], one[1]))'''
+
+[[rows]]
+id = "G18_missing_reason_swapped"
+description = "waiting: give a screen behind a moved offer the reason of a run from before U961, and the converse"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''    if gate in state.screens:
+        why ='''
+new = '''    if gate not in state.screens:
+        why ='''
+
+[[rows]]
+id = "G19_screens_not_read"
+description = "RunState.from_json: read no kept screen, so every waiting gate reads as having none"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            screens=_screens_from(data.get("screens")),'''
+new = '''            screens={},'''
+
+[[rows]]
+id = "G20_cut_drops_the_facts"
+description = "cut_shown: keep the lists alone when cutting, so the digest, the count and every fact are lost"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''        return {name: value[:count] if name in lists else value for name, value in whole.items()}'''
+new = '''        return {name: value[:count] for name, value in whole.items() if name in lists}'''
+
+[[rows]]
+id = "G21_cut_unsaid"
+description = "cut_shown: say nothing of a cut, so a shortened list reads as the whole plan"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''        return keeping(kept), {"limit": limit, "lists": shortened}'''
+new = '''        return keeping(kept), None'''
+
+[[rows]]
+id = "G22_cut_fewest"
+description = "cut_shown: search for the fewest items that fit rather than the most, so the screen keeps none"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_gate_not_reached.py", "tests/test_gate_shown_plan.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''            kept, low = middle, middle + 1'''
+new = '''            kept, high = middle, middle - 1'''
+
+[[rows]]
+id = "R23_missing_carries_the_offer"
+description = "waiting_gate: carry the run's offer as the digest of a gate with no screen, a digest an answer could bind with no plan shown"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_not_reached.py", "tests/test_run_decide_continue.py", "tests/test_gate_siblings.py"]
+old = '''        "explicit": spec.explicit if spec is not None else None,
+        "digest": None,'''
+new = '''        "explicit": spec.explicit if spec is not None else None,
+        "digest": state.offers.get(found.gate),'''
+
+[[rows]]
+id = "P24_render_stale_as_open"
+description = "render_waiting_gate: render a stale screen as an open one, without the line saying the plan moved"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_render_payloads.py"]
+old = '''    stale = gate.get("kind") == gates.SCREEN_STALE'''
+new = '''    stale = False'''
+
+[[rows]]
+id = "P25_render_missing_silent"
+description = "render_waiting_gate: print nothing for a gate whose screen cannot be shown, so a person reads no gate and no command"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_run_show_gate.py", "tests/test_gate_stale_screen.py", "tests/test_render_payloads.py"]
+old = '''    if isinstance(missing, Mapping):
+        return ['''
+new = '''    if isinstance(missing, Mapping):
+        return []
+        return ['''
+
+[[dropped]]
+id = "D01_stale_kept_as_open"
+description = "Gates.require: keep the stale refusal's screen as an open one"
+reason = "at the cap: the same consequence as P24, which drops the stale kind's rendering, and G04 holds the stale keep itself"
+
+[[dropped]]
+id = "D02_screens_always_written"
+description = "RunState.to_json: write an empty screens key on every record"
+reason = "at the cap: maintainer facing record shape, held by the older record test that G19 shares"
+
+[[dropped]]
+id = "D03_render_cut_silent"
+description = "render_waiting_gate: print no line for a cut screen"
+reason = "at the cap: G21 drops the cut from the record, which the same run show test reads"
+
+[[dropped]]
+id = "D04_missing_command_is_the_answer"
+description = "waiting_gate: name the decide line as the command that shows a missing screen again"
+reason = "at the cap: R23 holds the same branch's shape, and the command is asserted beside it"
