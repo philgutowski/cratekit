@@ -1,0 +1,52 @@
+name: App
+
+# The menu bar app's Swift build and test gate (U965), on a macOS runner, since
+# no container compiles Swift. It builds, tests and bundles the Swift package
+# under app/ and uploads the bundle for a few days. It is the only proof a Swift
+# change gets before it merges, so a pull request that touches app/ merges only
+# on a green run here as well as a green CI. READ docs/METHOD.md, "What CI is
+# for", before adding a step: every step here must be able to pass.
+#
+# Triggered only by the app, the Python test that writes its fixtures from the
+# real verbs, and this file. The repository is public, so the macOS minutes
+# cost nothing. The bundle is signed ad hoc, with no Apple account and no
+# secret (idea 377, decision 2).
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - "tests/test_app_fixtures.py"
+      - ".github/workflows/app.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "tests/test_app_fixtures.py"
+      - ".github/workflows/app.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+      - name: Bundle, signed ad hoc
+        run: ./scripts/bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CratekitBar
+          path: app/build/CratekitBar.zip
+          retention-days: 7
+          if-no-files-found: error
