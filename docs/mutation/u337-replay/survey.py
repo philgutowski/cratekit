@@ -56,7 +56,9 @@ ANALYSIS_EXTRA = "analysis"
 
 
 def side_of(name: str) -> str:
-    if "before" in name:
+    """Which side of a refactor a replay table measured. This card's
+    `u337-survey-*` tables were measured at the survey's commit, so before."""
+    if "before" in name or name.startswith("u337-survey-"):
         return "before"
     return "after"
 
@@ -297,6 +299,49 @@ def vouched_reason(row: K.Recorded, measured: list[tuple], pick: dict) -> str:
     )
 
 
+#: The known failures of main's baseline at 474653ba, as `cloud_battery.py
+#: baseline` measured them on this card's container, kept beside the tables.
+KNOWN_FAILURES = HERE / "u337-known-failures.txt"
+
+#: Where the kills this card finds lost since the survey are recorded.
+LOST_RESIDUAL = "docs/residuals/u337-kills-lost-since-the-survey.md"
+
+
+def measured_reason(row: K.Recorded, measured: list[tuple], machine: frozenset[str]) -> str:
+    """Why a row this card measured with no death on main is owed no kill, or that
+    it is lost, or nothing when the measurements cannot say.
+
+    Every test that killed it at the survey failing on Linux for the machine
+    means no Linux run can kill it. Otherwise its replay at the survey's commit
+    decides: no death there means the survey's Linux tree did not kill it
+    either, a death there means the kill was lost since.
+    """
+    newest = [one for one in measured if one[2] == "after"][-1]
+    where = f"{newest[1]} read it {newest[3].get('status')}"
+    killers = recorded_row(row.source).get("killed") or []
+    if killers and all(one in machine for one in killers):
+        return (
+            f"unmeasured on Linux: each of the {len(killers)} tests that killed it at the "
+            "survey fails on Linux for the machine (u337-known-failures.txt, main's "
+            f"baseline), so {where}; only the macOS battery can read it"
+        )
+    at = [one for one in measured if Path(one[1]).name.startswith("u337-survey-")]
+    if not at:
+        return ""
+    when, table, _side, replayed, _ = at[-1]
+    if K.killed(replayed):
+        return (
+            f"LOST: killed at the survey's commit ff8e5ec on Linux ({table}, "
+            f"{replayed.get('deaths')} deaths) and by no test on main ({where}); "
+            f"recorded in {LOST_RESIDUAL}"
+        )
+    return (
+        f"not killed at the survey on Linux: its replay at ff8e5ec ({table}) read it "
+        f"{replayed.get('status')}, and on main {where}; the kill its own table recorded "
+        "was measured on another machine or an earlier tree"
+    )
+
+
 def git_head() -> str:
     return subprocess.run(
         ["git", "rev-parse", "--short=8", "HEAD"],
@@ -332,6 +377,7 @@ def cmd_join(args) -> int:
     survey = survey_rows(args.survey_root)
     excluded = read_excluded()
     by_hand = read_mapped()
+    machine = known_failures(KNOWN_FAILURES)
     known = {row.source for row in survey}
     stray = sorted(set(excluded) - known)
     if stray:
@@ -366,6 +412,21 @@ def cmd_join(args) -> int:
                 if reason:
                     pick["moved"] = reason
             after_rows[row.source] = pick
+        held = bool(after) and K.strength(after_rows[row.source]) >= K.strength(was)
+        if not held and row.source not in by_hand and not seen.mapped.get(row.source):
+            reason = measured_reason(row, measured, machine)
+            if reason:
+                before_rows.pop()
+                after_rows.pop(row.source, None)
+                left_out.append(
+                    {
+                        "source": {"table": row.table, "id": row.id},
+                        "id": K.row_id(row.source),
+                        "file": row.anchor.file,
+                        "reason": reason,
+                    }
+                )
+                continue
         curated = by_hand.get(row.source)
         if curated is not None and not (after and K.killed(after[-1][3])):
             target = copy.deepcopy(recorded_row((curated["to_table"], curated["to_id"])))
@@ -425,8 +486,11 @@ def cmd_join(args) -> int:
     after_table["mapped"] = mapped
     for name, table in (("survey-before.json", before), ("survey-after.json", after_table)):
         (args.out_dir / name).write_text(json.dumps(table, indent=1) + "\n", encoding="utf-8")
+    lost = [one for one in left_out if one["reason"].startswith("LOST")]
+    for one in lost:
+        print(f"LOST {one['id']}")
     print(
-        f"{len(before_rows)} owed, {len(left_out)} left out, {len(after_rows)} after rows, {len(mapped)} mapped"
+        f"{len(before_rows)} owed, {len(left_out)} left out ({len(lost)} lost), {len(after_rows)} after rows, {len(mapped)} mapped"
     )
     return 0
 
