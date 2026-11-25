@@ -624,6 +624,9 @@ def _tree_findings(cfg: config.Config) -> list[Finding]:
 
 
 def status(ctx: "Context") -> Envelope:
+    # Here, so ``crate doctor`` and its help load none of what the glance reads.
+    from cratekit.cli import status_glance  # noqa: PLC0415 - status's own assembly
+
     cfg = config.load()
     runs, folded = _run_report(timedelta(days=cfg.reports.open_gate_stale_days))
     findings = runs + _source_findings(cfg) + _tree_findings(cfg)
@@ -636,6 +639,8 @@ def status(ctx: "Context") -> Envelope:
             "sources": sum(1 for f in findings if f.key.startswith("source.")),
             "trees": sum(1 for f in findings if f.key.startswith("tree.")),
             "library": str(cfg.library.root),
+            # One machine readable object an app shows (U960).
+            "glance": status_glance.glance(cfg),
         },
     }
     return ctx.envelope(data=data, outcome=Outcome.OK if findings else Outcome.NO_OP)

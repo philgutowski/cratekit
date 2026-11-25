@@ -963,6 +963,18 @@ closed on every way out of it. The download worker holds the vendored
 adapter's session: one token file and one login for every track the drive
 acquires. A resume is a new drive.
 
+### Status glance
+`crate status`'s `data.summary.glance` (`cli/status_glance.py`, U960): one
+object a menu bar app reads, the two backup ages, `rekordbox` as `closed`,
+`open` or `unknown`, the running jobs, every run at a gate with `old` as
+`crate run retire` would read it, and the last night pass as `sync night
+--last` reads it, each from the reader the verb that owns it uses. Its
+**attention** is one word, the first of `fail` (a source unreadable, or a
+backup recorded ahead of now), `gate`, `running`, `backup-due` (a portion five
+days old or with no age) and `ok`. A source that cannot be read is
+`{"unreadable": ...}` in its own key, never empty, none or closed;
+`tests/schemas/status_glance.v1.json` is its shape.
+
 ## Sync
 
 ### Night pass

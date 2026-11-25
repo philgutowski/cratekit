@@ -276,6 +276,34 @@ def render_checks(envelope: Envelope) -> list[str]:
     return lines
 
 
+def render_attention(envelope: Envelope) -> list[str]:
+    """``crate status``'s one line naming its glance's ``attention`` word (U960), or nothing.
+
+    Gated on the payload, never the verb's name, as the check table is. Each
+    key that could not be read is named after the word.
+    """
+    if not envelope.schema.startswith("diagnostic/"):
+        return []
+    summary = envelope.data.get("summary")
+    glance = summary.get("glance") if isinstance(summary, Mapping) else None
+    word = glance.get("attention") if isinstance(glance, Mapping) else None
+    if not isinstance(word, str) or not word:
+        return []
+    unread = [
+        str(key)
+        for key, value in glance.items()
+        if _unread(value)
+        or (isinstance(value, (list, tuple)) and any(_unread(item) for item in value))
+    ]
+    # A person reading ``fail`` is told what could not be read, not sent to JSON.
+    return [f"attention: {word}" + (f" ({', '.join(unread)} unreadable)" if unread else "")]
+
+
+def _unread(value: Any) -> bool:
+    """Whether a glance value is a source, or one of its items, that could not be read."""
+    return isinstance(value, Mapping) and "unreadable" in value
+
+
 def render_review_set(envelope: Envelope) -> list[str]:
     """The review set a person reads, or nothing at all.
 
@@ -748,6 +776,7 @@ def render(envelope: Envelope, *, drive: Sequence[str] | None = None) -> str:
         lines.append(f"{envelope.verb}: {envelope.outcome}")
     else:
         lines.append(f"{envelope.verb}: {envelope.outcome} ({envelope.exit_code.name})")
+    lines += render_attention(envelope)
 
     pending = envelope.pending_human_action
     if pending is not None:
@@ -976,6 +1005,7 @@ __all__ = [
     "remedy_text",
     "render",
     "render_cause",
+    "render_attention",
     "render_checks",
     "render_gate",
     "render_import_proof",
