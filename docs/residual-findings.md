@@ -1269,3 +1269,52 @@ ordinary state of being unplugged.
 
 **Closes when:** the menu bar app's card (#1085) decides whether an absent
 volume earns a word of its own ahead of `fail`. Ledger only.
+
+---
+
+## R-2088. a job a chain drives in under a second never reports running under --progress json
+
+**Found:** at the review of #1082, U963, 2026-11-25.
+
+**The mechanism.** Under `--progress json` the job watch in
+`src/cratekit/cli/progress.py` reads the job off the queue once as the drive
+starts, then every `WATCH_SECONDS` (one second) and once after the drive. A
+job whose whole drive is shorter than the interval goes from `queued` to its
+settled state between two readings, so the stream says `queued` then
+`succeeded` and never `running`. The brief asks for at least one event per
+state change while a chain waits on a job.
+
+**Measured cost.** Driven by the review at the shipped interval, two items of
+0.2 seconds each: `queued`, then `succeeded`. No one is told anything false:
+the job's last event is its settled state as the queue holds it, and a job
+long enough for an app to show it running (a download, an analysis of a real
+pass) is read while it runs. A shorter interval reads the queue more often
+for every driven job.
+
+**Closes when:** the engine announces each transition it makes, rather than
+the watch sampling it, or the sampling is judged enough. Ledger only:
+maintainer facing, nothing is lost or misreported.
+
+---
+
+## R-2089. crate sync night under --progress json writes only its end, none of its nested pass's steps or jobs
+
+**Found:** at the review of #1082, U963, 2026-11-25.
+
+**The mechanism.** `sync night` runs its nested `sync land` through
+`tail.dispatch`, which calls the dispatcher with `--output json` and no
+`--progress`, and keeps the child's standard error in memory. So under
+`crate --output json --progress json sync night` the pass's fifteen or so
+child commands write no event, and the stream is one `end`. Human output of
+`sync night` shows none of the pass's steps either, so the flag matches it.
+
+**Measured cost.** Driven by the review in process over the suite's fakes:
+fifteen child commands ran and the only event was `end`. No producer asks
+for it: the scheduled night's command, `schedule.py`'s `NIGHT_ARGV`, passes
+no flag, and the menu bar app's Sync (U967) runs `sync land`, which streams.
+The guide says to follow a pass with `sync land`.
+
+**Closes when:** a card has the app follow a night pass, which hands the
+night's writer to its nested pass as `run decide --continue` does, or the
+night is judged to need no stream. Ledger only: nothing is misreported, and
+no workflow is blocked.

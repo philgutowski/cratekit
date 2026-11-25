@@ -1,0 +1,92 @@
+{
+  "additionalProperties": false,
+  "common": {
+    "at": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "verb": {
+      "type": "string"
+    }
+  },
+  "kinds": {
+    "end": {
+      "properties": {
+        "exit_code": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "exit_code"
+      ]
+    },
+    "job": {
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "progress": {
+          "type": "object"
+        },
+        "state": {
+          "type": "string"
+        },
+        "step": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "progress",
+        "state",
+        "step"
+      ]
+    },
+    "line": {
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
+    "step": {
+      "properties": {
+        "command": {
+          "type": "string|null"
+        },
+        "detail": {
+          "type": "string|null"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "of": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command",
+        "detail",
+        "index",
+        "name",
+        "of"
+      ]
+    }
+  },
+  "schema": "progress/1",
+  "type": "object"
+}
