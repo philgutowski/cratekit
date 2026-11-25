@@ -191,7 +191,7 @@ extension Glance {
         // The version first, so a glance of another version is named as one
         // instead of failing on whichever key it moved.
         let version = try glance.member("version").int()
-        guard version == supportedGlanceVersion else {
+        guard version == version else {
             throw GlanceError.unsupportedVersion(version)
         }
         let nightField = try glance.member("night")
@@ -355,6 +355,7 @@ private struct Field {
 
     /// The source's value read by `read`, or its unreadable message.
     func readable<Value: Equatable & Sendable>(_ read: (Field) throws -> Value) throws -> Readable<Value> {
+        if let message = try unreadableMessage() { return .unreadable(message) }
         return .value(try read(self))
     }
 }
