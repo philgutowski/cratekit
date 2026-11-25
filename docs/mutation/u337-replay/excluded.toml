@@ -313,3 +313,13 @@ table = "u115.json"
 id = "F8_matching_inode_renumbered"
 reason = "unmeasured on Linux: its one killer at the survey, tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random, is one of the two inode tests that fail alone at base on this card's container and that every helper subtracted as machine bound (#702); u337-3 read it zero with the test subtracted, and the driver refused it here on a red subset baseline; only the macOS battery can read it"
 
+[[excluded]]
+table = "u272.json"
+id = "S13_parents_before_children"
+reason = "unmeasured on Linux: its one killer at the survey, tests/test_repair_rows.py::test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind, is one of the two inode tests of #702 that fail alone on these containers; u337-2 read it zero on main with the pair subtracted by its helper, and the replay at ff8e5ec was refused on the red subset baseline; only the macOS battery can read it"
+
+[[excluded]]
+table = "u193.json"
+id = "M25_crawl_spent_ignored"
+reason = "unmeasured on Linux: its one killer at the survey, tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random, is one of the two inode tests of #702 that fail alone on these containers; u337-2 read it zero on main with the pair subtracted by its helper, and the replay at ff8e5ec was refused on the red subset baseline; only the macOS battery can read it"
+

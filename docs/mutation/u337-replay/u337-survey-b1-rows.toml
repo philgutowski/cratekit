@@ -2,16 +2,6 @@ name = "u337-survey-b1"
 pass_kind = "replay"
 
 [[rows]]
-id = "u272.S13_parents_before_children"
-source = { table = "u272.json", id = "S13_parents_before_children" }
-description = "_flush: walk top down, so a directory is flushed before the files in it"
-file = "src/cratekit/core/snapshot.py"
-surface = "maintainer"
-tests = ["tests/test_repair_rows.py"]
-old = 'capture_root, topdown=False, onerror=_raise_walk_error'
-new = 'capture_root, topdown=True, onerror=_raise_walk_error'
-
-[[rows]]
 id = "u51-item-derivation.H1_export_item_not_payload"
 source = { table = "u51-item-derivation.json", id = "H1_export_item_not_payload" }
 description = "The export handler reads the playlist key as its track, not the claimed item"
@@ -152,14 +142,4 @@ surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
 old = '        if other.is_open() or any('
 new = '        if other.is_open() or False and any('
-
-[[rows]]
-id = "u193.M25_crawl_spent_ignored"
-source = { table = "u193.json", id = "M25_crawl_spent_ignored" }
-description = "Estimate.over_ceiling: ignore the calls the listing already spent"
-file = "src/cratekit/label/playlists_cli.py"
-surface = "user"
-tests = ["tests/test_repair_rows.py"]
-old = '        return self.spent + self.calls > self.ceiling'
-new = '        return self.calls > self.ceiling'
 
