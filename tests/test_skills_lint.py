@@ -547,3 +547,14 @@ def test_the_real_tree_holds_exactly_the_skills_that_are_meant_to_ship():
 def test_real_skills_pass_lint():
     problems = lint_skills(SKILLS_ROOT, _real_scripts(), parser_for=_ParserUntilRejected())
     assert not problems, "skill lint violations:\n" + "\n".join(sorted(problems))
+
+
+def test_a_trailing_comment_is_read_as_a_comment_and_not_as_the_command(tmp_path):
+    """A ``crate ... # note`` line is split: the note may name a skill, and a name the note
+    gets wrong is reported as the comment's, never as a script the command runs."""
+    _mk_skill(tmp_path, "crate-x", "```bash\ncrate sync --ok  # then crate-x reads it\n```\n")
+    assert _lint(tmp_path, {"crate"}) == []
+    _mk_skill(tmp_path, "crate-y", "```bash\ncrate sync --ok  # crate-gone did this once\n```\n")
+    assert _lint(tmp_path, {"crate"}) == [
+        "crate-y: fenced comment references unknown name 'crate-gone'"
+    ]

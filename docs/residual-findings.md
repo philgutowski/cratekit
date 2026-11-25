@@ -1004,3 +1004,15 @@ more, options 2 and 3 are a card each. Ledger only.
 **Measured cost.** On this card alone: three null controls killed by one of them (u337-librosa-1-0-0-b's first run, u337-survey-b2 and u337-survey-b2b's first run), each batch invalid and run again; seven rows read killed only by one of them in a promoted full run (u264 M7 under librosa 1.0.1; at ff8e5ec u130-a A1, r923 N12 and u28 L9 in survey a, u165 F5 in survey b1, r259 O1 and u112-b A6 in survey b2a), which `survey.py` now refuses or reads as no kill; and one subset baseline refused red (u115 F17 and F8, u272 S13, u193 M25, whose only killers they are, so those four rows are unmeasured on Linux). Helpers that added the two ids to a scratch copy of their known failures, as U334 recorded, avoided the first two costs; a hand added id is what the cloud unit skill forbids. Maintainer facing.
 
 **Closes when:** the two tests are made deterministic on a container (or skipped where the filesystem cannot give the inode they need, named by the battery), so a full run reads them the same every time.
+
+---
+
+## R-2074. The single item export worker is never called by the job driver since U270
+
+**Found:** at the build of #1073, R-2071, 2026-11-25.
+
+**The mechanism.** `export.cli.handle` is the worker registered for `export.playlist`, and it carries `handle.batched = (handle_batch, BATCH)`. The job driver reads that attribute (`cli/handlers.py`, `BATCH_ATTRIBUTE`) and, once it names a valid batch form, hands every queued track to `handle_batch`, so `handle`'s own body, which exports one item through `run_export_item`, is reached by no drive. u51-item-derivation H1 mutated that body (the item's track taken from the payload instead of the item) and no test killed it; R-2071's card kills it with a test that calls `handle` directly on a queued job's item.
+
+**Measured cost.** None to a user: the batch form is what runs. A maintainer reading `handle` sees a per item worker that production never calls, guarded by a test that drives it alone. Not driven past that: whether `handle` should be removed, leaving the batch form registered on its own, depends on whether the driver must keep a per item callable for a batch that fails whole, which was not measured.
+
+**Closes when:** `handle` is shown needed by a path the driver takes and a test drives it through that path, or the registration names the batch form alone and `handle`'s body is removed with the test that drives it. Ledger only: maintainer facing.

@@ -1762,3 +1762,21 @@ def test_the_playlist_listing_carries_the_shortfall_beside_its_rows():
     assert len(listed) == 8
     assert short.block() == {"declared": 10, "listed": 8, "withheld": 2}
     assert label_cli.playlist_tracks_or_refuse(fake, "p") == listed
+
+
+def test_a_refreshed_naive_expiry_is_written_back_as_utc_west_of_utc(monkeypatch):
+    """R-2071: the client's naive expiry is UTC, so a local zone never moves it."""
+    from tests.deadca7_fixtures import west_of_utc
+
+    class Refreshing(FakeClient):
+        def load_oauth_session(self, *args, **kwargs):
+            accepted = super().load_oauth_session(*args, **kwargs)
+            self.expiry_time = datetime(2031, 1, 1)  # the client's naive UTC
+            return accepted
+
+    use_client(monkeypatch, Refreshing())
+    record_session()
+    with west_of_utc():
+        provider_session.client_session()
+    held = secrets.get_json(secrets.Credential.PROVIDER_SESSION)
+    assert held["expiry_time"] == datetime(2031, 1, 1, tzinfo=timezone.utc).timestamp()

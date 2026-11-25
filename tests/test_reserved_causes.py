@@ -4010,3 +4010,14 @@ def test_no_module_in_the_package_turns_a_bare_integer_into_a_status():
     found = {relative: process_status_literals(source) for relative, source in package_sources()}
     offenders = {relative: hits for relative, hits in found.items() if hits}
     assert not offenders, f"these exit with an integer nobody reserved: {offenders}"
+
+
+def test_the_derive_test_bites_a_reserved_count_the_tree_disagrees_with():
+    """U125's derive test, handed a reserved count off by one, fails on its own cause totals
+    rather than comparing the pins with themselves."""
+    with pytest.MonkeyPatch.context() as broken_pin:
+        broken_pin.setitem(
+            globals(), "PINNED_RESERVED_CAUSE_COUNT", PINNED_RESERVED_CAUSE_COUNT + 1
+        )
+        with pytest.raises(AssertionError, match="derived cause totals from the pins disagree"):
+            test_pinned_populations_derive_totals_and_key_by_module()

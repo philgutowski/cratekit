@@ -823,3 +823,18 @@ def test_the_undeclared_note_states_the_version_the_skip_saw():
     (note,) = apply_cli.favorites_warnings(summary)
     assert note["code"] == genre_favorites.CLASS_UNDECLARED
     assert "states schema_version 2 and declares no sub class" in note["message"]
+
+
+def test_a_removal_that_reports_success_and_takes_nothing_out_is_a_disagreement(
+    tree, db, monkeypatch
+):
+    """R-2071. The read back is what catches it: the hand added track still in Favorites."""
+    favorites = _hand_added(tree)
+    plan = _plan(tree)
+    monkeypatch.setattr(
+        rb_writer, "remove_memberships", lambda _db, _playlist, removes: list(removes)
+    )
+    refreshed = _apply(tree, plan)
+    assert refreshed.removed == 1
+    assert _members(db, favorites.ID) == {"1", "2"}
+    assert refreshed.disagreements == (f"{DEEP.display}: 1 track(s) still in Favorites",)

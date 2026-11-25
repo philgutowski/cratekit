@@ -1,0 +1,83 @@
+{
+  "name": "r2071-b",
+  "pass_kind": "replay",
+  "branch": "cloud/1073-guards-killed-by-no-linux-run",
+  "head": "e20fea6c",
+  "when": "2026-11-25 07:01 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 23402,
+  "baseline_exit": 1,
+  "pytest_runs": 3,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25)",
+  "reused_rows": 0,
+  "known_failures": 248,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-25 07:01 UTC for commit `e20fea6cd884`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 1,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/organize/filing.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/organize/filing.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1b730d9dd4e3c677",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 23402,
+    "baseline_collected": 23402,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u116.M13_utc_year",
+      "description": "year_of_mark: the year is taken from the UTC stamp digits rather than local time",
+      "file": "src/cratekit/organize/filing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6b7c1cbeb1562e1a",
+      "subset": [
+        "tests/test_organize.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize.py::test_a_late_new_years_eve_mark_west_of_utc_files_into_the_local_year"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if when.tzinfo is not None:\n        when = when.astimezone()\n    return f\"{when.year:04d}\"",
+      "new": "    return str(marked or \"\")[:4]",
+      "source": {
+        "table": "u116.json",
+        "id": "M13_utc_year"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}

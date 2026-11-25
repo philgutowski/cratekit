@@ -193,3 +193,14 @@ def test_set_finds_an_accented_name_typed_in_decomposed_form():
     held = listed()
     assert set(held) == {label_id}
     assert held[label_id]["track_limit"] == 25
+
+
+def test_set_finds_a_renamed_accented_label_typed_in_decomposed_form():
+    """A renamed label keeps its identifier, so only its name, however composed, finds it."""
+    ok(["add", "Kompakt"])
+    ok(["rename", "kompakt", "--to", unicodedata.normalize("NFC", "Sueño")])
+    envelope = ok(["set", unicodedata.normalize("NFD", "Sueño"), "--track-limit", "25"])
+    assert envelope["data"]["summary"]["updated"] == "kompakt"
+    held = listed()
+    assert set(held) == {"kompakt"}
+    assert held["kompakt"]["track_limit"] == 25
