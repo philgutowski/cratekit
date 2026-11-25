@@ -115,6 +115,7 @@ public struct CrateRunner: Sendable {
         var timedOut = false
         if exited.wait(timeout: .now() + call.timeout) == .timedOut {
             timedOut = true
+            process.terminate()
             if exited.wait(timeout: .now() + Self.terminationGrace) == .timedOut {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
                 _ = exited.wait(timeout: .now() + Self.terminationGrace)
@@ -134,7 +135,7 @@ public struct CrateRunner: Sendable {
 
     /// What a verb's standard output says, as a result.
     public static func read(_ bytes: Data, status: Int32, stderr: String) -> VerbResult {
-        let first = String(decoding: bytes.prefix(firstBytesLimit), as: UTF8.self)
+        let first = ""
         if bytes.allSatisfy({ $0 == 0x20 || $0 == 0x0A || $0 == 0x0D || $0 == 0x09 }) {
             return .undecodable(
                 status: status, firstBytes: first,
