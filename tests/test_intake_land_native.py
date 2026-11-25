@@ -885,7 +885,7 @@ def test_a_failure_on_the_second_file_leaves_the_database_as_it_was_and_names_th
 @pytest.mark.parametrize(
     ("sql", "named"),
     [
-        # A tempo, which the membership step's read loads into the object (R-760).
+        # A tempo, which the membership step's read loads into the object (R-2072).
         ("UPDATE djmdContent SET BPM = 12400 WHERE ID = :id", "BPM"),
         # The key, held on a content row beyond the playlist tables' columns (R-746).
         ("UPDATE djmdContent SET KeyID = '283157525' WHERE ID = :id", "KeyID"),
@@ -945,7 +945,8 @@ def test_an_analysis_value_only_the_stored_row_holds_is_refused_by_the_read_back
     not yet read into the object, so a value written at the restamp is seen by the
     whitelist's in memory judge first. Written here, the object never holds it:
     only :func:`rb_writer.assert_created_rows_are_gridless`, reading the stored
-    row, can refuse it, and the message must be that layer's own.
+    row, can refuse it, and the message must be that layer's own, which is also
+    what fails this test if a read is ever added between the plant and the judge.
     """
     from sqlalchemy import text
     cfg = one_staged
@@ -960,9 +961,9 @@ def test_an_analysis_value_only_the_stored_row_holds_is_refused_by_the_read_back
     def taint_then_commit(db, **kwargs):
         while made:
             content = made.pop()
+            # The stored row only: nothing reads the row into the object between
+            # here and the judge, which the wording asserted below proves.
             db.session.execute(text(sql), {"id": str(content.ID)})
-            # The precondition this test is for: the object does not carry it.
-            assert vars(content).get(named) in rb_writer.EMPTY_ON_CREATE, vars(content)
         return real_commit(db, **kwargs)
 
     monkeypatch.setattr(native, "_restamp", restamp_and_note)
